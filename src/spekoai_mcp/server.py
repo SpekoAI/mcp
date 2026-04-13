@@ -9,16 +9,11 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator, Optional
 
 from fastmcp import FastMCP
 from spekoai import AsyncSpekoAI
-from spekoai.models import (
-    PipelineConfig,
-    Session,
-    SessionDetail,
-    UsageSummary,
-)
+from spekoai.models import UsageSummary
 
 
 @lru_cache(maxsize=1)
@@ -43,32 +38,11 @@ async def _lifespan(_: FastMCP) -> AsyncIterator[None]:
 mcp: FastMCP = FastMCP(
     name="spekoai",
     instructions=(
-        "SpekoAI voice-AI gateway. Use these tools to create and manage real-time "
-        "STT→LLM→TTS voice sessions and to inspect usage."
+        "SpekoAI voice-AI gateway. Use these tools to inspect usage across "
+        "the STT→LLM→TTS voice pipelines proxied through the gateway."
     ),
     lifespan=_lifespan,
 )
-
-
-@mcp.tool
-async def create_session(
-    pipeline: PipelineConfig,
-    metadata: Optional[dict[str, Any]] = None,
-) -> Session:
-    """Create a new voice session and return its connection token."""
-    return await _get_client().sessions.create(pipeline, metadata)
-
-
-@mcp.tool
-async def get_session(session_id: str) -> SessionDetail:
-    """Fetch a session by id."""
-    return await _get_client().sessions.get(session_id)
-
-
-@mcp.tool
-async def end_session(session_id: str) -> dict[str, str]:
-    """End an active session."""
-    return await _get_client().sessions.end(session_id)
 
 
 @mcp.tool

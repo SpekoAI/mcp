@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "spekoai-mcp"
-version = "0.0.1"
+version = "0.1.0"
 description = "Model Context Protocol server for SpekoAI — voice-AI tools for Claude, Cursor, and other MCP clients"
 readme = "README.md"
 license = { text = "MIT" }

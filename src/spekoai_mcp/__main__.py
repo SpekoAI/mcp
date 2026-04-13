@@ -18,7 +18,7 @@ def main() -> None:
         help="Run over stdio (local development; no OAuth, uses SPEKOAI_API_KEY).",
     )
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind host (default: 0.0.0.0).")
-    parser.add_argument("--port", type=int, default=8000, help="HTTP bind port (default: 8000).")
+    parser.add_argument("--port", type=int, default=8080, help="HTTP bind port (default: 8080).")
     args = parser.parse_args()
 
     if not os.environ.get("SPEKOAI_API_KEY"):
