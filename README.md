@@ -56,3 +56,65 @@ uv run spekoai-mcp --host 127.0.0.1 --port 9000
 
 The server fails to start in HTTP mode if OAuth env vars are missing — this
 prevents accidentally serving an unauthenticated public endpoint.
+
+### Deriving the OAuth env vars
+
+The SpekoAI platform is its own OIDC issuer (Better Auth's `oidcProvider`
+plugin, see `apps/server/src/lib/auth.ts`). The endpoints live under
+`/api/auth/oauth2/*` on the dashboard origin, which rewrites through to the
+server.
+
+For a deployment where the dashboard is `https://platform.speko.ai`:
+
+```
+SPEKOAI_OAUTH_ISSUER=https://platform.speko.ai/api/auth/oauth2
+SPEKOAI_MCP_BASE_URL=https://mcp.speko.ai
+```
+
+**Note: two different "issuer" values.** FastMCP's `OAuthProxy` appends
+`/authorize` and `/token` to `SPEKOAI_OAUTH_ISSUER`, so this env var must
+end at the `/oauth2` segment — no trailing slash. That is **not** the OIDC
+spec `iss` claim. The OIDC spec issuer (and the `iss` value inside tokens
+emitted by the platform) is `https://platform.speko.ai/api/auth` — one
+segment shorter, matching where Better Auth mounts the discovery document.
+Same host, different paths.
+
+To mint `SPEKOAI_OAUTH_CLIENT_ID` / `SPEKOAI_OAUTH_CLIENT_SECRET`, register
+the MCP server as an OAuth client against the platform. From a checkout of
+`github.com/SpekoAI/platform`, with `apps/server/.env` pointing at the
+target database:
+
+```bash
+bun --env-file=apps/server/.env \
+    apps/server/scripts/register-oauth-client.ts \
+    --name "SpekoAI MCP (staging)" \
+    --redirect-uri https://mcp-staging.speko.dev/oauth/callback
+```
+
+The script prints:
+
+```json
+{ "client_id": "...", "client_secret": "..." }
+```
+
+The secret is returned **once** — store it somewhere durable (Cloud Run
+secret, 1Password, etc.). You can also hit the public endpoint directly:
+
+```bash
+curl -X POST https://platform.speko.ai/api/auth/oauth2/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_name": "SpekoAI MCP (staging)",
+    "redirect_uris": ["https://mcp-staging.speko.dev/oauth/callback"],
+    "token_endpoint_auth_method": "client_secret_basic",
+    "grant_types": ["authorization_code", "refresh_token"],
+    "response_types": ["code"],
+    "scope": "openid profile email"
+  }'
+```
+
+`allowDynamicClientRegistration: true` in the plugin config is what makes
+this endpoint publicly callable — convenient for FastMCP's first-run
+self-registration, but worth gating behind an allowlist hook once we have
+more than one client in production. Client secrets are stored hashed
+(`storeClientSecret: 'hashed'`), so a DB breach doesn't leak plaintext.
