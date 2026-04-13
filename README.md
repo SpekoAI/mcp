@@ -50,7 +50,7 @@ HTTP mode requires OAuth. Set:
 Then:
 
 ```bash
-uv run spekoai-mcp                  # HTTP on 0.0.0.0:8000
+uv run spekoai-mcp                  # HTTP on 0.0.0.0:8080
 uv run spekoai-mcp --host 127.0.0.1 --port 9000
 ```
 

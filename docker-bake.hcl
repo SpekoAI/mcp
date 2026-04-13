@@ -22,6 +22,7 @@ target "mcp" {
     notequal("", REGISTRY) ? "${REGISTRY}/${IMAGE_NAME}:latest" : "${IMAGE_NAME}:latest",
   ]
   platforms = ["linux/amd64"]
+  output = ["type=registry"]
   cache-from = [
     notequal("", REGISTRY) ? "type=registry,ref=${REGISTRY}/${IMAGE_NAME}:buildcache" : "",
   ]

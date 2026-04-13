@@ -14,6 +14,8 @@ from typing import AsyncIterator, Optional
 from fastmcp import FastMCP
 from spekoai import AsyncSpekoAI
 from spekoai.models import UsageSummary
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 
 @lru_cache(maxsize=1)
@@ -43,6 +45,11 @@ mcp: FastMCP = FastMCP(
     ),
     lifespan=_lifespan,
 )
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(_: Request) -> PlainTextResponse:
+    return PlainTextResponse("OK")
 
 
 @mcp.tool

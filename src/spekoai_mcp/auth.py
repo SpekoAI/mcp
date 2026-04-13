@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from fastmcp.server.auth import OAuthProxy
+from fastmcp.server.auth import JWTVerifier, OAuthProxy
 
 
 def build_auth() -> OAuthProxy | None:
@@ -32,5 +32,10 @@ def build_auth() -> OAuthProxy | None:
         upstream_token_endpoint=f"{issuer}/token",
         upstream_client_id=client_id,
         upstream_client_secret=client_secret,
+        token_verifier=JWTVerifier(
+            jwks_uri=f"{issuer}/.well-known/jwks.json",
+            issuer=issuer,
+            audience=client_id,
+        ),
         base_url=os.environ.get("SPEKOAI_MCP_BASE_URL", "https://mcp.speko.ai"),
     )
