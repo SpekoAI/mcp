@@ -1,0 +1,65 @@
+[build-system]
+requires = ["uv_build>=0.5"]
+build-backend = "uv_build"
+
+[project]
+name = "spekoai-mcp"
+version = "0.0.1"
+description = "Model Context Protocol server for SpekoAI — voice-AI tools for Claude, Cursor, and other MCP clients"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "SpekoAI" }]
+keywords = ["spekoai", "voice-ai", "mcp", "model-context-protocol"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+  "fastmcp>=3.0",
+  "spekoai>=0.0.1",
+  "pydantic>=2.0.0",
+]
+
+[project.scripts]
+spekoai-mcp = "spekoai_mcp.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/SpekoAI/mcp"
+Repository = "https://github.com/SpekoAI/mcp"
+Issues = "https://github.com/SpekoAI/mcp/issues"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+]
+
+[tool.uv.build-backend]
+module-name = "spekoai_mcp"
+module-root = "src"
+
+# Dev-time override: resolve `spekoai` from the sibling monorepo package
+# instead of PyPI. Stripped from the published wheel; downstream installs
+# get the PyPI release pinned by the `dependencies` constraint above.
+[tool.uv.sources]
+spekoai = { path = "../sdk-python", editable = true }
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
