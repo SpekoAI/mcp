@@ -4,8 +4,7 @@ Model Context Protocol server for [SpekoAI](https://speko.ai) — a thin wrapper
 over the [`spekoai`](https://pypi.org/project/spekoai/) Python SDK that exposes
 voice-AI session and usage tools to MCP clients (Claude Desktop, Cursor, etc.).
 
-A hosted version is available at `https://mcp.speko.ai`. You can also run it
-locally over stdio for development.
+A hosted version is available at `https://mcp.speko.ai`.
 
 ## Tools
 
@@ -16,46 +15,32 @@ locally over stdio for development.
 The tool surface mirrors `spekoai.AsyncSpekoAI` — more tools land here as
 the SDK grows.
 
-## Local development (stdio)
+## Auth model
 
-```bash
-uv run --with spekoai-mcp -- spekoai-mcp --stdio
-```
+The server has no long-lived SpekoAI credential of its own. Every tool
+call forwards the caller's OAuth access token (minted by the Better Auth
+`oauthProvider` plugin on the platform) straight to the SpekoAI API,
+which validates the JWT and scopes the call to the caller's user and
+organization. There is no `SPEKOAI_API_KEY`.
 
-Set `SPEKOAI_API_KEY` (and optionally `SPEKOAI_BASE_URL`) in the environment.
+## Running
 
-Wire into Claude Desktop's MCP config:
+HTTP-only. Set:
 
-```json
-{
-  "mcpServers": {
-    "spekoai": {
-      "command": "uv",
-      "args": ["run", "--with", "spekoai-mcp", "--", "spekoai-mcp", "--stdio"],
-      "env": { "SPEKOAI_API_KEY": "sk_test_..." }
-    }
-  }
-}
-```
-
-## HTTP (production)
-
-HTTP mode requires OAuth. Set:
-
-- `SPEKOAI_OAUTH_ISSUER`
+- `SPEKOAI_OAUTH_ISSUER` — must end in `/oauth2`
 - `SPEKOAI_OAUTH_CLIENT_ID`
 - `SPEKOAI_OAUTH_CLIENT_SECRET`
-- `SPEKOAI_MCP_BASE_URL` (defaults to `https://mcp.speko.ai`)
-
-Then:
+- `SPEKOAI_MCP_BASE_URL` — public URL of this server (no default; fail-closed)
+- `SPEKOAI_OAUTH_AUDIENCE` — optional; defaults to `SPEKOAI_OAUTH_CLIENT_ID`
+- `SPEKOAI_BASE_URL` — optional upstream override (default `https://api.speko.ai`)
 
 ```bash
 uv run spekoai-mcp                  # HTTP on 0.0.0.0:8080
 uv run spekoai-mcp --host 127.0.0.1 --port 9000
 ```
 
-The server fails to start in HTTP mode if OAuth env vars are missing — this
-prevents accidentally serving an unauthenticated public endpoint.
+The server fails to start if any required env var is missing — this
+prevents accidentally serving an unauthenticated or mis-targeted endpoint.
 
 ### Deriving the OAuth env vars
 

@@ -16,15 +16,15 @@ def build_auth() -> OAuthProxy | None:
     """Return an `OAuthProxy` if all required OAuth env vars are set, else None.
 
     A `None` return means the caller is responsible for deciding what to do —
-    HTTP mode aborts (fail-closed) with a friendly message; stdio mode runs
-    unauthenticated. Partial configuration (e.g. issuer set but client id
-    missing) also returns None so the caller's error message fires instead of
-    a bare `KeyError`.
+    the CLI aborts (fail-closed) with a friendly message. Partial
+    configuration (e.g. issuer set but client id missing) also returns None
+    so the caller's error message fires instead of a bare `KeyError`.
     """
     issuer = os.environ.get("SPEKOAI_OAUTH_ISSUER")
     client_id = os.environ.get("SPEKOAI_OAUTH_CLIENT_ID")
     client_secret = os.environ.get("SPEKOAI_OAUTH_CLIENT_SECRET")
-    if not (issuer and client_id and client_secret):
+    base_url = os.environ.get("SPEKOAI_MCP_BASE_URL")
+    if not (issuer and client_id and client_secret and base_url):
         return None
 
     # Better Auth mounts OIDC discovery one segment above the oauth-provider
@@ -41,6 +41,12 @@ def build_auth() -> OAuthProxy | None:
         )
     token_issuer = issuer[: -len(oauth2_suffix)]
 
+    # Default audience is the OAuth client_id (what Better Auth's
+    # oauth-provider plugin mints by default). Override via
+    # SPEKOAI_OAUTH_AUDIENCE if the issuer is configured to emit a
+    # different `aud` (e.g. the resource URL per RFC 8707).
+    audience = os.environ.get("SPEKOAI_OAUTH_AUDIENCE", client_id)
+
     return OAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",
         upstream_token_endpoint=f"{issuer}/token",
@@ -49,7 +55,7 @@ def build_auth() -> OAuthProxy | None:
         token_verifier=JWTVerifier(
             jwks_uri=f"{token_issuer}/jwks",
             issuer=token_issuer,
-            audience=client_id,
+            audience=audience,
         ),
-        base_url=os.environ.get("SPEKOAI_MCP_BASE_URL", "https://mcp.speko.ai"),
+        base_url=base_url,
     )

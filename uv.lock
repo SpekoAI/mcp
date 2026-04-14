@@ -1307,8 +1307,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", specifier = ">=3.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "fastmcp", specifier = ">=3.0,<4" },
+    { name = "pydantic", specifier = ">=2.0.0,<3" },
     { name = "spekoai", editable = "../sdk-python" },
 ]
 

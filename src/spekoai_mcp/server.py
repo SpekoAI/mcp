@@ -2,16 +2,21 @@
 
 Tool surface mirrors `spekoai.AsyncSpekoAI` exactly — do not invent surface
 the SDK lacks. When the SDK grows, extend here.
+
+Auth model: every tool call forwards the caller's OAuth access token to
+the SpekoAI API. No server-wide SpekoAI credential exists — the JWT from
+`OAuthProxy` *is* the credential the upstream API validates.
 """
 
 from __future__ import annotations
 
 import os
-from contextlib import asynccontextmanager
-from typing import Annotated, AsyncIterator
+from typing import Annotated
 
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import OAuthProxy
+from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 from spekoai import AsyncSpekoAI
 from spekoai.models import UsageSummary
@@ -19,29 +24,33 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 
-@asynccontextmanager
-async def _lifespan(_: FastMCP) -> AsyncIterator[dict[str, AsyncSpekoAI]]:
-    """Construct the SDK client bound to the running event loop and tear it
-    down on shutdown. Exposed to tools via `ctx.request_context.lifespan_context`.
+def _base_url() -> str:
+    return os.environ.get("SPEKOAI_BASE_URL", "https://api.speko.ai")
+
+
+def _caller_client() -> AsyncSpekoAI:
+    """Build an SDK client scoped to the MCP caller's OAuth token.
+
+    Raises `ToolError` if no token is present — shouldn't happen under
+    `OAuthProxy`, which rejects unauthenticated requests before tools run,
+    but we guard rather than silently call upstream with no credential.
     """
-    async with AsyncSpekoAI(
-        api_key=os.environ["SPEKOAI_API_KEY"],
-        base_url=os.environ.get("SPEKOAI_BASE_URL", "https://api.speko.ai"),
-    ) as client:
-        yield {"spekoai_client": client}
+    token = get_access_token()
+    if token is None or not token.token:
+        raise ToolError("No OAuth access token on request; cannot call SpekoAI API.")
+    return AsyncSpekoAI(api_key=token.token, base_url=_base_url())
 
 
 def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     """Build a FastMCP server. `auth` is passed via the constructor (the
-    supported wiring path); omit for stdio/local development.
+    supported wiring path); production deployments must supply one.
     """
     mcp: FastMCP = FastMCP(
         name="spekoai",
         instructions=(
-            "SpekoAI voice-AI gateway. Use these tools to inspect usage across "
-            "the STT→LLM→TTS voice pipelines proxied through the gateway."
+            "SpekoAI voice-AI gateway. Tools mirror the SpekoAI SDK surface "
+            "and act on behalf of the authenticated caller."
         ),
-        lifespan=_lifespan,
         auth=auth,
     )
 
@@ -51,7 +60,7 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
 
     @mcp.tool
     async def get_usage_summary(
-        ctx: Context,
+        _ctx: Context,
         from_date: Annotated[
             str | None,
             Field(
@@ -73,7 +82,7 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
         ] = None,
     ) -> UsageSummary:
         """Get usage summary for the current billing period."""
-        client: AsyncSpekoAI = ctx.request_context.lifespan_context["spekoai_client"]
-        return await client.usage.get(from_date=from_date, to_date=to_date)
+        async with _caller_client() as client:
+            return await client.usage.get(from_date=from_date, to_date=to_date)
 
     return mcp
