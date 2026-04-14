@@ -59,10 +59,10 @@ prevents accidentally serving an unauthenticated public endpoint.
 
 ### Deriving the OAuth env vars
 
-The SpekoAI platform is its own OIDC issuer (Better Auth's `oidcProvider`
-plugin, see `apps/server/src/lib/auth.ts`). The endpoints live under
-`/api/auth/oauth2/*` on the dashboard origin, which rewrites through to the
-server.
+The SpekoAI platform is its own OAuth 2.1 / OIDC issuer (Better Auth's
+`@better-auth/oauth-provider` plugin, see `apps/server/src/lib/auth.ts`).
+The endpoints live under `/api/auth/oauth2/*` on the dashboard origin,
+which rewrites through to the server.
 
 For a deployment where the dashboard is `https://platform.speko.ai`:
 
@@ -113,8 +113,13 @@ curl -X POST https://platform.speko.ai/api/auth/oauth2/register \
   }'
 ```
 
-`allowDynamicClientRegistration: true` in the plugin config is what makes
-this endpoint publicly callable — convenient for FastMCP's first-run
+`allowUnauthenticatedClientRegistration: true` in the plugin config is what
+makes this endpoint publicly callable — convenient for FastMCP's first-run
 self-registration, but worth gating behind an allowlist hook once we have
-more than one client in production. Client secrets are stored hashed
-(`storeClientSecret: 'hashed'`), so a DB breach doesn't leak plaintext.
+more than one client in production. Client secrets are stored hashed by
+default, so a DB breach doesn't leak plaintext.
+
+Once the MCP client is registered, add its `client_id` to
+`SPEKOAI_TRUSTED_CLIENT_IDS` on the server so users skip the consent screen
+for this first-party client. OAuth 2.1 requires PKCE, which FastMCP
+`OAuthProxy` performs automatically.
