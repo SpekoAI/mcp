@@ -23,11 +23,22 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ---- Runtime image ----
 FROM base AS production
 
-COPY --from=build /app/packages/sdk-python packages/sdk-python
-COPY --from=build /app/packages/mcp-server packages/mcp-server
+# Run as a non-root user. uid/gid are fixed so bind-mounted volumes have
+# predictable ownership across hosts.
+RUN groupadd --system --gid 1001 spekoai \
+ && useradd --system --uid 1001 --gid spekoai --home-dir /app --shell /usr/sbin/nologin spekoai
+
+COPY --from=build --chown=spekoai:spekoai /app/packages/sdk-python packages/sdk-python
+COPY --from=build --chown=spekoai:spekoai /app/packages/mcp-server packages/mcp-server
 
 WORKDIR /app/packages/mcp-server
 ENV PATH="/app/packages/mcp-server/.venv/bin:${PATH}"
 EXPOSE 8080
+
+USER spekoai
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request, sys; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status == 200 else 1)"
 
 CMD ["spekoai-mcp"]

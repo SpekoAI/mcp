@@ -7,21 +7,24 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/mcp-server",
-        "command": "command -v uv >/dev/null && uv build || echo 'uv not installed, skipping build (real publish builds in mirror CI)'"
+        "command": "if command -v uv >/dev/null; then uv build; else echo 'SKIPPED: uv not installed; real publish builds run in mirror CI' >&2; fi",
+        "forwardAllArgs": false
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/mcp-server",
-        "command": "command -v uv >/dev/null && uv run --group dev ruff check . || echo 'uv not installed, skipping lint (real lint runs in mirror CI)'"
+        "command": "if command -v uv >/dev/null; then uv run --group dev ruff check .; else echo 'SKIPPED: uv not installed; real lint runs in mirror CI' >&2; fi",
+        "forwardAllArgs": false
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "cwd": "packages/mcp-server",
-        "command": "command -v uv >/dev/null && uv run --group dev pytest || echo 'uv not installed, skipping'"
+        "command": "if command -v uv >/dev/null; then uv run --group dev pytest; else echo 'SKIPPED: uv not installed; tests run in mirror CI' >&2; fi",
+        "forwardAllArgs": false
       }
     }
   }

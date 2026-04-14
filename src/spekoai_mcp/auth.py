@@ -29,8 +29,17 @@ def build_auth() -> OAuthProxy | None:
 
     # Better Auth mounts OIDC discovery one segment above the oauth-provider
     # endpoints: SPEKOAI_OAUTH_ISSUER ends at `/oauth2`, but the `iss` claim
-    # on emitted tokens and the JWKS URL live at the parent path.
-    token_issuer = issuer.rsplit("/oauth2", 1)[0]
+    # on emitted tokens and the JWKS URL live at the parent path. Validate
+    # the suffix explicitly — `rsplit` would silently no-op on a mismatched
+    # issuer and leave us verifying tokens against the wrong URL.
+    oauth2_suffix = "/oauth2"
+    if not issuer.endswith(oauth2_suffix):
+        raise ValueError(
+            f"SPEKOAI_OAUTH_ISSUER must end with {oauth2_suffix!r} "
+            f"(got: {issuer!r}). Point it at the Better Auth oauth-provider "
+            "mount, e.g. https://platform.example.com/api/auth/oauth2."
+        )
+    token_issuer = issuer[: -len(oauth2_suffix)]
 
     return OAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",

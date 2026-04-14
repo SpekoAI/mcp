@@ -7,7 +7,7 @@ import os
 import sys
 
 from spekoai_mcp.auth import build_auth
-from spekoai_mcp.server import mcp
+from spekoai_mcp.server import create_server
 
 
 def main() -> None:
@@ -28,6 +28,7 @@ def main() -> None:
         )
 
     if args.stdio:
+        mcp = create_server()
         mcp.run(transport="stdio")
         return
 
@@ -39,8 +40,8 @@ def main() -> None:
             "without OAuth."
         )
 
-    mcp.auth = auth
-    mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    mcp = create_server(auth=auth)
+    mcp.run(transport="http", host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

@@ -24,9 +24,9 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "fastmcp>=3.0",
-  "spekoai>=0.0.1",
-  "pydantic>=2.0.0",
+  "fastmcp>=3.0,<4",
+  "spekoai>=0.0.1,<1",
+  "pydantic>=2.0.0,<3",
 ]
 
 [project.scripts]
