@@ -27,14 +27,19 @@ def build_auth() -> OAuthProxy | None:
     if not (issuer and client_id and client_secret):
         return None
 
+    # Better Auth mounts OIDC discovery one segment above the oauth-provider
+    # endpoints: SPEKOAI_OAUTH_ISSUER ends at `/oauth2`, but the `iss` claim
+    # on emitted tokens and the JWKS URL live at the parent path.
+    token_issuer = issuer.rsplit("/oauth2", 1)[0]
+
     return OAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",
         upstream_token_endpoint=f"{issuer}/token",
         upstream_client_id=client_id,
         upstream_client_secret=client_secret,
         token_verifier=JWTVerifier(
-            jwks_uri=f"{issuer}/.well-known/jwks.json",
-            issuer=issuer,
+            jwks_uri=f"{token_issuer}/jwks",
+            issuer=token_issuer,
             audience=client_id,
         ),
         base_url=os.environ.get("SPEKOAI_MCP_BASE_URL", "https://mcp.speko.ai"),

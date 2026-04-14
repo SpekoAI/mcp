@@ -11,10 +11,10 @@ locally over stdio for development.
 
 | Tool | Description |
 | --- | --- |
-| `create_session` | Create a new voice session. |
-| `get_session` | Fetch a session by id. |
-| `end_session` | End an active session. |
 | `get_usage_summary` | Get usage summary for the current billing period. |
+
+The tool surface mirrors `spekoai.AsyncSpekoAI` — more tools land here as
+the SDK grows.
 
 ## Local development (stdio)
 
@@ -88,8 +88,13 @@ target database:
 bun --env-file=apps/server/.env \
     apps/server/scripts/register-oauth-client.ts \
     --name "SpekoAI MCP (staging)" \
-    --redirect-uri https://mcp-staging.speko.dev/oauth/callback
+    --redirect-uri https://mcp-staging.speko.dev/auth/callback
 ```
+
+The redirect URI must match FastMCP `OAuthProxy`'s callback path, which is
+`/auth/callback` (not `/oauth/callback`). Platform-staging will reject the
+upstream authorize request with `invalid_redirect` if the registered URI
+doesn't match.
 
 The script prints:
 
@@ -101,11 +106,13 @@ The secret is returned **once** — store it somewhere durable (Cloud Run
 secret, 1Password, etc.). You can also hit the public endpoint directly:
 
 ```bash
-curl -X POST https://platform.speko.ai/api/auth/oauth2/register \
+curl -X POST https://platform-staging.speko.dev/api/auth/oauth2/register \
   -H "Content-Type: application/json" \
+  -H "Origin: https://platform-staging.speko.dev" \
+  -H "Cookie: __Secure-better-auth.session_token=<paste_your_cookie_val>" \
   -d '{
     "client_name": "SpekoAI MCP (staging)",
-    "redirect_uris": ["https://mcp-staging.speko.dev/oauth/callback"],
+    "redirect_uris": ["https://mcp-staging.speko.dev/auth/callback"],
     "token_endpoint_auth_method": "client_secret_basic",
     "grant_types": ["authorization_code", "refresh_token"],
     "response_types": ["code"],
@@ -113,11 +120,23 @@ curl -X POST https://platform.speko.ai/api/auth/oauth2/register \
   }'
 ```
 
-`allowUnauthenticatedClientRegistration: true` in the plugin config is what
-makes this endpoint publicly callable — convenient for FastMCP's first-run
-self-registration, but worth gating behind an allowlist hook once we have
-more than one client in production. Client secrets are stored hashed by
-default, so a DB breach doesn't leak plaintext.
+`allowUnauthenticatedClientRegistration: true` only opens registration for
+**public** clients (`token_endpoint_auth_method: "none"`, PKCE-only).
+Registering a **confidential** client via the public endpoint requires a
+logged-in user session — hence the `Cookie` and `Origin` headers above.
+Authenticate at the dashboard, grab the session cookie from DevTools, then
+POST. Client secrets are stored hashed, so a DB breach doesn't leak
+plaintext.
+
+If you already have a client row and only need to tweak its redirect URIs
+(e.g. adding a local MCP Inspector callback for testing), patch the row
+directly — the public endpoint is create-only:
+
+```sql
+UPDATE oauth_client
+SET redirect_uris = array_append(redirect_uris, 'https://mcp-staging.speko.dev/auth/callback')
+WHERE client_id = '<client-id>';
+```
 
 Once the MCP client is registered, add its `client_id` to
 `SPEKOAI_TRUSTED_CLIENT_IDS` on the server so users skip the consent screen
