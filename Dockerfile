@@ -31,6 +31,14 @@ RUN groupadd --system --gid 1001 spekoai \
 COPY --from=build --chown=spekoai:spekoai /app/packages/sdk-python packages/sdk-python
 COPY --from=build --chown=spekoai:spekoai /app/packages/mcp-server packages/mcp-server
 
+# FastMCP's OAuthProxy persists DCR client records under `FASTMCP_HOME`.
+# Default is `platformdirs.user_data_dir("fastmcp")` which needs $HOME and a
+# writable ~/.local tree — neither exists for this non-root user, so mkdir
+# recurses. Pin to a pre-created, owned path instead.
+ENV FASTMCP_HOME=/app/.fastmcp \
+    HOME=/app
+RUN mkdir -p /app/.fastmcp && chown -R spekoai:spekoai /app/.fastmcp
+
 WORKDIR /app/packages/mcp-server
 ENV PATH="/app/packages/mcp-server/.venv/bin:${PATH}"
 EXPOSE 8080
