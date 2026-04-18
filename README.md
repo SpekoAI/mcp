@@ -12,7 +12,7 @@ A hosted version is available at `https://mcp.speko.ai`.
 | --- | --- |
 | `get_usage_summary` | Get usage summary for the current billing period. |
 
-The tool surface mirrors `spekoai.AsyncSpekoAI` — more tools land here as
+The tool surface mirrors `spekoai.AsyncSpeko` — more tools land here as
 the SDK grows.
 
 ## Auth model

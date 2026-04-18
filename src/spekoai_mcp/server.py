@@ -1,6 +1,6 @@
 """FastMCP v3 server exposing the SpekoAI SDK as MCP tools.
 
-Tool surface mirrors `spekoai.AsyncSpekoAI` exactly — do not invent surface
+Tool surface mirrors `spekoai.AsyncSpeko` exactly — do not invent surface
 the SDK lacks. When the SDK grows, extend here.
 
 Auth model: every tool call forwards the caller's OAuth access token to
@@ -18,7 +18,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import OAuthProxy
 from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
-from spekoai import AsyncSpekoAI
+from spekoai import AsyncSpeko
 from spekoai.models import UsageSummary
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -28,7 +28,7 @@ def _base_url() -> str:
     return os.environ.get("SPEKOAI_BASE_URL", "https://api.speko.ai")
 
 
-def _caller_client() -> AsyncSpekoAI:
+def _caller_client() -> AsyncSpeko:
     """Build an SDK client scoped to the MCP caller's OAuth token.
 
     Raises `ToolError` if no token is present — shouldn't happen under
@@ -38,7 +38,7 @@ def _caller_client() -> AsyncSpekoAI:
     token = get_access_token()
     if token is None or not token.token:
         raise ToolError("No OAuth access token on request; cannot call SpekoAI API.")
-    return AsyncSpekoAI(api_key=token.token, base_url=_base_url())
+    return AsyncSpeko(api_key=token.token, base_url=_base_url())
 
 
 def create_server(auth: OAuthProxy | None = None) -> FastMCP:

@@ -65,7 +65,7 @@ async def test_tool_forwards_caller_token(sample_summary: dict[str, Any]) -> Non
 
     with (
         patch("spekoai_mcp.server.get_access_token", return_value=token),
-        patch("spekoai_mcp.server.AsyncSpekoAI", _FakeClient),
+        patch("spekoai_mcp.server.AsyncSpeko", _FakeClient),
     ):
         await mcp._call_tool_mcp(  # type: ignore[attr-defined]
             "get_usage_summary", {"from_date": "2026-04-01"}
