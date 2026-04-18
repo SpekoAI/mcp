@@ -41,11 +41,22 @@ def build_auth() -> OAuthProxy | None:
         )
     token_issuer = issuer[: -len(oauth2_suffix)]
 
-    # Default audience is the OAuth client_id (what Better Auth's
-    # oauth-provider plugin mints by default). Override via
-    # SPEKOAI_OAUTH_AUDIENCE if the issuer is configured to emit a
-    # different `aud` (e.g. the resource URL per RFC 8707).
-    audience = os.environ.get("SPEKOAI_OAUTH_AUDIENCE", client_id)
+    # RFC 8707 resource indicator for this MCP deployment. Better Auth's
+    # oauth-provider only mints a JWT (rather than an opaque random
+    # string) when the authorize/token request carries a `resource`
+    # parameter that matches its `validAudiences` allowlist. We inject
+    # one below via `extra_authorize_params` / `extra_token_params`, and
+    # the JWT's `aud` claim then matches this value.
+    #
+    # Default matches FastMCP's own resource URL (`{base_url}/mcp`),
+    # which FastMCP normalizes via `base_url.rstrip("/") + "/" + path`
+    # (see `fastmcp/server/auth/auth.py::_get_resource_url`). Strip a
+    # trailing slash on `base_url` here too — otherwise a
+    # `SPEKOAI_MCP_BASE_URL=https://host/` produces `//mcp` and the
+    # `aud` claim stops matching FastMCP's advertised resource URL.
+    # Override via SPEKOAI_OAUTH_AUDIENCE if the MCP endpoint is mounted
+    # at a non-default path.
+    audience = os.environ.get("SPEKOAI_OAUTH_AUDIENCE", f"{base_url.rstrip('/')}/mcp")
 
     return OAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",
@@ -58,4 +69,12 @@ def build_auth() -> OAuthProxy | None:
             audience=audience,
         ),
         base_url=base_url,
+        # Force the upstream to mint a JWT access token by sending
+        # `resource` on both legs of the auth-code flow. Without this
+        # the Inspector (and other clients that don't send `resource`
+        # themselves) causes Better Auth to emit an opaque token that
+        # JWTVerifier can't verify, which the upstream bounces as
+        # `invalid_token` on every MCP request — a silent redirect loop.
+        extra_authorize_params={"resource": audience},
+        extra_token_params={"resource": audience},
     )

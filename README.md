@@ -31,7 +31,7 @@ HTTP-only. Set:
 - `SPEKOAI_OAUTH_CLIENT_ID`
 - `SPEKOAI_OAUTH_CLIENT_SECRET`
 - `SPEKOAI_MCP_BASE_URL` — public URL of this server (no default; fail-closed)
-- `SPEKOAI_OAUTH_AUDIENCE` — optional; defaults to `SPEKOAI_OAUTH_CLIENT_ID`
+- `SPEKOAI_OAUTH_AUDIENCE` — optional; defaults to `${SPEKOAI_MCP_BASE_URL}/mcp` (the MCP resource URL per RFC 8707). Must also appear in the platform's `SPEKOAI_OAUTH_VALID_AUDIENCES` allowlist — otherwise Better Auth rejects the authorize request
 - `SPEKOAI_BASE_URL` — optional upstream override (default `https://api.speko.ai`)
 
 ```bash

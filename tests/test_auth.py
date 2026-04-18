@@ -77,11 +77,44 @@ def test_audience_override(monkeypatch: pytest.MonkeyPatch) -> None:
     # current FastMCP; acceptable — alternative is a real token-verify
     # round-trip that needs a test JWKS fixture).
     assert proxy._token_validator.audience == "https://mcp.example.com"
+    # The override must also thread through to the upstream `resource`
+    # param — otherwise Better Auth mints a JWT with a different `aud`
+    # than JWTVerifier expects. All three values share one source.
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com"}
+    assert proxy._extra_token_params == {"resource": "https://mcp.example.com"}
 
 
-def test_audience_defaults_to_client_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_trailing_slash_on_base_url_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_valid_env(monkeypatch)
+    monkeypatch.setenv("SPEKOAI_MCP_BASE_URL", "https://mcp.example.com/")
+
+    proxy = build_auth()
+    assert proxy is not None
+    # FastMCP internally normalizes `base_url.rstrip("/") + "/mcp"`
+    # when computing its advertised resource URL; if we don't do the
+    # same the `aud`/`resource` comparison fails with `//mcp`.
+    assert proxy._token_validator.audience == "https://mcp.example.com/mcp"
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com/mcp"}
+
+
+def test_audience_defaults_to_resource_url(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_env(monkeypatch)
 
     proxy = build_auth()
     assert proxy is not None
-    assert proxy._token_validator.audience == "id"
+    # Default audience is the MCP resource URL (`{base_url}/mcp`). This
+    # must match the `resource` param FastMCP forwards upstream — see
+    # `extra_authorize_params` below — so Better Auth's oauth-provider
+    # mints a JWT with the same `aud` claim.
+    assert proxy._token_validator.audience == "https://mcp.example.com/mcp"
+
+
+def test_resource_is_forwarded_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_valid_env(monkeypatch)
+
+    proxy = build_auth()
+    assert proxy is not None
+    # Without `resource` on the upstream authorize/token request, Better
+    # Auth falls back to opaque tokens that JWTVerifier can't validate.
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com/mcp"}
+    assert proxy._extra_token_params == {"resource": "https://mcp.example.com/mcp"}
