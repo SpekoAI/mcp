@@ -12,10 +12,29 @@ RUN pip install --no-cache-dir uv
 # ---- Build stage: install deps into .venv ----
 FROM base AS build
 
-# Sibling sdk-python is path-sourced via tool.uv.sources, so the build
-# context must include it. docker-bake.hcl sets context=../.. accordingly.
+# Sibling packages supply the README/SKILLS files that
+# scripts/sync_docs.py bundles into spekoai_mcp/_docs/. Only PUBLIC
+# packages are copied in — `packages/core`, `packages/providers`, and
+# the root CLAUDE.md are intentionally NOT COPY'd because they contain
+# internal architecture details (private packages with `"private":
+# true`, references to `apps/*`) we don't want bundled into a
+# publicly-reachable MCP server.
+#
+# docker-bake.hcl sets context=../.. so these paths resolve.
+# (sdk-python is bundled for its docs too; when we re-add the `spekoai`
+# runtime dep it's already path-sourceable via tool.uv.sources.)
 COPY packages/mcp-server packages/mcp-server
 COPY packages/sdk-python packages/sdk-python
+COPY packages/sdk packages/sdk
+COPY packages/client packages/client
+COPY packages/adapter-livekit packages/adapter-livekit
+COPY packages/adapter-vapi packages/adapter-vapi
+COPY packages/adapter-retell packages/adapter-retell
+
+# Generate _docs/ inside the build stage so the wheel always ships
+# docs in sync with the sibling packages in this build context —
+# never fall back to stale files a dev might have committed.
+RUN cd packages/mcp-server && python scripts/sync_docs.py
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     cd packages/mcp-server && uv sync --frozen --no-dev

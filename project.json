@@ -3,8 +3,39 @@
   "projectType": "library",
   "tags": ["scope:public", "type:mcp", "lang:py"],
   "targets": {
+    "sync-docs": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/scripts/sync_docs.py",
+        "{workspaceRoot}/packages/sdk/README.md",
+        "{workspaceRoot}/packages/sdk/SKILLS.md",
+        "{workspaceRoot}/packages/sdk/examples/quickstart-node/README.md",
+        "{workspaceRoot}/packages/sdk/examples/quickstart-node/src/index.ts",
+        "{workspaceRoot}/packages/client/README.md",
+        "{workspaceRoot}/packages/client/SKILLS.md",
+        "{workspaceRoot}/packages/sdk-python/README.md",
+        "{workspaceRoot}/packages/sdk-python/SKILLS.md",
+        "{workspaceRoot}/packages/adapter-livekit/README.md",
+        "{workspaceRoot}/packages/adapter-livekit/SKILLS.md",
+        "{workspaceRoot}/packages/adapter-vapi/README.md",
+        "{workspaceRoot}/packages/adapter-vapi/SKILLS.md",
+        "{workspaceRoot}/packages/adapter-retell/README.md",
+        "{workspaceRoot}/packages/adapter-retell/SKILLS.md",
+        "{projectRoot}/README.md"
+      ],
+      "outputs": [
+        "{projectRoot}/src/spekoai_mcp/_docs/manifest.json",
+        "{projectRoot}/src/spekoai_mcp/_docs"
+      ],
+      "options": {
+        "cwd": "packages/mcp-server",
+        "command": "if command -v uv >/dev/null; then uv run python scripts/sync_docs.py; else python scripts/sync_docs.py; fi",
+        "forwardAllArgs": false
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
+      "dependsOn": ["sync-docs"],
       "options": {
         "cwd": "packages/mcp-server",
         "command": "if command -v uv >/dev/null; then uv build; else echo 'SKIPPED: uv not installed; real publish builds run in mirror CI' >&2; fi",
@@ -21,6 +52,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "dependsOn": ["sync-docs"],
       "options": {
         "cwd": "packages/mcp-server",
         "command": "if command -v uv >/dev/null; then uv run --group dev pytest; else echo 'SKIPPED: uv not installed; tests run in mirror CI' >&2; fi",

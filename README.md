@@ -1,46 +1,94 @@
 # spekoai-mcp
 
-Model Context Protocol server for [SpekoAI](https://speko.ai) — a thin wrapper
-over the [`spekoai`](https://pypi.org/project/spekoai/) Python SDK that exposes
-voice-AI session and usage tools to MCP clients (Claude Desktop, Cursor, etc.).
+Model Context Protocol server for [SpekoAI](https://speko.ai) — the
+authoritative source for SpekoAI's SDKs, adapters, and platform via
+MCP. Designed so an agent (Claude Code, Claude Desktop, Cursor) can
+authenticate once and then answer any SpekoAI question or scaffold a
+new project without external lookups.
 
 A hosted version is available at `https://mcp.speko.ai`.
 
-## Tools
+## Surfaces
+
+### Resources — bundled product docs
+
+Every SDK/adapter's README and `SKILLS.md`, plus `CLAUDE.md` and the
+Node quickstart, ship inside the wheel as MCP resources.
+
+- `spekoai://docs/index` — start here; lists every bundled doc with a
+  one-line summary.
+- `spekoai://docs/{slug}` — open a specific doc. Slugs include
+  `sdk-skills`, `sdk-readme`, `client-skills`, `client-readme`,
+  `sdk-python-skills`, `sdk-python-readme`,
+  `adapter-livekit-skills`, `adapter-livekit-readme`,
+  `adapter-vapi-skills`, `adapter-vapi-readme`,
+  `adapter-retell-skills`, `adapter-retell-readme`,
+  `mcp-server-readme`, `quickstart-node-readme`,
+  `quickstart-node-index-ts`.
+
+Only public, user-facing docs are bundled. Internal packages
+(`@spekoai/core`, `@spekoai/providers`), the monorepo-level
+`CLAUDE.md`, and per-package `ROADMAP.md` files are intentionally
+excluded — they describe internal architecture or forward-looking
+product direction that shouldn't leak through a publicly-reachable
+MCP.
+
+Skill sheets are dense, LLM-oriented references (API surface, minimal
+snippets, common gotchas). READMEs are the longer prose walkthroughs.
+
+### Prompts
+
+| Prompt | Args | Description |
+| --- | --- | --- |
+| `scaffold_project` | `scenario`, `language?`, `runtime?` | Step-by-step scaffold. Scenarios: `voice_conversation`, `batch_transcribe`, `livekit_agent`, `quickstart`. `voice_conversation` and `livekit_agent` are TypeScript-only. |
+
+### Tools
 
 | Tool | Description |
 | --- | --- |
-| `get_usage_summary` | Get usage summary for the current billing period. |
+| `search_docs` | Full-text search over bundled SpekoAI docs. Returns slug + snippet + score. |
+| `list_packages` | Structured manifest of every SpekoAI package with URIs to its README / SKILLS sheet. |
 
-The tool surface mirrors `spekoai.AsyncSpeko` — more tools land here as
-the SDK grows.
+Today every surface ships static bundled data, so OAuth is not
+required to use the server. The OAuth wiring (`auth.py`,
+`OAuthProxy` mounting, JWT verification) is retained end-to-end for
+when future action tools need to call `api.speko.ai` on the caller's
+behalf — see the `Auth model` section below.
 
 ## Auth model
 
-The server has no long-lived SpekoAI credential of its own. Every tool
-call forwards the caller's OAuth access token (minted by the Better Auth
-`oauthProvider` plugin on the platform) straight to the SpekoAI API,
-which validates the JWT and scopes the call to the caller's user and
-organization. There is no `SPEKOAI_API_KEY`.
+The server has no long-lived SpekoAI credential of its own. Future
+action tools will forward the caller's OAuth access token (minted by
+the Better Auth `oauthProvider` plugin on the platform) straight to
+the SpekoAI API, which will validate the JWT and scope the call to the
+caller's user and organization. There is no `SPEKOAI_API_KEY`.
+
+Today no such action tool exists, so the server runs public — any MCP
+client can connect and consume the knowledge surface.
 
 ## Running
 
-HTTP-only. Set:
-
-- `SPEKOAI_OAUTH_ISSUER` — must end in `/oauth2`
-- `SPEKOAI_OAUTH_CLIENT_ID`
-- `SPEKOAI_OAUTH_CLIENT_SECRET`
-- `SPEKOAI_MCP_BASE_URL` — public URL of this server (no default; fail-closed)
-- `SPEKOAI_OAUTH_AUDIENCE` — optional; defaults to `${SPEKOAI_MCP_BASE_URL}/mcp` (the MCP resource URL per RFC 8707). Must also appear in the platform's `SPEKOAI_OAUTH_VALID_AUDIENCES` allowlist — otherwise Better Auth rejects the authorize request
-- `SPEKOAI_BASE_URL` — optional upstream override (default `https://api.speko.ai`)
+HTTP-only.
 
 ```bash
 uv run spekoai-mcp                  # HTTP on 0.0.0.0:8080
 uv run spekoai-mcp --host 127.0.0.1 --port 9000
 ```
 
-The server fails to start if any required env var is missing — this
-prevents accidentally serving an unauthenticated or mis-targeted endpoint.
+No env vars are required to run. When you re-introduce OAuth-gated
+tools, set the four vars below and the CLI mounts `OAuthProxy`
+automatically:
+
+- `SPEKOAI_OAUTH_ISSUER` — must end in `/oauth2`
+- `SPEKOAI_OAUTH_CLIENT_ID`
+- `SPEKOAI_OAUTH_CLIENT_SECRET`
+- `SPEKOAI_MCP_BASE_URL` — public URL of this server
+- `SPEKOAI_OAUTH_AUDIENCE` — optional; defaults to `${SPEKOAI_MCP_BASE_URL}/mcp` (the MCP resource URL per RFC 8707). Must also appear in the platform's `SPEKOAI_OAUTH_VALID_AUDIENCES` allowlist — otherwise Better Auth rejects the authorize request
+- `SPEKOAI_BASE_URL` — optional upstream override (default `https://api.speko.ai`)
+
+If any of the required four are set, they must all be set — otherwise
+`build_auth()` returns `None` and the server runs public with a log
+line. Partial-OAuth configs are rejected at startup.
 
 ### Deriving the OAuth env vars
 

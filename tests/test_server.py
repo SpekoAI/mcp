@@ -1,75 +1,52 @@
 """Tests for `spekoai_mcp.server`.
 
-Covers server construction and the OAuth-forwarding behaviour of tools:
-every call must mint an SDK client with the caller's bearer token, and
-calls with no token must raise `ToolError` rather than silently hit the
-upstream API with no credentials.
+The server currently exposes only public knowledge surfaces — resources,
+prompts, `search_docs`, and `list_packages`. The OAuth plumbing
+(`auth.py`, the `auth=` kwarg on `create_server`, the CLI env-var
+handling in `__main__.py`) is retained end-to-end for when future
+action tools need the caller's identity. See `test_auth.py` for the
+OAuth-wiring tests.
 """
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import AsyncMock, patch
-
-import pytest
-from fastmcp.exceptions import ToolError
-from fastmcp.server.auth.auth import AccessToken
-
 from spekoai_mcp.server import create_server
-
-
-@pytest.fixture
-def sample_summary() -> dict[str, Any]:
-    # Minimal shape accepted by spekoai.models.UsageSummary — patched SDK
-    # returns it verbatim so the test doesn't have to import/construct the
-    # model in two places.
-    return {"total_cost": 0, "period_start": "2026-04-01", "period_end": "2026-04-30"}
 
 
 async def test_create_server_without_auth() -> None:
     mcp = create_server()
-    # Tool registry is the contract we care about — the one declared tool
-    # must be reachable by name.
     tools = await mcp.list_tools()
-    assert any(t.name == "get_usage_summary" for t in tools)
+    names = {t.name for t in tools}
+    assert names == {"search_docs", "list_packages"}
 
 
-async def test_tool_rejects_missing_token() -> None:
-    """With no OAuth token on the request, the tool refuses to proceed."""
+async def test_resources_and_prompts_advertised() -> None:
+    """The knowledge-layer surfaces (static docs + scaffolding prompt)
+    must show up on a bare `create_server()` — they don't depend on
+    auth or runtime config."""
     mcp = create_server()
+    resources = await mcp.list_resources()
+    assert any(str(r.uri) == "spekoai://docs/index" for r in resources)
+    templates = await mcp.list_resource_templates()
+    assert any(t.uri_template == "spekoai://docs/{slug}" for t in templates)
+    prompts = await mcp.list_prompts()
+    assert any(p.name == "scaffold_project" for p in prompts)
 
-    with patch("spekoai_mcp.server.get_access_token", return_value=None):
-        with pytest.raises(ToolError, match="OAuth access token"):
-            await mcp._call_tool_mcp("get_usage_summary", {})  # type: ignore[attr-defined]
 
-
-async def test_tool_forwards_caller_token(sample_summary: dict[str, Any]) -> None:
-    """The SDK client is constructed with the caller's token, not a shared key."""
+async def test_list_packages_returns_structured_manifest() -> None:
     mcp = create_server()
-    captured: dict[str, Any] = {}
-
-    class _FakeClient:
-        def __init__(self, *, api_key: str, base_url: str) -> None:
-            captured["api_key"] = api_key
-            captured["base_url"] = base_url
-            self.usage = AsyncMock()
-            self.usage.get = AsyncMock(return_value=sample_summary)
-
-        async def __aenter__(self) -> _FakeClient:
-            return self
-
-        async def __aexit__(self, *args: Any) -> None:
-            pass
-
-    token = AccessToken(token="caller-jwt", client_id="cid", scopes=[])
-
-    with (
-        patch("spekoai_mcp.server.get_access_token", return_value=token),
-        patch("spekoai_mcp.server.AsyncSpeko", _FakeClient),
-    ):
-        await mcp._call_tool_mcp(  # type: ignore[attr-defined]
-            "get_usage_summary", {"from_date": "2026-04-01"}
-        )
-
-    assert captured["api_key"] == "caller-jwt"
-    assert captured["base_url"] == "https://api.speko.ai"
+    result = await mcp._call_tool_mcp("list_packages", {})  # type: ignore[attr-defined]
+    # `structuredContent` from FastMCP wraps the return value under a
+    # `result` key; the tool returns `list[PackageInfo]`.
+    payload = result.structuredContent or {}
+    rows = payload.get("result", [])
+    assert rows, "list_packages returned no rows"
+    names = {row["package_name"] for row in rows}
+    assert "@spekoai/sdk" in names
+    assert "@spekoai/client" in names
+    assert "@spekoai/adapter-livekit" in names
+    # Internal packages must NOT be exposed — `@spekoai/core` and
+    # `@spekoai/providers` are `"private": true` and their docs are
+    # deliberately not bundled into the public MCP.
+    assert "@spekoai/core" not in names
+    assert "@spekoai/providers" not in names

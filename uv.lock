@@ -1266,36 +1266,12 @@ wheels = [
 ]
 
 [[package]]
-name = "spekoai"
-version = "0.0.1"
-source = { editable = "../sdk-python" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-asyncio", specifier = ">=0.24" },
-    { name = "respx", specifier = ">=0.22" },
-    { name = "ruff", specifier = ">=0.8" },
-]
-
-[[package]]
 name = "spekoai-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "pydantic" },
-    { name = "spekoai" },
 ]
 
 [package.dev-dependencies]
@@ -1309,7 +1285,6 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.0,<4" },
     { name = "pydantic", specifier = ">=2.0.0,<3" },
-    { name = "spekoai", editable = "../sdk-python" },
 ]
 
 [package.metadata.requires-dev]

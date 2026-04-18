@@ -1,44 +1,108 @@
-"""FastMCP v3 server exposing the SpekoAI SDK as MCP tools.
+"""FastMCP v3 server exposing SpekoAI knowledge to MCP clients.
 
-Tool surface mirrors `spekoai.AsyncSpeko` exactly — do not invent surface
-the SDK lacks. When the SDK grows, extend here.
+Surfaces:
 
-Auth model: every tool call forwards the caller's OAuth access token to
-the SpekoAI API. No server-wide SpekoAI credential exists — the JWT from
-`OAuthProxy` *is* the credential the upstream API validates.
+- **Resources** — `spekoai://docs/index` and `spekoai://docs/{slug}` ship
+  every SDK/adapter's README + SKILLS.md + CLAUDE.md + a quickstart
+  example inside the wheel. See `docs.py`, `resources.py`.
+- **Prompts** — `scaffold_project` (scenario, language, runtime) walks
+  an MCP client through bootstrapping a SpekoAI project. See `prompts.py`.
+- **Tools** — `search_docs` (full-text over bundled docs) and
+  `list_packages` (structured manifest).
+
+Auth model: today every surface ships static bundled data, so OAuth is
+not required to use this server. The wiring is retained end-to-end
+(`auth.py` builds an `OAuthProxy`; `create_server(auth=)` accepts one;
+the CLI mounts it if env vars are present) — when future tools need
+the caller's identity they can declare `auth=` per-component and the
+deployment flips OAuth env vars on. Do not remove the auth plumbing
+to simplify; it's intentionally future-ready.
 """
 
 from __future__ import annotations
 
-import os
 from typing import Annotated
 
 from fastmcp import Context, FastMCP
-from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import OAuthProxy
-from fastmcp.server.dependencies import get_access_token
-from pydantic import Field
-from spekoai import AsyncSpeko
-from spekoai.models import UsageSummary
+from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
+from spekoai_mcp import search
+from spekoai_mcp.docs import DocEntry, load_manifest
+from spekoai_mcp.prompts import register_prompts
+from spekoai_mcp.resources import register_resources
 
-def _base_url() -> str:
-    return os.environ.get("SPEKOAI_BASE_URL", "https://api.speko.ai")
+INSTRUCTIONS = "\n\n".join(
+    " ".join(paragraph.split())
+    for paragraph in [
+        """
+        SpekoAI MCP — the authoritative source for SpekoAI's SDKs,
+        adapters, and platform.
+        """,
+        """
+        Start here: call the `scaffold_project` prompt to bootstrap a
+        new project, or read the `spekoai://docs/index` resource to see
+        every bundled doc. Prefer the skill-sheet resources
+        (`spekoai://docs/*-skills`) first — they are dense,
+        LLM-oriented summaries of each package's API, gotchas, and
+        minimal snippets. READMEs (`spekoai://docs/*-readme`) are longer
+        prose. Use the `search_docs(query)` tool when you need to find
+        something across all bundled docs, and `list_packages()` for
+        structured metadata.
+        """,
+        """
+        SpekoAI is a voice-AI gateway: one API that routes STT, LLM,
+        and TTS calls to the best provider per (language, vertical,
+        optimizeFor), with failover handled server-side. Public
+        packages: `@spekoai/sdk` (TypeScript server SDK),
+        `@spekoai/client` (browser WebRTC SDK), `spekoai` (Python
+        server SDK), `@spekoai/adapter-livekit` (LiveKit Agents
+        wrapper). `@spekoai/adapter-vapi` and `@spekoai/adapter-retell`
+        are scaffolded placeholders — not production-ready.
+        """,
+    ]
+)
 
 
-def _caller_client() -> AsyncSpeko:
-    """Build an SDK client scoped to the MCP caller's OAuth token.
+class PackageInfo(BaseModel):
+    """Structured package metadata returned by `list_packages`."""
 
-    Raises `ToolError` if no token is present — shouldn't happen under
-    `OAuthProxy`, which rejects unauthenticated requests before tools run,
-    but we guard rather than silently call upstream with no credential.
-    """
-    token = get_access_token()
-    if token is None or not token.token:
-        raise ToolError("No OAuth access token on request; cannot call SpekoAI API.")
-    return AsyncSpeko(api_key=token.token, base_url=_base_url())
+    package_name: str = Field(description="Human name or npm/PyPI name.")
+    npm_or_pypi: str | None = Field(
+        description="Canonical install name, or null for internal packages."
+    )
+    status: str = Field(description="One of: stable, alpha, scaffold, internal, platform.")
+    readme_uri: str | None = Field(
+        description="MCP resource URI for the README, if one is shipped."
+    )
+    skills_uri: str | None = Field(
+        description="MCP resource URI for the SKILLS sheet, if one is shipped."
+    )
+
+
+def _build_package_infos(manifest: list[DocEntry]) -> list[PackageInfo]:
+    """Collapse per-doc manifest entries into one row per package."""
+    by_name: dict[str, dict[str, object]] = {}
+    for entry in manifest:
+        name = entry["package_name"]
+        row = by_name.setdefault(
+            name,
+            {
+                "package_name": name,
+                "npm_or_pypi": entry["npm_or_pypi"],
+                "status": entry["status"],
+                "readme_uri": None,
+                "skills_uri": None,
+            },
+        )
+        uri = f"spekoai://docs/{entry['slug']}"
+        if entry["kind"] == "readme":
+            row["readme_uri"] = uri
+        elif entry["kind"] == "skills":
+            row["skills_uri"] = uri
+    return [PackageInfo(**row) for row in by_name.values()]  # type: ignore[arg-type]
 
 
 def create_server(auth: OAuthProxy | None = None) -> FastMCP:
@@ -47,42 +111,54 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     """
     mcp: FastMCP = FastMCP(
         name="spekoai",
-        instructions=(
-            "SpekoAI voice-AI gateway. Tools mirror the SpekoAI SDK surface "
-            "and act on behalf of the authenticated caller."
-        ),
+        instructions=INSTRUCTIONS,
         auth=auth,
     )
+
+    register_resources(mcp)
+    register_prompts(mcp)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
 
     @mcp.tool
-    async def get_usage_summary(
+    async def search_docs(
         _ctx: Context,
-        from_date: Annotated[
-            str | None,
+        query: Annotated[
+            str,
             Field(
                 description=(
-                    "ISO-8601 start date (inclusive), e.g. '2026-04-01' or "
-                    "'2026-04-01T00:00:00Z'. Defaults to the start of the "
-                    "current billing period."
+                    "Free-text query. Matched case-insensitively against "
+                    "titles and body of every bundled SpekoAI doc."
                 ),
             ),
-        ] = None,
-        to_date: Annotated[
-            str | None,
+        ],
+        limit: Annotated[
+            int,
             Field(
-                description=(
-                    "ISO-8601 end date (inclusive), e.g. '2026-04-14'. "
-                    "Defaults to now."
-                ),
+                ge=1,
+                le=20,
+                description="Max hits to return. Defaults to 5.",
             ),
-        ] = None,
-    ) -> UsageSummary:
-        """Get usage summary for the current billing period."""
-        async with _caller_client() as client:
-            return await client.usage.get(from_date=from_date, to_date=to_date)
+        ] = 5,
+    ) -> list[search.DocHit]:
+        """Search bundled SpekoAI docs. Returns slug, title, score, snippet.
+
+        Use this when you need to find something across all SDKs/adapters
+        without reading every resource. Each hit's `slug` can be opened
+        directly as `spekoai://docs/{slug}`.
+        """
+        return search.search(query, limit=limit)
+
+    @mcp.tool
+    async def list_packages(_ctx: Context) -> list[PackageInfo]:
+        """List every SpekoAI package known to this server, with URIs to
+        the bundled README and SKILLS sheet where available.
+
+        Prefer this over parsing markdown when you want structured data
+        (e.g. "which packages are production-stable vs scaffold-only?").
+        """
+        return _build_package_infos(load_manifest())
 
     return mcp
