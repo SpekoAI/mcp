@@ -21,10 +21,14 @@ to simplify; it's intentionally future-ready.
 
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
+import httpx
 from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import OAuthProxy
+from fastmcp.server.dependencies import get_access_token
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -33,6 +37,23 @@ from spekoai_mcp import search
 from spekoai_mcp.docs import DocEntry, load_manifest
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
+
+
+class OrganizationBalance(BaseModel):
+    """Credit balance for the caller's organization."""
+
+    balance_micro_usd: str = Field(
+        description=(
+            "Balance in micro-USD (1_000_000 µ$ = $1). Serialized as a "
+            "string so >2**53 values round-trip losslessly over JSON."
+        ),
+    )
+    balance_usd: float = Field(
+        description="Same value as balance_micro_usd, expressed as USD."
+    )
+    updated_at: str = Field(
+        description="ISO-8601 timestamp of the last balance mutation."
+    )
 
 INSTRUCTIONS = "\n\n".join(
     " ".join(paragraph.split())
@@ -160,5 +181,40 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
         (e.g. "which packages are production-stable vs scaffold-only?").
         """
         return _build_package_infos(load_manifest())
+
+    @mcp.tool
+    async def get_balance(_ctx: Context) -> OrganizationBalance:
+        """Get the caller's current prepaid credit balance.
+
+        Calls the SpekoAI `/v1/credits/balance` endpoint on the caller's
+        behalf using the OAuth access token from the current MCP request.
+        Use this to answer "how much credit do I have left?" without
+        redirecting the user to the dashboard.
+        """
+        # The OAuth token FastMCP verified for this request is the same
+        # token the Speko API accepts via Bearer auth — the SpekoAI server
+        # runs its own JWT verification against the same issuer. Relay it
+        # verbatim so the API resolves the exact caller's org.
+        access_token = get_access_token()
+        if access_token is None:
+            raise ToolError(
+                "get_balance requires an authenticated caller. Configure "
+                "OAuth on the MCP server (SPEKOAI_OAUTH_* env vars) and "
+                "connect via an OAuth-capable MCP client."
+            )
+        api_base = os.environ.get(
+            "SPEKOAI_API_URL", "https://api.speko.ai"
+        ).rstrip("/")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{api_base}/v1/credits/balance",
+                headers={"Authorization": f"Bearer {access_token.token}"},
+            )
+        if resp.status_code != 200:
+            raise ToolError(
+                f"SpekoAI /v1/credits/balance returned "
+                f"{resp.status_code}: {resp.text[:500]}"
+            )
+        return OrganizationBalance.model_validate(resp.json())
 
     return mcp

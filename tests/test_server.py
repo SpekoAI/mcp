@@ -1,11 +1,11 @@
 """Tests for `spekoai_mcp.server`.
 
-The server currently exposes only public knowledge surfaces — resources,
-prompts, `search_docs`, and `list_packages`. The OAuth plumbing
-(`auth.py`, the `auth=` kwarg on `create_server`, the CLI env-var
-handling in `__main__.py`) is retained end-to-end for when future
-action tools need the caller's identity. See `test_auth.py` for the
-OAuth-wiring tests.
+The server exposes public knowledge surfaces (resources, prompts,
+`search_docs`, `list_packages`) plus identity-aware action tools
+(`get_balance`). The OAuth plumbing (`auth.py`, the `auth=` kwarg on
+`create_server`, the CLI env-var handling in `__main__.py`) is needed
+for the action tools and retained end-to-end. See `test_auth.py` for
+the OAuth-wiring tests.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ async def test_create_server_without_auth() -> None:
     mcp = create_server()
     tools = await mcp.list_tools()
     names = {t.name for t in tools}
-    assert names == {"search_docs", "list_packages"}
+    assert names == {"search_docs", "list_packages", "get_balance"}
 
 
 async def test_resources_and_prompts_advertised() -> None:
