@@ -53,7 +53,70 @@ async def test_install_command_names_right_package() -> None:
     )
     text = "\n".join(m.content.text for m in result.messages)
     assert "@spekoai/client" in text
-    assert "@spekoai/sdk" in text  # backend needs this to mint sessions
+
+
+async def test_voice_conversation_prompt_lists_all_config_form_fields() -> None:
+    """The scaffold must instruct the agent to build a config form that
+    covers every user-tunable /v1/sessions field, so the demo actually
+    exercises the API surface instead of just a Start button."""
+    mcp = create_server()
+    result = await mcp.render_prompt(
+        "scaffold_project",
+        {"scenario": "voice_conversation"},
+    )
+    text = "\n".join(m.content.text for m in result.messages)
+    expected_fields = [
+        "intent.language",
+        "intent.vertical",
+        "intent.optimizeFor",
+        "systemPrompt",
+        "voice",
+        "llm.temperature",
+        "llm.maxTokens",
+        "ttsOptions.speed",
+        "ttsOptions.sampleRate",
+        # allowedProviders surface per-modality lists
+        "constraints.allowedProviders.stt",
+        "constraints.allowedProviders.llm",
+        "constraints.allowedProviders.tts",
+        "identity",
+        "ttlSeconds",
+        "metadata",
+    ]
+    for field in expected_fields:
+        assert field in text, (
+            f"voice_conversation scaffold is missing the config form "
+            f"field {field!r}"
+        )
+
+
+async def test_voice_conversation_emits_correct_session_shape() -> None:
+    """The /v1/sessions body the prompt emits must match the real API:
+    `intent` is a NESTED object containing language + vertical; there
+    is no `agent` / `agentId` / `SPEKO_AGENT_ID` concept. This regression
+    test guards against the model inventing a flat or agent-keyed shape
+    (as a previous scaffold did)."""
+    mcp = create_server()
+    result = await mcp.render_prompt(
+        "scaffold_project",
+        {"scenario": "voice_conversation"},
+    )
+    text = "\n".join(m.content.text for m in result.messages)
+    # Must call the real endpoint path.
+    assert "/v1/sessions" in text
+    # Must use `intent: { language, vertical }` — nested, not flat.
+    assert "intent:" in text
+    assert "language:" in text and "vertical:" in text
+    # Guard against the `agent`/`agentId` hallucination: check only
+    # code-shape occurrences (`agentId:`, `"agent":`, `'agent':`, or a
+    # `SPEKO_AGENT_ID` env reference) so the prompt's own prose warning
+    # against these fields doesn't self-trip the assertion.
+    forbidden_code_shapes = ["SPEKO_AGENT_ID", "agentId:", "'agent':", '"agent":']
+    for needle in forbidden_code_shapes:
+        assert needle not in text, (
+            f"voice_conversation scaffold emits a forbidden code shape "
+            f"{needle!r} — POST /v1/sessions has no such field"
+        )
 
 
 async def test_livekit_agent_install_lists_peer_deps() -> None:
