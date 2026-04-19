@@ -24,8 +24,9 @@ _VERTICALS = ["healthcare", "insurance", "financial_services", "support_agent"]
 
 _EXPECTED_PATHS = {
     "app/api/speko/route.ts",
-    "components/VoiceSession.tsx",
-    "app/voice/page.tsx",
+    "components/speko-voice-session.tsx",
+    "app/page.tsx",
+    "app/layout.tsx",
     ".env.example",
 }
 
@@ -120,16 +121,59 @@ def test_explicit_system_prompt_overrides_default_verbatim() -> None:
 
 def test_component_file_is_use_client_and_exports_component() -> None:
     manifest = build_voice_app_manifest("healthcare")
-    body = _files_by_path(manifest)["components/VoiceSession.tsx"]
+    body = _files_by_path(manifest)["components/speko-voice-session.tsx"]
     assert body.startswith("'use client';")
     assert "export function SpekoVoiceSession" in body
 
 
-def test_install_commands_are_npm_only() -> None:
+def test_install_commands_include_livekit_and_agents_ui() -> None:
     manifest = build_voice_app_manifest("healthcare")
     joined = " ".join(manifest.install_commands)
-    assert "npm install" in joined
-    assert "@spekoai/client" in joined
+    assert "@livekit/components-react" in joined
+    assert "livekit-client" in joined
+    assert "shadcn@latest init" in joined
+    assert "@agents-ui" in joined
+    # Config panel depends on these shadcn primitives.
+    assert "label" in joined
+    assert "select" in joined
+    assert "textarea" in joined
+
+
+def test_page_seeds_ui_defaults_from_vertical() -> None:
+    manifest = build_voice_app_manifest("healthcare", languages=["es"])
+    page = _files_by_path(manifest)["app/page.tsx"]
+    # Default config object is declared server-side and passed to the
+    # client island so the pre-call form shows the right initial values.
+    assert "DEFAULT_CONFIG" in page
+    assert "'es-US'" in page
+    assert "'healthcare'" in page
+    assert "systemPrompt" in page
+
+
+def test_component_declares_session_config_types() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    body = _files_by_path(manifest)["components/speko-voice-session.tsx"]
+    assert "SessionConfig" in body
+    assert "SessionLanguage" in body
+    assert "SessionVertical" in body
+    assert "SessionOptimizeFor" in body
+
+
+def test_route_returns_livekit_tokensource_shape() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    # Must map Speko's response to the shape TokenSource.endpoint() expects.
+    assert "server_url: livekitUrl" in route
+    assert "participant_token: conversationToken" in route
+
+
+def test_page_is_root_and_imports_component_via_alias() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    paths = {f.path for f in manifest.files}
+    assert "app/page.tsx" in paths
+    assert "app/voice/page.tsx" not in paths
+    page = _files_by_path(manifest)["app/page.tsx"]
+    assert "@/components/speko-voice-session" in page
 
 
 def test_component_resource_is_referenced() -> None:

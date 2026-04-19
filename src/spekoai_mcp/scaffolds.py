@@ -121,26 +121,38 @@ def _route_ts(system_prompt: str, language_tag: str) -> str:
     return f"""// Next.js App Router route handler — mints a Speko conversation
 // token for the browser. The Speko server SDK does not expose a
 // sessions helper yet, so this uses raw fetch against /v1/sessions.
-// Node runtime is required: the request handler reads env vars and the
-// Speko API returns JSON via Node-style fetch.
+//
+// Accepts LiveKit's standard TokenSource request body (room_name,
+// participant_identity, ...) and ignores it (Speko manages the room
+// internally). Speko-side config — systemPrompt, intent.language,
+// intent.vertical, intent.optimizeFor — is set below and may be
+// overridden per-request by adding the same fields to the body.
+//
+// Returns `{{ server_url, participant_token }}` so it plugs directly
+// into LiveKit's TokenSource.endpoint() on the client.
 
 export const runtime = 'nodejs';
 
 const SPEKO_API_KEY = process.env.SPEKO_API_KEY;
 const SPEKO_BASE_URL = process.env.SPEKO_BASE_URL ?? 'https://api.speko.ai';
 
+// === Speko session config ===================================================
+// Customize these to tune the assistant persona, language routing, and
+// latency/quality tradeoff. Anything declared here is the default; the
+// client can override any field per-request by sending it in the POST body.
 const DEFAULT_SYSTEM_PROMPT = `{escaped_prompt}`;
 const DEFAULT_LANGUAGE = '{language_tag}';
 const DEFAULT_VERTICAL = 'general';
+// const DEFAULT_OPTIMIZE_FOR: 'latency' | 'quality' = 'latency';
+// ============================================================================
 
-type SessionConfig = {{
+type SessionOverrides = {{
   intent?: {{
     language?: string;
     vertical?: string;
-    optimizeFor?: string;
+    optimizeFor?: 'latency' | 'quality';
   }};
   systemPrompt?: string;
-  [key: string]: unknown;
 }};
 
 export async function POST(req: Request): Promise<Response> {{
@@ -148,16 +160,15 @@ export async function POST(req: Request): Promise<Response> {{
     return new Response('SPEKO_API_KEY not set', {{ status: 500 }});
   }}
 
-  let override: SessionConfig = {{}};
+  let override: SessionOverrides = {{}};
   try {{
     const raw = await req.text();
-    if (raw) override = JSON.parse(raw) as SessionConfig;
+    if (raw) override = JSON.parse(raw) as SessionOverrides;
   }} catch {{
     return new Response('invalid JSON body', {{ status: 400 }});
   }}
 
-  const body: SessionConfig = {{
-    ...override,
+  const body = {{
     intent: {{
       language: override.intent?.language ?? DEFAULT_LANGUAGE,
       vertical: override.intent?.vertical ?? DEFAULT_VERTICAL,
@@ -188,25 +199,78 @@ export async function POST(req: Request): Promise<Response> {{
     conversationToken: string;
     livekitUrl: string;
   }};
-  return Response.json({{ conversationToken, livekitUrl }});
+
+  // LiveKit's TokenSource.endpoint() expects this exact shape.
+  return Response.json(
+    {{ server_url: livekitUrl, participant_token: conversationToken }},
+    {{ status: 201 }},
+  );
 }}
 """
 
 
-def _page_tsx() -> str:
-    return """'use client';
+def _page_tsx(system_prompt: str, language_tag: str, vertical: str) -> str:
+    escaped_prompt = system_prompt.replace("\\", "\\\\").replace("`", "\\`")
+    # Page is a Server Component that hands initial config (read from
+    # env-agnostic constants, not env vars) down to the client island.
+    # Users edit these four defaults here and in app/api/speko/route.ts
+    # — the route-level defaults still apply when the client omits a
+    # field, but the UI always sends explicit values.
+    return f"""import {{ SpekoVoiceSession }} from '@/components/speko-voice-session';
 
-import { SpekoVoiceSession } from '../../components/VoiceSession';
+const DEFAULT_CONFIG = {{
+  language: '{language_tag}' as const,
+  vertical: '{vertical}' as const,
+  optimizeFor: 'latency' as const,
+  systemPrompt: `{escaped_prompt}`,
+}};
 
-export default function VoicePage() {
+export default function Page() {{
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui' }}>
-      <h1>Speko voice demo</h1>
-      <SpekoVoiceSession
-        sessionEndpoint="/api/speko"
-        onError={(err) => console.error(err)}
+    <main className="relative min-h-svh bg-[#FFFBF5] text-[#1C1917]">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,#FDE3CC_0%,transparent_55%)]"
       />
+      <div className="relative mx-auto flex min-h-svh max-w-5xl flex-col items-center justify-center gap-10 px-6 py-16">
+        <header className="space-y-3 text-center">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#FDE3CC] bg-white/60 px-3 py-1 text-xs font-medium uppercase tracking-wider text-[#C2410C]">
+            <span className="size-1.5 rounded-full bg-[#E8590C]" />
+            Speko Voice Demo
+          </span>
+          <h1 className="text-balance text-4xl font-semibold tracking-tight text-[#0C0A09] sm:text-5xl">
+            Talk to a voice agent, live.
+          </h1>
+          <p className="mx-auto max-w-prose text-pretty text-base text-[#57534E]">
+            STT &rarr; LLM &rarr; TTS routed through the Speko gateway. Pick a language and vertical, then start the call.
+          </p>
+        </header>
+        <SpekoVoiceSession defaults={{DEFAULT_CONFIG}} className="w-full" />
+      </div>
     </main>
+  );
+}}
+"""  # noqa: E501
+
+
+def _layout_tsx() -> str:
+    return """import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Speko Voice Demo',
+  description: 'Realtime voice AI powered by the Speko gateway.',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className="antialiased">{children}</body>
+    </html>
   );
 }
 """
@@ -255,13 +319,18 @@ def build_voice_app_manifest(
             language_hint="ts",
         ),
         ScaffoldFile(
-            path="components/VoiceSession.tsx",
+            path="components/speko-voice-session.tsx",
             content=_load_react_voice_session(),
             language_hint="tsx",
         ),
         ScaffoldFile(
-            path="app/voice/page.tsx",
-            content=_page_tsx(),
+            path="app/page.tsx",
+            content=_page_tsx(prompt, primary_language_tag, use_case),
+            language_hint="tsx",
+        ),
+        ScaffoldFile(
+            path="app/layout.tsx",
+            content=_layout_tsx(),
             language_hint="tsx",
         ),
         ScaffoldFile(
@@ -273,7 +342,17 @@ def build_voice_app_manifest(
 
     return ScaffoldManifest(
         files=files_list,
-        install_commands=["npm install @spekoai/client @spekoai/sdk"],
+        install_commands=[
+            "npm install @livekit/components-react livekit-client",
+            "npx -y shadcn@latest init --yes --base-color stone",
+            "npx -y shadcn@latest add button card label select textarea",
+            "npx -y shadcn@latest registry add @agents-ui",
+            "npx -y shadcn@latest add @agents-ui/agent-session-provider "
+            "@agents-ui/agent-control-bar "
+            "@agents-ui/agent-audio-visualizer-bar "
+            "@agents-ui/agent-chat-transcript "
+            "@agents-ui/start-audio-button",
+        ],
         env_vars=[
             EnvVar(
                 name="SPEKO_API_KEY",
@@ -290,12 +369,19 @@ def build_voice_app_manifest(
         ],
         post_install_steps=[
             "Set SPEKO_API_KEY in .env.local (copy from .env.example).",
-            "Run `npm run dev` and open /voice.",
-            "Click Start and grant microphone permission when prompted.",
-            "Customize the backend route's defaults (systemPrompt, intent) "
-            "or pass a `sessionBody` prop to <SpekoVoiceSession/> to "
-            "override per-session. See spekoai://docs/client-skills for "
-            "the full /v1/sessions request shape before adding fields.",
+            "Run `npm run dev` and open http://localhost:3000.",
+            "Click 'Start conversation' and grant microphone permission.",
+            "The pre-call config panel (language / vertical / optimizeFor / "
+            "systemPrompt) lives in components/speko-voice-session.tsx and "
+            "its form defaults are seeded from DEFAULT_CONFIG in "
+            "app/page.tsx. Edit either to change what the caller sees on "
+            "first load; the route-level defaults in app/api/speko/"
+            "route.ts are the fallback when the client omits a field. See "
+            "spekoai://docs/client-skills for the full /v1/sessions schema.",
+            "UI is built on LiveKit Agents UI (shadcn registry). To swap the "
+            "visualizer, change <AgentAudioVisualizerBar/> in "
+            "components/speko-voice-session.tsx to AgentAudioVisualizerAura/"
+            "Radial/Wave/Grid — install via `shadcn add @agents-ui/<name>`.",
         ],
         docs_resources=[
             "spekoai://docs/client-skills",
