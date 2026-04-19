@@ -36,6 +36,16 @@ MCP.
 Skill sheets are dense, LLM-oriented references (API surface, minimal
 snippets, common gotchas). READMEs are the longer prose walkthroughs.
 
+### Components — copy-paste client snippets
+
+Drop-in frontend components wrapping the SpekoAI SDKs. Mime type is
+`text/plain` so clients don't mangle the source during re-emission.
+
+- `spekoai://components/react/voice-session` — `<SpekoVoiceSession>`
+  React component wrapping `@spekoai/client`'s `VoiceConversation.create()`.
+  Marked `'use client'` for Next.js App Router; dynamic-imports the SDK
+  so it stays out of the SSR bundle.
+
 ### Prompts
 
 | Prompt | Args | Description |
@@ -48,23 +58,33 @@ snippets, common gotchas). READMEs are the longer prose walkthroughs.
 | --- | --- |
 | `search_docs` | Full-text search over bundled SpekoAI docs. Returns slug + snippet + score. |
 | `list_packages` | Structured manifest of every SpekoAI package with URIs to its README / SKILLS sheet. |
+| `recommended_stack` | Opinionated SpekoAI stack for one Speko vertical (`healthcare`, `insurance`, `financial_services`, `support_agent`). Returns packages, tagline, vertical-specific rationale and compliance warnings, and a handoff to `scaffold_voice_app`. |
+| `scaffold_voice_app` | Strict Next.js App Router scaffold manifest for a browser voice app. Args: `use_case` (vertical), `languages?` (`en`/`es`, default `['en']`), `system_prompt?` (overrides the vertical default). Emits four files (route handler, React component, page, `.env.example`) plus install commands and env vars. |
+| `get_balance` | Caller's current prepaid credit balance (`balance_micro_usd`, `balance_usd`, `updated_at`). Requires OAuth; forwards the access token to `api.speko.ai/v1/credits/balance`. |
 
-Today every surface ships static bundled data, so OAuth is not
-required to use the server. The OAuth wiring (`auth.py`,
-`OAuthProxy` mounting, JWT verification) is retained end-to-end for
-when future action tools need to call `api.speko.ai` on the caller's
-behalf — see the `Auth model` section below.
+The knowledge surface (resources, prompts, `search_docs`,
+`list_packages`, `recommended_stack`, `scaffold_voice_app`) ships
+static bundled data and needs no credentials. `get_balance` is an
+action tool that calls `api.speko.ai` on the caller's behalf, so it
+requires an OAuth-capable client and the server to be launched with
+the four `SPEKOAI_OAUTH_*` env vars set — see the `Auth model` section
+below.
 
 ## Auth model
 
-The server has no long-lived SpekoAI credential of its own. Future
-action tools will forward the caller's OAuth access token (minted by
-the Better Auth `oauthProvider` plugin on the platform) straight to
-the SpekoAI API, which will validate the JWT and scope the call to the
-caller's user and organization. There is no `SPEKOAI_API_KEY`.
+The server has no long-lived SpekoAI credential of its own. Action
+tools forward the caller's OAuth access token (minted by the Better
+Auth `oauthProvider` plugin on the platform) straight to the SpekoAI
+API, which validates the JWT and scopes the call to the caller's user
+and organization. There is no `SPEKOAI_API_KEY`.
 
-Today no such action tool exists, so the server runs public — any MCP
-client can connect and consume the knowledge surface.
+`get_balance` is the first such action tool. With OAuth configured,
+the MCP client mints an access token against the platform, FastMCP's
+`OAuthProxy` verifies it, and the tool forwards the same JWT to the
+SpekoAI API via `Authorization: Bearer <token>`. With OAuth
+unconfigured the server still boots — the knowledge surface stays
+public — but `get_balance` raises a `ToolError` telling the caller to
+set the `SPEKOAI_OAUTH_*` env vars.
 
 ## Running
 

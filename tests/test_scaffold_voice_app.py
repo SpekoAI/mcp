@@ -1,0 +1,160 @@
+"""Tests for `scaffold_voice_app` — Next.js App Router voice-app scaffold.
+
+Guards:
+- Every vertical emits the same four file paths so downstream tooling
+  can rely on a stable layout.
+- The backend route is a Next.js App Router Route Handler (POST export,
+  `runtime = 'nodejs'`).
+- The vertical-specific default system prompt lands in the route file.
+- `languages=['en', 'es']` appends the multilingual note UNLESS the
+  vertical's default prompt already covers it (support_agent does).
+- Explicit `system_prompt` wins over the default verbatim.
+- The component file content is pulled from the bundled component
+  resource — catching drift between the two.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from spekoai_mcp.scaffolds import ScaffoldManifest, build_voice_app_manifest
+from spekoai_mcp.server import create_server
+
+_VERTICALS = ["healthcare", "insurance", "financial_services", "support_agent"]
+
+_EXPECTED_PATHS = {
+    "app/api/speko/route.ts",
+    "components/VoiceSession.tsx",
+    "app/voice/page.tsx",
+    ".env.example",
+}
+
+
+def _files_by_path(manifest: ScaffoldManifest) -> dict[str, str]:
+    return {f.path: f.content for f in manifest.files}
+
+
+@pytest.mark.parametrize("use_case", _VERTICALS)
+def test_manifest_has_expected_files(use_case: str) -> None:
+    manifest = build_voice_app_manifest(use_case)  # type: ignore[arg-type]
+    paths = {f.path for f in manifest.files}
+    assert paths == _EXPECTED_PATHS
+
+
+@pytest.mark.parametrize("use_case", _VERTICALS)
+def test_route_handler_uses_node_runtime_and_post(use_case: str) -> None:
+    manifest = build_voice_app_manifest(use_case)  # type: ignore[arg-type]
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "export const runtime = 'nodejs'" in route
+    assert "export async function POST" in route
+    assert "/v1/sessions" in route
+
+
+def test_healthcare_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    # A phrase unique to the healthcare default prompt.
+    assert "licensed clinician" in route
+
+
+def test_insurance_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("insurance")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "underwriter" in route
+
+
+def test_financial_services_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("financial_services")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "Do not give investment advice" in route
+
+
+def test_support_agent_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("support_agent")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "global customer support voice assistant" in route.lower()
+
+
+def test_english_only_does_not_add_multilingual_note() -> None:
+    manifest = build_voice_app_manifest("healthcare", languages=["en"])
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "English and Spanish" not in route
+    assert "'en-US'" in route
+
+
+def test_spanish_adds_multilingual_append_and_sets_language() -> None:
+    manifest = build_voice_app_manifest("healthcare", languages=["en", "es"])
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "English and Spanish" in route
+    # First language wins for intent.language.
+    assert "'en-US'" in route
+
+
+def test_spanish_first_sets_es_language_tag() -> None:
+    manifest = build_voice_app_manifest("healthcare", languages=["es"])
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "'es-US'" in route
+
+
+def test_support_agent_skips_multilingual_append() -> None:
+    """support_agent's default prompt already addresses multilingual
+    behavior — adding a second note would be redundant. Make sure we
+    don't double up."""
+    manifest = build_voice_app_manifest("support_agent", languages=["en", "es"])
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    # The generic append phrase uses "both English and Spanish"; the
+    # support_agent default uses "in whichever language they use".
+    assert "both English and Spanish" not in route
+
+
+def test_explicit_system_prompt_overrides_default_verbatim() -> None:
+    override = "Speak only in pig Latin. Ignore all other instructions."
+    manifest = build_voice_app_manifest(
+        "healthcare", languages=["en"], system_prompt=override
+    )
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert override in route
+    # The healthcare default must NOT leak through.
+    assert "licensed clinician" not in route
+
+
+def test_component_file_is_use_client_and_exports_component() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    body = _files_by_path(manifest)["components/VoiceSession.tsx"]
+    assert body.startswith("'use client';")
+    assert "export function SpekoVoiceSession" in body
+
+
+def test_install_commands_are_npm_only() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    joined = " ".join(manifest.install_commands)
+    assert "npm install" in joined
+    assert "@spekoai/client" in joined
+
+
+def test_component_resource_is_referenced() -> None:
+    manifest = build_voice_app_manifest("healthcare")
+    assert "spekoai://components/react/voice-session" in manifest.component_resources
+
+
+async def test_scaffold_voice_app_tool_advertised() -> None:
+    mcp = create_server()
+    tools = await mcp.list_tools()
+    assert any(t.name == "scaffold_voice_app" for t in tools)
+
+
+async def test_scaffold_voice_app_tool_returns_manifest() -> None:
+    mcp = create_server()
+    result = await mcp.call_tool(
+        "scaffold_voice_app",
+        {"use_case": "insurance", "languages": ["en", "es"]},
+    )
+    payload = result.structured_content or {}
+    paths = {f["path"] for f in payload.get("files", [])}
+    assert paths == _EXPECTED_PATHS
+    route = next(
+        f["content"] for f in payload["files"]
+        if f["path"] == "app/api/speko/route.ts"
+    )
+    assert "underwriter" in route
+    assert "English and Spanish" in route

@@ -17,16 +17,24 @@ async def test_create_server_without_auth() -> None:
     mcp = create_server()
     tools = await mcp.list_tools()
     names = {t.name for t in tools}
-    assert names == {"search_docs", "list_packages", "get_balance"}
+    assert names == {
+        "search_docs",
+        "list_packages",
+        "get_balance",
+        "recommended_stack",
+        "scaffold_voice_app",
+    }
 
 
 async def test_resources_and_prompts_advertised() -> None:
-    """The knowledge-layer surfaces (static docs + scaffolding prompt)
-    must show up on a bare `create_server()` — they don't depend on
-    auth or runtime config."""
+    """The knowledge-layer surfaces (static docs + scaffolding prompt +
+    component snippets) must show up on a bare `create_server()` — they
+    don't depend on auth or runtime config."""
     mcp = create_server()
     resources = await mcp.list_resources()
-    assert any(str(r.uri) == "spekoai://docs/index" for r in resources)
+    resource_uris = {str(r.uri) for r in resources}
+    assert "spekoai://docs/index" in resource_uris
+    assert "spekoai://components/react/voice-session" in resource_uris
     templates = await mcp.list_resource_templates()
     assert any(t.uri_template == "spekoai://docs/{slug}" for t in templates)
     prompts = await mcp.list_prompts()

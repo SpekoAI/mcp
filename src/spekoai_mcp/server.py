@@ -22,7 +22,7 @@ to simplify; it's intentionally future-ready.
 from __future__ import annotations
 
 import os
-from typing import Annotated
+from typing import Annotated, Literal
 
 import httpx
 from fastmcp import Context, FastMCP
@@ -33,7 +33,8 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
-from spekoai_mcp import search
+from spekoai_mcp import recommendations, scaffolds, search
+from spekoai_mcp.components import register_components
 from spekoai_mcp.docs import DocEntry, load_manifest
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
@@ -137,6 +138,7 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     )
 
     register_resources(mcp)
+    register_components(mcp)
     register_prompts(mcp)
 
     @mcp.custom_route("/health", methods=["GET"])
@@ -181,6 +183,89 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
         (e.g. "which packages are production-stable vs scaffold-only?").
         """
         return _build_package_infos(load_manifest())
+
+    # `recommendations.UseCase` / `scaffolds.SpokenLanguage` are module-level
+    # `Literal` aliases. FastMCP's tool-schema resolver (like the prompt
+    # one) uses Pydantic TypeAdapter, which cannot dereference those
+    # aliases under `from __future__ import annotations` — see the
+    # explanatory comment on `scaffold_project` in `prompts.py`. Inline
+    # the Literal values directly here to sidestep the forward-ref
+    # resolution issue without disabling future-annotations.
+    @mcp.tool
+    async def recommended_stack(
+        _ctx: Context,
+        use_case: Annotated[
+            Literal[
+                "healthcare", "insurance", "financial_services", "support_agent"
+            ],
+            Field(
+                description=(
+                    "Speko vertical. One of healthcare, insurance, "
+                    "financial_services, support_agent — matching the "
+                    "four use cases on speko.dev."
+                ),
+            ),
+        ],
+    ) -> recommendations.StackRecommendation:
+        """Return the opinionated SpekoAI stack for one Speko vertical.
+
+        Use this before scaffolding to surface the packages to install,
+        the vertical-specific rationale, and any compliance / data-
+        retention warnings the user needs to know. Follow up with
+        `scaffold_voice_app(use_case=<same>)` to generate the project
+        files.
+        """
+        return recommendations.recommend(use_case)
+
+    @mcp.tool
+    async def scaffold_voice_app(
+        _ctx: Context,
+        use_case: Annotated[
+            Literal[
+                "healthcare", "insurance", "financial_services", "support_agent"
+            ],
+            Field(
+                description=(
+                    "Speko vertical driving the default system prompt and "
+                    "related_resources. One of healthcare, insurance, "
+                    "financial_services, support_agent."
+                ),
+            ),
+        ],
+        languages: Annotated[
+            list[Literal["en", "es"]] | None,
+            Field(
+                description=(
+                    "Spoken languages the agent should support. Defaults "
+                    "to ['en']. The first entry sets the session's "
+                    "intent.language; adding 'es' also appends a "
+                    "multilingual note to the system prompt."
+                ),
+            ),
+        ] = None,
+        system_prompt: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Override the vertical-specific default system "
+                    "prompt. Leave null to use the default."
+                ),
+            ),
+        ] = None,
+    ) -> scaffolds.ScaffoldManifest:
+        """Build a Next.js App Router voice-app scaffold for one Speko
+        vertical.
+
+        Returns a strict manifest: four files (backend route handler,
+        the React voice component, a demo page, a .env.example), install
+        commands, env vars, and follow-up doc URIs. The agent should
+        create each file verbatim at the given `path` — no paraphrasing.
+        """
+        return scaffolds.build_voice_app_manifest(
+            use_case=use_case,
+            languages=languages,
+            system_prompt=system_prompt,
+        )
 
     @mcp.tool
     async def get_balance(_ctx: Context) -> OrganizationBalance:
