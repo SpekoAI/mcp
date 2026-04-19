@@ -364,6 +364,9 @@ def build_voice_app_manifest(
         ],
         post_install_steps=[
             "Set SPEKO_API_KEY in .env.local (copy from .env.example).",
+            "Open app/globals.css and delete the `html { @apply font-sans; }` "
+            "block that `shadcn init` injects — it collides with Next.js' "
+            "default sans font wiring and shows up as a Tailwind build error.",
             "Run `npm run dev` and open http://localhost:3000.",
             "Click 'Start conversation' and grant microphone permission.",
             "The pre-call config panel (language / vertical / optimizeFor / "
