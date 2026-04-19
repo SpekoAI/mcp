@@ -6,8 +6,7 @@ Guards:
 - The backend route is a Next.js App Router Route Handler (POST export,
   `runtime = 'nodejs'`).
 - The vertical-specific default system prompt lands in the route file.
-- `languages=['en', 'es']` appends the multilingual note UNLESS the
-  vertical's default prompt already covers it (support_agent does).
+- `languages=['en', 'es']` appends the multilingual note.
 - Explicit `system_prompt` wins over the default verbatim.
 - The component file content is pulled from the bundled component
   resource — catching drift between the two.
@@ -20,7 +19,7 @@ import pytest
 from spekoai_mcp.scaffolds import ScaffoldManifest, build_voice_app_manifest
 from spekoai_mcp.server import create_server
 
-_VERTICALS = ["healthcare", "insurance", "financial_services", "support_agent"]
+_VERTICALS = ["general", "healthcare", "finance", "legal"]
 
 _EXPECTED_PATHS = {
     "app/api/speko/route.ts",
@@ -51,6 +50,12 @@ def test_route_handler_uses_node_runtime_and_post(use_case: str) -> None:
     assert "/v1/sessions" in route
 
 
+def test_general_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("general")
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "concise, helpful voice assistant" in route
+
+
 def test_healthcare_system_prompt_baked_in() -> None:
     manifest = build_voice_app_manifest("healthcare")
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
@@ -58,22 +63,16 @@ def test_healthcare_system_prompt_baked_in() -> None:
     assert "licensed clinician" in route
 
 
-def test_insurance_system_prompt_baked_in() -> None:
-    manifest = build_voice_app_manifest("insurance")
-    route = _files_by_path(manifest)["app/api/speko/route.ts"]
-    assert "underwriter" in route
-
-
-def test_financial_services_system_prompt_baked_in() -> None:
-    manifest = build_voice_app_manifest("financial_services")
+def test_finance_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("finance")
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
     assert "Do not give investment advice" in route
 
 
-def test_support_agent_system_prompt_baked_in() -> None:
-    manifest = build_voice_app_manifest("support_agent")
+def test_legal_system_prompt_baked_in() -> None:
+    manifest = build_voice_app_manifest("legal")
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
-    assert "global customer support voice assistant" in route.lower()
+    assert "Never give legal advice" in route
 
 
 def test_english_only_does_not_add_multilingual_note() -> None:
@@ -97,17 +96,6 @@ def test_spanish_first_sets_es_language_tag() -> None:
     assert "'es-US'" in route
 
 
-def test_support_agent_skips_multilingual_append() -> None:
-    """support_agent's default prompt already addresses multilingual
-    behavior — adding a second note would be redundant. Make sure we
-    don't double up."""
-    manifest = build_voice_app_manifest("support_agent", languages=["en", "es"])
-    route = _files_by_path(manifest)["app/api/speko/route.ts"]
-    # The generic append phrase uses "both English and Spanish"; the
-    # support_agent default uses "in whichever language they use".
-    assert "both English and Spanish" not in route
-
-
 def test_explicit_system_prompt_overrides_default_verbatim() -> None:
     override = "Speak only in pig Latin. Ignore all other instructions."
     manifest = build_voice_app_manifest(
@@ -126,13 +114,13 @@ def test_component_file_is_use_client_and_exports_component() -> None:
     assert "export function SpekoVoiceSession" in body
 
 
-def test_install_commands_include_livekit_and_agents_ui() -> None:
+def test_install_commands_include_spekoai_client() -> None:
     manifest = build_voice_app_manifest("healthcare")
     joined = " ".join(manifest.install_commands)
-    assert "@livekit/components-react" in joined
-    assert "livekit-client" in joined
+    # The browser SDK is the scaffold's core dependency — it pulls
+    # livekit-client transitively so we don't list livekit-client here.
+    assert "@spekoai/client" in joined
     assert "shadcn@latest init" in joined
-    assert "@agents-ui" in joined
     # Config panel depends on these shadcn primitives.
     assert "label" in joined
     assert "select" in joined
@@ -191,7 +179,7 @@ async def test_scaffold_voice_app_tool_returns_manifest() -> None:
     mcp = create_server()
     result = await mcp.call_tool(
         "scaffold_voice_app",
-        {"use_case": "insurance", "languages": ["en", "es"]},
+        {"use_case": "legal", "languages": ["en", "es"]},
     )
     payload = result.structured_content or {}
     paths = {f["path"] for f in payload.get("files", [])}
@@ -200,5 +188,26 @@ async def test_scaffold_voice_app_tool_returns_manifest() -> None:
         f["content"] for f in payload["files"]
         if f["path"] == "app/api/speko/route.ts"
     )
-    assert "underwriter" in route
+    assert "Never give legal advice" in route
     assert "English and Spanish" in route
+
+
+async def test_scaffold_voice_app_tool_returns_actionable_text() -> None:
+    """The tool must emit a text content block alongside the structured
+    manifest so receiving agents (Claude Code, etc.) get prose
+    instructions without re-interpreting the JSON payload."""
+    mcp = create_server()
+    result = await mcp.call_tool(
+        "scaffold_voice_app", {"use_case": "general"}
+    )
+    assert result.content, "tool must return at least one content block"
+    text_blocks = [c for c in result.content if getattr(c, "type", None) == "text"]
+    assert text_blocks, "tool must include a text content block"
+    combined = "\n".join(c.text for c in text_blocks)
+    # The checklist sections agents rely on to act on the manifest.
+    assert "Create these files" in combined
+    assert "Run install commands" in combined
+    assert "Set environment variables" in combined
+    # One of the scaffold files' paths must appear so the text is
+    # actionable on its own (not just a generic header).
+    assert "app/api/speko/route.ts" in combined

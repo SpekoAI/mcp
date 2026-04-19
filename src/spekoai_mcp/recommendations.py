@@ -4,11 +4,13 @@ The `recommended_stack` MCP tool wraps `recommend(use_case)` unchanged —
 the rules-based logic here stays importable from tests without spinning
 up a FastMCP server.
 
-All four verticals target the same implementation stack today (Next.js
-App Router, Node runtime, `@spekoai/client` in the browser,
-`@spekoai/sdk` on the backend). The per-vertical surface is the
-tagline, rationale, and the compliance/operational warnings an agent
-needs to surface to the user before shipping a production build.
+The four verticals mirror `VerticalSchema` in `@spekoai/core` — the API's
+`/v1/sessions` endpoint rejects any other value. All four target the same
+implementation stack today (Next.js App Router, Node runtime,
+`@spekoai/client` in the browser, `@spekoai/sdk` on the backend). The
+per-vertical surface is the tagline, rationale, and the compliance /
+operational warnings an agent needs to surface to the user before
+shipping a production build.
 """
 
 from __future__ import annotations
@@ -18,10 +20,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 UseCase = Literal[
+    "general",
     "healthcare",
-    "insurance",
-    "financial_services",
-    "support_agent",
+    "finance",
+    "legal",
 ]
 
 
@@ -61,13 +63,20 @@ class StackRecommendation(BaseModel):
 
 
 _TAGLINES: dict[UseCase, str] = {
+    "general": "A baseline voice agent — start here if your domain isn't vertical-specific.",
     "healthcare": "Clinical-grade accuracy — 98.5% medical-term accuracy.",
-    "insurance": "Evidence-grade transcripts for claims.",
-    "financial_services": "Audit-grade recording for regulated conversations.",
-    "support_agent": "Global support — 10+ languages, routed live.",
+    "finance": "Audit-grade recording for regulated conversations.",
+    "legal": "Evidence-grade transcripts for client intake and matter discovery.",
 }
 
 _RATIONALES: dict[UseCase, str] = {
+    "general": (
+        "A starting-point voice agent for domains we don't route with a "
+        "specialist STT/LLM/TTS yet. @spekoai/client streams to Speko "
+        "over WebRTC; the router picks default providers balanced for "
+        "latency and cost. Swap the system prompt to fit your persona "
+        "and upgrade to a vertical preset when one matches."
+    ),
     "healthcare": (
         "Browser-based voice intake where mishearing a dosage or drug name "
         "is a safety event. @spekoai/client streams to Speko over WebRTC; "
@@ -75,44 +84,34 @@ _RATIONALES: dict[UseCase, str] = {
         "terminology. The backend mints short-lived conversation tokens "
         "so PHI never leaves your control plane."
     ),
-    "insurance": (
-        "Inbound claims intake where the transcript is the record of "
-        "record. @spekoai/client captures the conversation; the "
-        "server-side SDK can re-run transcription on the stored audio for "
-        "adjuster review. The scaffold leaves the audio-retention "
-        "decision to you — see the warning below."
-    ),
-    "financial_services": (
+    "finance": (
         "Customer-facing voice interactions that may be audited later. "
         "@spekoai/client handles the real-time conversation; the Speko "
         "API stores conversation metadata you can query for reporting. "
         "Identity verification is out-of-band — the voice agent must not "
         "be the sole auth factor."
     ),
-    "support_agent": (
-        "Multilingual customer support where the router switches STT/TTS "
-        "providers per utterance based on the detected language. "
-        "@spekoai/client handles the browser side; use the session's "
-        "`intent.language` field to anchor the initial language, then let "
-        "the system prompt tell the agent to match the caller."
+    "legal": (
+        "Client intake and matter discovery where the transcript is the "
+        "record of record. @spekoai/client captures the conversation; "
+        "the server-side SDK can re-run transcription on the stored "
+        "audio for attorney review. The scaffold leaves the privileged-"
+        "communication retention policy to you — see the warning below."
     ),
 }
 
 _WARNINGS: dict[UseCase, list[str]] = {
+    "general": [
+        "No vertical safeguards are baked in — audit the system prompt "
+        "against your domain's specific do-not-do list before shipping.",
+    ],
     "healthcare": [
         "Not HIPAA-compliant out of the box — sign a BAA with Speko and "
         "your own hosting vendor before routing PHI through this stack.",
         "STT confidence is not a diagnosis confidence. Have a clinician "
         "review any automated triage decisions.",
     ],
-    "insurance": [
-        "Store conversation recordings immutably if they're used as claim "
-        "evidence — the API returns audio URLs, it's on you to persist "
-        "them with an append-only retention policy.",
-        "Disclose recording at the start of the call per state-specific "
-        "two-party-consent laws (e.g. CA, FL, IL, WA).",
-    ],
-    "financial_services": [
+    "finance": [
         "Verify caller identity out-of-band (e.g. one-time code, known "
         "device) before discussing account details — the voice agent has "
         "no inherent authentication.",
@@ -120,12 +119,12 @@ _WARNINGS: dict[UseCase, list[str]] = {
         "(FINRA 4511, MiFID II). The Speko API gives you the transcript; "
         "retention is your responsibility.",
     ],
-    "support_agent": [
-        "Cross-language routing lives in the session config "
-        "(`intent.language`). For true multilingual, surface a language "
-        "switch in your UI and re-mint the session on change.",
-        "Latency is higher on language-switch turns — warm up the "
-        "likely second language via a contextual hint if you know it.",
+    "legal": [
+        "Transcripts of attorney-client conversations are privileged — "
+        "store them with the same access controls as matter files, not "
+        "in shared analytics buckets.",
+        "Disclose recording at the start of the call per state-specific "
+        "two-party-consent laws (e.g. CA, FL, IL, WA) before intake.",
     ],
 }
 

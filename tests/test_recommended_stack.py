@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from spekoai_mcp.recommendations import StackRecommendation, recommend
 from spekoai_mcp.server import create_server
 
-_VERTICALS = ["healthcare", "insurance", "financial_services", "support_agent"]
+_VERTICALS = ["general", "healthcare", "finance", "legal"]
 
 
 @pytest.mark.parametrize("use_case", _VERTICALS)
@@ -39,22 +39,24 @@ def test_healthcare_tagline_matches_speko_dev() -> None:
     assert "HIPAA" in joined
 
 
-def test_insurance_warns_about_recording_retention() -> None:
-    rec = recommend("insurance")
-    joined = " ".join(rec.warnings)
-    assert "recording" in joined.lower() or "evidence" in joined.lower()
+def test_legal_warns_about_privileged_communications() -> None:
+    rec = recommend("legal")
+    joined = " ".join(rec.warnings).lower()
+    assert "privileged" in joined or "attorney" in joined
 
 
-def test_financial_services_warns_about_identity_verification() -> None:
-    rec = recommend("financial_services")
+def test_finance_warns_about_identity_verification() -> None:
+    rec = recommend("finance")
     joined = " ".join(rec.warnings)
     assert "identity" in joined.lower()
 
 
-def test_support_agent_covers_multilingual_concern() -> None:
-    rec = recommend("support_agent")
-    joined = (rec.rationale + " " + " ".join(rec.warnings)).lower()
-    assert "language" in joined
+def test_general_has_a_baseline_warning() -> None:
+    rec = recommend("general")
+    # General has no compliance regime baked in; surface that to callers
+    # so they can't assume the scaffold protects them.
+    joined = " ".join(rec.warnings).lower()
+    assert "vertical" in joined or "audit" in joined
 
 
 async def test_recommended_stack_tool_advertised() -> None:
@@ -78,4 +80,4 @@ async def test_recommended_stack_tool_returns_healthcare_payload() -> None:
 async def test_recommended_stack_tool_rejects_unknown_use_case() -> None:
     mcp = create_server()
     with pytest.raises((ValidationError, Exception)):
-        await mcp.call_tool("recommended_stack", {"use_case": "legal"})
+        await mcp.call_tool("recommended_stack", {"use_case": "insurance"})

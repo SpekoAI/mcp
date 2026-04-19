@@ -21,8 +21,8 @@ async def test_component_resource_body_shape() -> None:
     assert isinstance(body, str)
     assert body.startswith("'use client';")
     assert "export function SpekoVoiceSession" in body
-    assert "@livekit/components-react" in body
-    assert "AgentSessionProvider" in body
+    assert "@spekoai/client" in body
+    assert "VoiceConversation" in body
 
 
 async def test_component_resource_mime_is_plain_text() -> None:

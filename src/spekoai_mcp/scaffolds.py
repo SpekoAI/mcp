@@ -60,6 +60,12 @@ class ScaffoldManifest(BaseModel):
 
 
 _SYSTEM_PROMPTS: dict[UseCase, str] = {
+    "general": (
+        "You are a concise, helpful voice assistant. Answer the caller's "
+        "questions directly, ask one clarifying question at a time when "
+        "you need more context, and confirm numbers, names, and dates "
+        "by repeating them back to avoid mishearing."
+    ),
     "healthcare": (
         "You are a voice assistant for a healthcare provider. Be concise "
         "and empathetic. Capture chief complaint, current symptoms, and "
@@ -68,33 +74,28 @@ _SYSTEM_PROMPTS: dict[UseCase, str] = {
         "to a licensed clinician. Confirm key medical details (dosage, "
         "drug names) by repeating them back to avoid mishearing."
     ),
-    "insurance": (
-        "You are a voice assistant for an insurance provider. Help the "
-        "caller file a claim, check coverage, or navigate forms. Be "
-        "clear about policy limits and deductibles. Never promise "
-        "coverage — tell the caller eligibility is confirmed by the "
-        "underwriter. Capture policy number, date of incident, and a "
-        "short incident description. Repeat numbers back to confirm."
-    ),
-    "financial_services": (
+    "finance": (
         "You are a voice assistant for a financial services firm. Help "
         "with account questions, transaction history, and basic banking "
         "inquiries. Do not give investment advice. Verify caller "
         "identity out-of-band before discussing account details. Repeat "
         "amounts and account IDs back to confirm."
     ),
-    "support_agent": (
-        "You are a global customer support voice assistant. Be concise, "
-        "helpful, and empathetic. Solve the caller's problem in as few "
-        "turns as possible, or escalate to a human agent when the issue "
-        "is complex. Match the caller's language; reply in whichever "
-        "language they use."
+    "legal": (
+        "You are a voice assistant for a law firm handling client "
+        "intake. Capture the caller's name, contact information, matter "
+        "type, key dates, and a short description of the issue. Never "
+        "give legal advice or opinions on outcomes — tell the caller an "
+        "attorney will review their intake and follow up. Confirm names, "
+        "case citations, and dates by repeating them back."
     ),
 }
 
 # Verticals whose default prompt already addresses multilingual behavior;
-# skip the generic EN/ES append for these so we don't double up.
-_ALREADY_MULTILINGUAL: set[UseCase] = {"support_agent"}
+# skip the generic EN/ES append for these so we don't double up. None of
+# the current verticals own their multilingual behavior in-prompt, but
+# keeping the hook in place makes it cheap to add a new vertical that does.
+_ALREADY_MULTILINGUAL: set[UseCase] = set()
 
 _MULTILINGUAL_APPEND = (
     " Reply in whichever language the caller uses — both English and "
@@ -343,15 +344,9 @@ def build_voice_app_manifest(
     return ScaffoldManifest(
         files=files_list,
         install_commands=[
-            "npm install @livekit/components-react livekit-client",
+            "npm install @spekoai/client",
             "npx -y shadcn@latest init --yes --base-color stone",
             "npx -y shadcn@latest add button card label select textarea",
-            "npx -y shadcn@latest registry add @agents-ui",
-            "npx -y shadcn@latest add @agents-ui/agent-session-provider "
-            "@agents-ui/agent-control-bar "
-            "@agents-ui/agent-audio-visualizer-bar "
-            "@agents-ui/agent-chat-transcript "
-            "@agents-ui/start-audio-button",
         ],
         env_vars=[
             EnvVar(
@@ -378,10 +373,11 @@ def build_voice_app_manifest(
             "first load; the route-level defaults in app/api/speko/"
             "route.ts are the fallback when the client omits a field. See "
             "spekoai://docs/client-skills for the full /v1/sessions schema.",
-            "UI is built on LiveKit Agents UI (shadcn registry). To swap the "
-            "visualizer, change <AgentAudioVisualizerBar/> in "
-            "components/speko-voice-session.tsx to AgentAudioVisualizerAura/"
-            "Radial/Wave/Grid — install via `shadcn add @agents-ui/<name>`.",
+            "components/speko-voice-session.tsx uses @spekoai/client's "
+            "`VoiceConversation.create({conversationToken, livekitUrl, ...})` "
+            "and renders the transcript + mode indicator from its callbacks. "
+            "See spekoai://docs/client-skills for the full callback surface "
+            "(onMessage, onStatusChange, onModeChange, onError).",
         ],
         docs_resources=[
             "spekoai://docs/client-skills",

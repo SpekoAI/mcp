@@ -1,18 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { TokenSource } from 'livekit-client';
-import {
-  useAgent,
-  useSession,
-  useSessionContext,
-  useSessionMessages,
-} from '@livekit/components-react';
-import { AgentAudioVisualizerBar } from '@/components/agents-ui/agent-audio-visualizer-bar';
-import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
-import { AgentControlBar } from '@/components/agents-ui/agent-control-bar';
-import { AgentSessionProvider } from '@/components/agents-ui/agent-session-provider';
-import { StartAudioButton } from '@/components/agents-ui/start-audio-button';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { VoiceConversation } from '@spekoai/client';
+import type {
+  ConversationMessage,
+  ConversationMode,
+  ConversationStatus,
+} from '@spekoai/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -26,12 +20,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 export type SessionLanguage = 'en-US' | 'es-US';
-export type SessionVertical =
-  | 'general'
-  | 'healthcare'
-  | 'insurance'
-  | 'financial_services'
-  | 'support_agent';
+export type SessionVertical = 'general' | 'healthcare' | 'finance' | 'legal';
 export type SessionOptimizeFor = 'latency' | 'quality';
 
 export interface SessionConfig {
@@ -47,21 +36,45 @@ export interface SpekoVoiceSessionProps {
   className?: string;
 }
 
+interface TranscriptEntry {
+  id: string;
+  source: ConversationMessage['source'];
+  text: string;
+  isFinal: boolean;
+}
+
 export function SpekoVoiceSession({
   sessionEndpoint = '/api/speko',
   defaults,
   className,
 }: SpekoVoiceSessionProps) {
   const [config, setConfig] = useState<SessionConfig>(defaults);
-  // Bumping `commitKey` is the signal to (a) rebuild the TokenSource
-  // with the current form values baked into the POST body and (b) call
-  // session.start(). Kept out of the form state so typing in the
-  // textarea does not thrash the TokenSource.
-  const [commitKey, setCommitKey] = useState(0);
+  const [conversation, setConversation] = useState<VoiceConversation | null>(
+    null,
+  );
+  const [status, setStatus] = useState<ConversationStatus>('disconnected');
+  const [mode, setMode] = useState<ConversationMode>('listening');
+  const [messages, setMessages] = useState<TranscriptEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
 
-  const tokenSource = useMemo(
-    () =>
-      TokenSource.endpoint(sessionEndpoint, {
+  const conversationRef = useRef<VoiceConversation | null>(null);
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
+
+  useEffect(() => {
+    return () => {
+      void conversationRef.current?.endSession();
+    };
+  }, []);
+
+  const start = useCallback(async () => {
+    setError(null);
+    setIsStarting(true);
+    try {
+      const res = await fetch(sessionEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -72,63 +85,61 @@ export function SpekoVoiceSession({
           },
           systemPrompt: config.systemPrompt,
         }),
-      }),
-    // Intentionally excluding `config` from deps — we only want the
-    // body to reflect committed values, not every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionEndpoint, commitKey],
-  );
-
-  const session = useSession(tokenSource);
-
-  return (
-    <AgentSessionProvider session={session}>
-      <SpekoStage
-        config={config}
-        onChange={setConfig}
-        onCommit={() => setCommitKey((k) => k + 1)}
-        committed={commitKey > 0}
-        className={className}
-      />
-      <StartAudioButton label="Enable audio" />
-    </AgentSessionProvider>
-  );
-}
-
-interface StageProps {
-  config: SessionConfig;
-  onChange: (next: SessionConfig) => void;
-  onCommit: () => void;
-  committed: boolean;
-  className?: string;
-}
-
-function SpekoStage({
-  config,
-  onChange,
-  onCommit,
-  committed,
-  className,
-}: StageProps) {
-  const session = useSessionContext();
-  const { isConnected, start, end } = session;
-  const { audioTrack, state } = useAgent();
-  const { messages } = useSessionMessages(session);
-
-  // Connect once the user commits config — the TokenSource has been
-  // rebuilt with the new body in the same render cycle.
-  useEffect(() => {
-    if (committed && !isConnected) {
-      void start();
+      });
+      if (!res.ok) {
+        throw new Error(`${sessionEndpoint} ${res.status}: ${await res.text()}`);
+      }
+      const { server_url, participant_token } = (await res.json()) as {
+        server_url: string;
+        participant_token: string;
+      };
+      setMessages([]);
+      const conv = await VoiceConversation.create({
+        conversationToken: participant_token,
+        livekitUrl: server_url,
+        onStatusChange: (s) => setStatus(s),
+        onModeChange: (m) => setMode(m),
+        onMessage: (msg) => {
+          setMessages((prev) => mergeMessage(prev, msg));
+        },
+        onError: (err) => {
+          setError(err instanceof Error ? err.message : String(err));
+        },
+      });
+      setConversation(conv);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsStarting(false);
     }
-  }, [committed, isConnected, start]);
+  }, [config, sessionEndpoint]);
+
+  const end = useCallback(async () => {
+    await conversationRef.current?.endSession();
+    setConversation(null);
+    setStatus('disconnected');
+    setMode('listening');
+    setMicMuted(false);
+  }, []);
+
+  const toggleMic = useCallback(async () => {
+    const conv = conversationRef.current;
+    if (!conv) return;
+    const next = !micMuted;
+    await conv.setMicMuted(next);
+    setMicMuted(next);
+  }, [micMuted]);
+
+  const isConnected = status === 'connected';
 
   if (!isConnected) {
     return (
       <PreCallConfig
         config={config}
-        onChange={onChange}
-        onStart={onCommit}
+        onChange={setConfig}
+        onStart={start}
+        isStarting={isStarting || status === 'connecting'}
+        error={error}
         className={className}
       />
     );
@@ -138,41 +149,122 @@ function SpekoStage({
     <div className={'mx-auto grid w-full max-w-3xl gap-4 ' + (className ?? '')}>
       <Card className="border-[#FDE3CC] bg-[#FFFBF5]">
         <CardContent className="flex flex-col items-center gap-6 p-6">
-          <AgentAudioVisualizerBar
-            size="lg"
-            color="#E8590C"
-            state={state}
-            audioTrack={audioTrack}
-          />
+          <ModeIndicator mode={mode} />
           <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#57534E]">
             <ConfigPill label="Language" value={config.language} />
             <ConfigPill label="Vertical" value={config.vertical} />
             <ConfigPill label="Optimize" value={config.optimizeFor} />
           </div>
-          <AgentControlBar
-            variant="default"
-            isConnected={isConnected}
-            onDisconnect={() => void end()}
-            controls={{
-              leave: true,
-              microphone: true,
-              screenShare: false,
-              camera: false,
-              chat: false,
-            }}
-          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void toggleMic()}
+              className="rounded-full font-mono text-xs uppercase tracking-wider"
+            >
+              {micMuted ? 'Unmute mic' : 'Mute mic'}
+            </Button>
+            <Button
+              onClick={() => void end()}
+              className="rounded-full bg-[#E8590C] font-mono text-xs font-bold uppercase tracking-wider text-white hover:bg-[#C2410C]"
+            >
+              End call
+            </Button>
+          </div>
         </CardContent>
       </Card>
       <Card className="border-[#E7E5E4] bg-white">
         <CardContent className="p-4 sm:p-6">
-          <AgentChatTranscript
-            agentState={state}
-            messages={messages}
-            className="min-h-64"
-          />
+          <Transcript messages={messages} mode={mode} />
         </CardContent>
       </Card>
+      {error ? (
+        <p className="mx-auto max-w-3xl text-sm text-[#B91C1C]">{error}</p>
+      ) : null}
     </div>
+  );
+}
+
+function mergeMessage(
+  prev: TranscriptEntry[],
+  msg: ConversationMessage,
+): TranscriptEntry[] {
+  const last = prev[prev.length - 1];
+  // Interim updates from the same speaker overwrite the last entry until
+  // a final lands; a final message promotes the interim to stable and
+  // starts a fresh slot for whatever comes next.
+  if (last && !last.isFinal && last.source === msg.source) {
+    const next = prev.slice(0, -1);
+    next.push({ ...last, text: msg.text, isFinal: msg.isFinal });
+    return next;
+  }
+  return [
+    ...prev,
+    {
+      id: `${msg.source}-${prev.length}-${Date.now()}`,
+      source: msg.source,
+      text: msg.text,
+      isFinal: msg.isFinal,
+    },
+  ];
+}
+
+function ModeIndicator({ mode }: { mode: ConversationMode }) {
+  const label = mode === 'speaking' ? 'Agent speaking' : 'Listening';
+  const tone =
+    mode === 'speaking'
+      ? 'bg-[#E8590C] shadow-[0_0_24px_rgba(232,89,12,0.45)]'
+      : 'bg-[#FDE3CC]';
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <span
+        aria-hidden
+        className={
+          'h-16 w-16 rounded-full transition-all duration-200 ' +
+          (mode === 'speaking' ? 'scale-110 ' : 'scale-100 ') +
+          tone
+        }
+      />
+      <span className="font-mono text-[10px] uppercase tracking-wider text-[#A8A29E]">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function Transcript({
+  messages,
+  mode,
+}: {
+  messages: TranscriptEntry[];
+  mode: ConversationMode;
+}) {
+  if (messages.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-[#A8A29E]">
+        {mode === 'speaking'
+          ? 'Agent is speaking…'
+          : 'Say something — transcript will appear here.'}
+      </p>
+    );
+  }
+  return (
+    <ol className="flex max-h-80 flex-col gap-3 overflow-y-auto">
+      {messages.map((m) => (
+        <li key={m.id} className="flex flex-col gap-1">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[#A8A29E]">
+            {m.source === 'user' ? 'You' : 'Agent'}
+          </span>
+          <span
+            className={
+              'text-sm leading-relaxed ' +
+              (m.isFinal ? 'text-[#1C1917]' : 'italic text-[#57534E]')
+            }
+          >
+            {m.text}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -191,6 +283,8 @@ interface PreCallConfigProps {
   config: SessionConfig;
   onChange: (next: SessionConfig) => void;
   onStart: () => void;
+  isStarting: boolean;
+  error: string | null;
   className?: string;
 }
 
@@ -198,6 +292,8 @@ function PreCallConfig({
   config,
   onChange,
   onStart,
+  isStarting,
+  error,
   className,
 }: PreCallConfigProps) {
   const update = <K extends keyof SessionConfig>(
@@ -260,11 +356,8 @@ function PreCallConfig({
               <SelectContent>
                 <SelectItem value="general">General</SelectItem>
                 <SelectItem value="healthcare">Healthcare</SelectItem>
-                <SelectItem value="insurance">Insurance</SelectItem>
-                <SelectItem value="financial_services">
-                  Financial services
-                </SelectItem>
-                <SelectItem value="support_agent">Support agent</SelectItem>
+                <SelectItem value="finance">Finance</SelectItem>
+                <SelectItem value="legal">Legal</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -312,10 +405,14 @@ function PreCallConfig({
         <Button
           size="lg"
           onClick={onStart}
-          className="mt-2 w-full rounded-full bg-[#E8590C] font-mono text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-[#C2410C]"
+          disabled={isStarting}
+          className="mt-2 w-full rounded-full bg-[#E8590C] font-mono text-xs font-bold uppercase tracking-wider text-white shadow-sm hover:bg-[#C2410C] disabled:opacity-60"
         >
-          Start conversation
+          {isStarting ? 'Connecting…' : 'Start conversation'}
         </Button>
+        {error ? (
+          <p className="text-xs text-[#B91C1C]">{error}</p>
+        ) : null}
       </CardContent>
     </Card>
   );

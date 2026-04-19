@@ -29,6 +29,8 @@ from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth import OAuthProxy
 from fastmcp.server.dependencies import get_access_token
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -101,6 +103,55 @@ class PackageInfo(BaseModel):
     )
     skills_uri: str | None = Field(
         description="MCP resource URI for the SKILLS sheet, if one is shipped."
+    )
+
+
+def _render_scaffold_instructions(manifest: scaffolds.ScaffoldManifest) -> str:
+    """Render a scaffold manifest as an agent-actionable checklist.
+
+    Returned alongside the structured manifest so a receiving agent
+    (Claude Code, Cursor, etc.) has prose instructions to execute
+    without re-interpreting the JSON. File bodies are emitted verbatim
+    inside fenced blocks so the agent can copy-paste without escaping.
+    """
+    file_blocks: list[str] = []
+    for f in manifest.files:
+        fence = "```" + (f.language_hint or "")
+        file_blocks.append(
+            f"**`{f.path}`** (action: {f.action})\n{fence}\n{f.content}\n```"
+        )
+    files_section = "\n\n".join(file_blocks)
+    installs_section = "\n".join(f"- `{cmd}`" for cmd in manifest.install_commands)
+    env_rows: list[str] = []
+    for env in manifest.env_vars:
+        required_tag = "required" if env.required else "optional"
+        example = f" (example: `{env.example}`)" if env.example else ""
+        env_rows.append(f"- `{env.name}` — {required_tag}. {env.description}{example}")
+    env_section = "\n".join(env_rows) if env_rows else "_(none)_"
+    post_section = "\n".join(f"- {step}" for step in manifest.post_install_steps)
+    docs_section = "\n".join(f"- `{uri}`" for uri in manifest.docs_resources)
+    component_section = (
+        "\n".join(f"- `{uri}`" for uri in manifest.component_resources)
+        if manifest.component_resources
+        else "_(none)_"
+    )
+    return (
+        "# Speko voice-app scaffold\n\n"
+        "Execute this scaffold verbatim — do not paraphrase file "
+        "contents. Each step is idempotent; re-running in a fresh "
+        "directory produces the same result.\n\n"
+        "## Step 1 — Create these files\n\n"
+        f"{files_section}\n\n"
+        "## Step 2 — Run install commands (in order)\n\n"
+        f"{installs_section}\n\n"
+        "## Step 3 — Set environment variables\n\n"
+        f"{env_section}\n\n"
+        "## Step 4 — Post-install\n\n"
+        f"{post_section}\n\n"
+        "## Reference docs to read next\n\n"
+        f"{docs_section}\n\n"
+        "## Inlined component resources\n\n"
+        f"{component_section}\n"
     )
 
 
@@ -195,14 +246,12 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     async def recommended_stack(
         _ctx: Context,
         use_case: Annotated[
-            Literal[
-                "healthcare", "insurance", "financial_services", "support_agent"
-            ],
+            Literal["general", "healthcare", "finance", "legal"],
             Field(
                 description=(
-                    "Speko vertical. One of healthcare, insurance, "
-                    "financial_services, support_agent — matching the "
-                    "four use cases on speko.dev."
+                    "Speko vertical. One of general, healthcare, finance, "
+                    "legal — matching the VerticalSchema accepted by "
+                    "POST /v1/sessions."
                 ),
             ),
         ],
@@ -221,14 +270,13 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     async def scaffold_voice_app(
         _ctx: Context,
         use_case: Annotated[
-            Literal[
-                "healthcare", "insurance", "financial_services", "support_agent"
-            ],
+            Literal["general", "healthcare", "finance", "legal"],
             Field(
                 description=(
-                    "Speko vertical driving the default system prompt and "
-                    "related_resources. One of healthcare, insurance, "
-                    "financial_services, support_agent."
+                    "Speko vertical driving the default system prompt "
+                    "and related_resources. One of general, healthcare, "
+                    "finance, legal — matches VerticalSchema at "
+                    "POST /v1/sessions."
                 ),
             ),
         ],
@@ -252,19 +300,24 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
                 ),
             ),
         ] = None,
-    ) -> scaffolds.ScaffoldManifest:
+    ) -> ToolResult:
         """Build a Next.js App Router voice-app scaffold for one Speko
         vertical.
 
-        Returns a strict manifest: four files (backend route handler,
-        the React voice component, a demo page, a .env.example), install
-        commands, env vars, and follow-up doc URIs. The agent should
-        create each file verbatim at the given `path` — no paraphrasing.
+        Returns an actionable manifest: a text block with step-by-step
+        instructions the agent should execute verbatim, plus structured
+        content with the exact file bodies, install commands, and
+        env vars. Create each file at its given `path` byte-for-byte —
+        no paraphrasing.
         """
-        return scaffolds.build_voice_app_manifest(
+        manifest = scaffolds.build_voice_app_manifest(
             use_case=use_case,
             languages=languages,
             system_prompt=system_prompt,
+        )
+        return ToolResult(
+            content=[TextContent(type="text", text=_render_scaffold_instructions(manifest))],
+            structured_content=manifest.model_dump(),
         )
 
     @mcp.tool
