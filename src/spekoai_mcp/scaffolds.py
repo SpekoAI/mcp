@@ -126,8 +126,8 @@ def _route_ts(system_prompt: str, language_tag: str) -> str:
 // Accepts LiveKit's standard TokenSource request body (room_name,
 // participant_identity, ...) and ignores it (Speko manages the room
 // internally). Speko-side config — systemPrompt, intent.language,
-// intent.optimizeFor — is set below and may be overridden per-request
-// by adding the same fields to the body.
+// intent.region, intent.optimizeFor — is set below and may be
+// overridden per-request by adding the same fields to the body.
 //
 // Returns `{{ server_url, participant_token }}` so it plugs directly
 // into LiveKit's TokenSource.endpoint() on the client.
@@ -143,12 +143,14 @@ const SPEKO_BASE_URL = process.env.SPEKO_BASE_URL ?? 'https://api.speko.ai';
 // client can override any field per-request by sending it in the POST body.
 const DEFAULT_SYSTEM_PROMPT = `{escaped_prompt}`;
 const DEFAULT_LANGUAGE = '{language_tag}';
+// const DEFAULT_REGION = 'us-east4'; // omit to use 'global' (batch ranking)
 // const DEFAULT_OPTIMIZE_FOR: 'latency' | 'quality' = 'latency';
 // ============================================================================
 
 type SessionOverrides = {{
   intent?: {{
     language?: string;
+    region?: string;
     optimizeFor?: 'latency' | 'quality';
   }};
   systemPrompt?: string;
@@ -170,6 +172,7 @@ export async function POST(req: Request): Promise<Response> {{
   const body = {{
     intent: {{
       language: override.intent?.language ?? DEFAULT_LANGUAGE,
+      ...(override.intent?.region && {{ region: override.intent.region }}),
       ...(override.intent?.optimizeFor && {{
         optimizeFor: override.intent.optimizeFor,
       }}),

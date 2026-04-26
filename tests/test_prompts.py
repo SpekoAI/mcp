@@ -67,6 +67,7 @@ async def test_voice_conversation_prompt_lists_all_config_form_fields() -> None:
     text = "\n".join(m.content.text for m in result.messages)
     expected_fields = [
         "intent.language",
+        "intent.region",
         "intent.optimizeFor",
         "systemPrompt",
         "voice",
