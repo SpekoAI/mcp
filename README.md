@@ -58,8 +58,8 @@ Drop-in frontend components wrapping the SpekoAI SDKs. Mime type is
 | --- | --- |
 | `search_docs` | Full-text search over bundled SpekoAI docs. Returns slug + snippet + score. |
 | `list_packages` | Structured manifest of every SpekoAI package with URIs to its README / SKILLS sheet. |
-| `recommended_stack` | Opinionated SpekoAI stack for one Speko vertical (`general`, `healthcare`, `finance`, `legal` — matches `VerticalSchema` at `POST /v1/sessions`). Returns packages, tagline, vertical-specific rationale and compliance warnings, and a handoff to `scaffold_voice_app`. |
-| `scaffold_voice_app` | Strict Next.js App Router scaffold manifest for a browser voice app. Args: `use_case` (vertical), `languages?` (`en`/`es`, default `['en']`), `system_prompt?` (overrides the vertical default). Emits four files (route handler, React component, page, `.env.example`) plus install commands and env vars. |
+| `recommended_stack` | Opinionated SpekoAI stack for one Speko use case (`general`, `healthcare`, `finance`, `legal`). Returns packages, tagline, use-case-specific rationale and compliance warnings, and a handoff to `scaffold_voice_app`. |
+| `scaffold_voice_app` | Strict Next.js App Router scaffold manifest for a browser voice app. Args: `use_case`, `languages?` (`en`/`es`, default `['en']`), `system_prompt?` (overrides the use-case default). Emits four files (route handler, React component, page, `.env.example`) plus install commands and env vars. |
 | `get_balance` | Caller's current prepaid credit balance (`balance_micro_usd`, `balance_usd`, `updated_at`). Requires OAuth; forwards the access token to `api.speko.ai/v1/credits/balance`. |
 
 The knowledge surface (resources, prompts, `search_docs`,

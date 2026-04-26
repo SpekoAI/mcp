@@ -20,12 +20,10 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 export type SessionLanguage = 'en-US' | 'es-US';
-export type SessionVertical = 'general' | 'healthcare' | 'finance' | 'legal';
 export type SessionOptimizeFor = 'latency' | 'quality';
 
 export interface SessionConfig {
   language: SessionLanguage;
-  vertical: SessionVertical;
   optimizeFor: SessionOptimizeFor;
   systemPrompt: string;
 }
@@ -80,7 +78,6 @@ export function SpekoVoiceSession({
         body: JSON.stringify({
           intent: {
             language: config.language,
-            vertical: config.vertical,
             optimizeFor: config.optimizeFor,
           },
           systemPrompt: config.systemPrompt,
@@ -152,7 +149,6 @@ export function SpekoVoiceSession({
           <ModeIndicator mode={mode} />
           <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-[#57534E]">
             <ConfigPill label="Language" value={config.language} />
-            <ConfigPill label="Vertical" value={config.vertical} />
             <ConfigPill label="Optimize" value={config.optimizeFor} />
           </div>
           <div className="flex gap-2">
@@ -333,31 +329,6 @@ function PreCallConfig({
               <SelectContent>
                 <SelectItem value="en-US">English (en-US)</SelectItem>
                 <SelectItem value="es-US">Spanish (es-US)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label
-              htmlFor="speko-vertical"
-              className="text-xs uppercase tracking-wider text-[#57534E]"
-            >
-              Vertical
-            </Label>
-            <Select
-              value={config.vertical}
-              onValueChange={(v) => update('vertical', v as SessionVertical)}
-            >
-              <SelectTrigger
-                id="speko-vertical"
-                className="border-[#E7E5E4] bg-white"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="general">General</SelectItem>
-                <SelectItem value="healthcare">Healthcare</SelectItem>
-                <SelectItem value="finance">Finance</SelectItem>
-                <SelectItem value="legal">Legal</SelectItem>
               </SelectContent>
             </Select>
           </div>

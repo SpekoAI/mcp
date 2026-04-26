@@ -1,4 +1,4 @@
-"""Vertical-aware Next.js App Router scaffold for SpekoAI voice apps.
+"""Use-case-aware Next.js App Router scaffold for SpekoAI voice apps.
 
 `scaffold_voice_app(use_case, languages?, system_prompt?)` returns a
 `ScaffoldManifest` — a strict list of files the agent should create,
@@ -91,10 +91,10 @@ _SYSTEM_PROMPTS: dict[UseCase, str] = {
     ),
 }
 
-# Verticals whose default prompt already addresses multilingual behavior;
+# Use cases whose default prompt already addresses multilingual behavior;
 # skip the generic EN/ES append for these so we don't double up. None of
-# the current verticals own their multilingual behavior in-prompt, but
-# keeping the hook in place makes it cheap to add a new vertical that does.
+# the current use cases own their multilingual behavior in-prompt, but
+# keeping the hook in place makes it cheap to add a new one that does.
 _ALREADY_MULTILINGUAL: set[UseCase] = set()
 
 _MULTILINGUAL_APPEND = (
@@ -126,8 +126,8 @@ def _route_ts(system_prompt: str, language_tag: str) -> str:
 // Accepts LiveKit's standard TokenSource request body (room_name,
 // participant_identity, ...) and ignores it (Speko manages the room
 // internally). Speko-side config — systemPrompt, intent.language,
-// intent.vertical, intent.optimizeFor — is set below and may be
-// overridden per-request by adding the same fields to the body.
+// intent.optimizeFor — is set below and may be overridden per-request
+// by adding the same fields to the body.
 //
 // Returns `{{ server_url, participant_token }}` so it plugs directly
 // into LiveKit's TokenSource.endpoint() on the client.
@@ -143,14 +143,12 @@ const SPEKO_BASE_URL = process.env.SPEKO_BASE_URL ?? 'https://api.speko.ai';
 // client can override any field per-request by sending it in the POST body.
 const DEFAULT_SYSTEM_PROMPT = `{escaped_prompt}`;
 const DEFAULT_LANGUAGE = '{language_tag}';
-const DEFAULT_VERTICAL = 'general';
 // const DEFAULT_OPTIMIZE_FOR: 'latency' | 'quality' = 'latency';
 // ============================================================================
 
 type SessionOverrides = {{
   intent?: {{
     language?: string;
-    vertical?: string;
     optimizeFor?: 'latency' | 'quality';
   }};
   systemPrompt?: string;
@@ -172,7 +170,6 @@ export async function POST(req: Request): Promise<Response> {{
   const body = {{
     intent: {{
       language: override.intent?.language ?? DEFAULT_LANGUAGE,
-      vertical: override.intent?.vertical ?? DEFAULT_VERTICAL,
       ...(override.intent?.optimizeFor && {{
         optimizeFor: override.intent.optimizeFor,
       }}),
@@ -210,18 +207,17 @@ export async function POST(req: Request): Promise<Response> {{
 """
 
 
-def _page_tsx(system_prompt: str, language_tag: str, vertical: str) -> str:
+def _page_tsx(system_prompt: str, language_tag: str) -> str:
     escaped_prompt = system_prompt.replace("\\", "\\\\").replace("`", "\\`")
     # Page is a Server Component that hands initial config (read from
     # env-agnostic constants, not env vars) down to the client island.
-    # Users edit these four defaults here and in app/api/speko/route.ts
+    # Users edit these defaults here and in app/api/speko/route.ts
     # — the route-level defaults still apply when the client omits a
     # field, but the UI always sends explicit values.
     return f"""import {{ SpekoVoiceSession }} from '@/components/speko-voice-session';
 
 const DEFAULT_CONFIG = {{
   language: '{language_tag}' as const,
-  vertical: '{vertical}' as const,
   optimizeFor: 'latency' as const,
   systemPrompt: `{escaped_prompt}`,
 }};
@@ -243,7 +239,7 @@ export default function Page() {{
             Talk to a voice agent, live.
           </h1>
           <p className="mx-auto max-w-prose text-pretty text-base text-[#57534E]">
-            STT &rarr; LLM &rarr; TTS routed through the Speko gateway. Pick a language and vertical, then start the call.
+            STT &rarr; LLM &rarr; TTS routed through the Speko gateway. Pick a language, then start the call.
           </p>
         </header>
         <SpekoVoiceSession defaults={{DEFAULT_CONFIG}} className="w-full" />
@@ -297,7 +293,7 @@ def build_voice_app_manifest(
     languages: list[SpokenLanguage] | None = None,
     system_prompt: str | None = None,
 ) -> ScaffoldManifest:
-    """Build a Next.js App Router voice-app scaffold for one Speko vertical."""
+    """Build a Next.js App Router voice-app scaffold for one Speko use case."""
     langs: list[SpokenLanguage] = list(languages) if languages else ["en"]
     # Deduplicate while preserving order so ["en", "en"] collapses to ["en"]
     # without changing the primary language choice.
@@ -326,7 +322,7 @@ def build_voice_app_manifest(
         ),
         ScaffoldFile(
             path="app/page.tsx",
-            content=_page_tsx(prompt, primary_language_tag, use_case),
+            content=_page_tsx(prompt, primary_language_tag),
             language_hint="tsx",
         ),
         ScaffoldFile(
@@ -369,7 +365,7 @@ def build_voice_app_manifest(
             "default sans font wiring and shows up as a Tailwind build error.",
             "Run `npm run dev` and open http://localhost:3000.",
             "Click 'Start conversation' and grant microphone permission.",
-            "The pre-call config panel (language / vertical / optimizeFor / "
+            "The pre-call config panel (language / optimizeFor / "
             "systemPrompt) lives in components/speko-voice-session.tsx and "
             "its form defaults are seeded from DEFAULT_CONFIG in "
             "app/page.tsx. Edit either to change what the caller sees on "

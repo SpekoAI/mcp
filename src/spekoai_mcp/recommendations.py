@@ -1,14 +1,13 @@
-"""Opinionated stack recommendations for the four SpekoAI verticals.
+"""Opinionated stack recommendations for the four SpekoAI use cases.
 
 The `recommended_stack` MCP tool wraps `recommend(use_case)` unchanged —
 the rules-based logic here stays importable from tests without spinning
 up a FastMCP server.
 
-The four verticals mirror `VerticalSchema` in `@spekoai/core` — the API's
-`/v1/sessions` endpoint rejects any other value. All four target the same
-implementation stack today (Next.js App Router, Node runtime,
+The four use cases — general, healthcare, finance, legal — all target
+the same implementation stack today (Next.js App Router, Node runtime,
 `@spekoai/client` in the browser, `@spekoai/sdk` on the backend). The
-per-vertical surface is the tagline, rationale, and the compliance /
+per-use-case surface is the tagline, rationale, and the compliance /
 operational warnings an agent needs to surface to the user before
 shipping a production build.
 """
@@ -43,16 +42,16 @@ class PackageRecommendation(BaseModel):
 
 
 class StackRecommendation(BaseModel):
-    """Opinionated stack for one Speko vertical."""
+    """Opinionated stack for one Speko use case."""
 
     use_case: UseCase
-    tagline: str = Field(description="The speko.dev positioning line for this vertical.")
+    tagline: str = Field(description="The speko.dev positioning line for this use case.")
     packages: list[PackageRecommendation]
     rationale: str = Field(
-        description="Why this stack fits the vertical; one paragraph."
+        description="Why this stack fits the use case; one paragraph."
     )
     warnings: list[str] = Field(
-        description="Vertical-specific caveats (compliance, data retention, auth)."
+        description="Use-case-specific caveats (compliance, data retention, auth)."
     )
     next_tool: str = Field(
         description="Suggested follow-up MCP tool to call with the chosen use case."
@@ -63,7 +62,7 @@ class StackRecommendation(BaseModel):
 
 
 _TAGLINES: dict[UseCase, str] = {
-    "general": "A baseline voice agent — start here if your domain isn't vertical-specific.",
+    "general": "A baseline voice agent — start here if your domain isn't a specialist one.",
     "healthcare": "Clinical-grade accuracy — 98.5% medical-term accuracy.",
     "finance": "Audit-grade recording for regulated conversations.",
     "legal": "Evidence-grade transcripts for client intake and matter discovery.",
@@ -75,7 +74,7 @@ _RATIONALES: dict[UseCase, str] = {
         "specialist STT/LLM/TTS yet. @spekoai/client streams to Speko "
         "over WebRTC; the router picks default providers balanced for "
         "latency and cost. Swap the system prompt to fit your persona "
-        "and upgrade to a vertical preset when one matches."
+        "and upgrade to a specialist use-case preset when one matches."
     ),
     "healthcare": (
         "Browser-based voice intake where mishearing a dosage or drug name "
@@ -102,8 +101,8 @@ _RATIONALES: dict[UseCase, str] = {
 
 _WARNINGS: dict[UseCase, list[str]] = {
     "general": [
-        "No vertical safeguards are baked in — audit the system prompt "
-        "against your domain's specific do-not-do list before shipping.",
+        "No domain-specific safeguards are baked in — audit the system "
+        "prompt against your domain's specific do-not-do list before shipping.",
     ],
     "healthcare": [
         "Not HIPAA-compliant out of the box — sign a BAA with Speko and "
@@ -158,7 +157,7 @@ def _default_packages() -> list[PackageRecommendation]:
 
 
 def recommend(use_case: UseCase) -> StackRecommendation:
-    """Return the opinionated SpekoAI stack for one vertical."""
+    """Return the opinionated SpekoAI stack for one use case."""
     return StackRecommendation(
         use_case=use_case,
         tagline=_TAGLINES[use_case],

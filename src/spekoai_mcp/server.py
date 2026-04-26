@@ -78,8 +78,8 @@ INSTRUCTIONS = "\n\n".join(
         """,
         """
         SpekoAI is a voice-AI gateway: one API that routes STT, LLM,
-        and TTS calls to the best provider per (language, vertical,
-        optimizeFor), with failover handled server-side. Public
+        and TTS calls to the best provider per (language, optimizeFor),
+        with failover handled server-side. Public
         packages: `@spekoai/sdk` (TypeScript server SDK),
         `@spekoai/client` (browser WebRTC SDK), `spekoai` (Python
         server SDK), `@spekoai/adapter-livekit` (LiveKit Agents
@@ -249,18 +249,18 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
             Literal["general", "healthcare", "finance", "legal"],
             Field(
                 description=(
-                    "Speko vertical. One of general, healthcare, finance, "
-                    "legal — matching the VerticalSchema accepted by "
-                    "POST /v1/sessions."
+                    "Speko use case. One of general, healthcare, finance, "
+                    "legal — drives the default system prompt and the "
+                    "compliance warnings surfaced to the user."
                 ),
             ),
         ],
     ) -> recommendations.StackRecommendation:
-        """Return the opinionated SpekoAI stack for one Speko vertical.
+        """Return the opinionated SpekoAI stack for one Speko use case.
 
         Use this before scaffolding to surface the packages to install,
-        the vertical-specific rationale, and any compliance / data-
-        retention warnings the user needs to know. Follow up with
+        the use-case rationale, and any compliance / data-retention
+        warnings the user needs to know. Follow up with
         `scaffold_voice_app(use_case=<same>)` to generate the project
         files.
         """
@@ -273,10 +273,9 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
             Literal["general", "healthcare", "finance", "legal"],
             Field(
                 description=(
-                    "Speko vertical driving the default system prompt "
+                    "Speko use case driving the default system prompt "
                     "and related_resources. One of general, healthcare, "
-                    "finance, legal — matches VerticalSchema at "
-                    "POST /v1/sessions."
+                    "finance, legal."
                 ),
             ),
         ],
@@ -295,14 +294,14 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
             str | None,
             Field(
                 description=(
-                    "Override the vertical-specific default system "
+                    "Override the use-case-specific default system "
                     "prompt. Leave null to use the default."
                 ),
             ),
         ] = None,
     ) -> ToolResult:
         """Build a Next.js App Router voice-app scaffold for one Speko
-        vertical.
+        use case.
 
         Returns an actionable manifest: a text block with step-by-step
         instructions the agent should execute verbatim, plus structured

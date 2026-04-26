@@ -67,7 +67,6 @@ async def test_voice_conversation_prompt_lists_all_config_form_fields() -> None:
     text = "\n".join(m.content.text for m in result.messages)
     expected_fields = [
         "intent.language",
-        "intent.vertical",
         "intent.optimizeFor",
         "systemPrompt",
         "voice",
@@ -92,8 +91,8 @@ async def test_voice_conversation_prompt_lists_all_config_form_fields() -> None:
 
 async def test_voice_conversation_emits_correct_session_shape() -> None:
     """The /v1/sessions body the prompt emits must match the real API:
-    `intent` is a NESTED object containing language + vertical; there
-    is no `agent` / `agentId` / `SPEKO_AGENT_ID` concept. This regression
+    `intent` is a NESTED object containing language; there is no
+    `agent` / `agentId` / `SPEKO_AGENT_ID` concept. This regression
     test guards against the model inventing a flat or agent-keyed shape
     (as a previous scaffold did)."""
     mcp = create_server()
@@ -104,9 +103,9 @@ async def test_voice_conversation_emits_correct_session_shape() -> None:
     text = "\n".join(m.content.text for m in result.messages)
     # Must call the real endpoint path.
     assert "/v1/sessions" in text
-    # Must use `intent: { language, vertical }` — nested, not flat.
+    # Must use `intent: { language }` — nested, not flat.
     assert "intent:" in text
-    assert "language:" in text and "vertical:" in text
+    assert "language:" in text
     # Guard against the `agent`/`agentId` hallucination: check only
     # code-shape occurrences (`agentId:`, `"agent":`, `'agent':`, or a
     # `SPEKO_AGENT_ID` env reference) so the prompt's own prose warning

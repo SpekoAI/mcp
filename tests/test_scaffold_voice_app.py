@@ -1,11 +1,11 @@
 """Tests for `scaffold_voice_app` — Next.js App Router voice-app scaffold.
 
 Guards:
-- Every vertical emits the same four file paths so downstream tooling
+- Every use case emits the same four file paths so downstream tooling
   can rely on a stable layout.
 - The backend route is a Next.js App Router Route Handler (POST export,
   `runtime = 'nodejs'`).
-- The vertical-specific default system prompt lands in the route file.
+- The use-case-specific default system prompt lands in the route file.
 - `languages=['en', 'es']` appends the multilingual note.
 - Explicit `system_prompt` wins over the default verbatim.
 - The component file content is pulled from the bundled component
@@ -19,7 +19,7 @@ import pytest
 from spekoai_mcp.scaffolds import ScaffoldManifest, build_voice_app_manifest
 from spekoai_mcp.server import create_server
 
-_VERTICALS = ["general", "healthcare", "finance", "legal"]
+_USE_CASES = ["general", "healthcare", "finance", "legal"]
 
 _EXPECTED_PATHS = {
     "app/api/speko/route.ts",
@@ -34,14 +34,14 @@ def _files_by_path(manifest: ScaffoldManifest) -> dict[str, str]:
     return {f.path: f.content for f in manifest.files}
 
 
-@pytest.mark.parametrize("use_case", _VERTICALS)
+@pytest.mark.parametrize("use_case", _USE_CASES)
 def test_manifest_has_expected_files(use_case: str) -> None:
     manifest = build_voice_app_manifest(use_case)  # type: ignore[arg-type]
     paths = {f.path for f in manifest.files}
     assert paths == _EXPECTED_PATHS
 
 
-@pytest.mark.parametrize("use_case", _VERTICALS)
+@pytest.mark.parametrize("use_case", _USE_CASES)
 def test_route_handler_uses_node_runtime_and_post(use_case: str) -> None:
     manifest = build_voice_app_manifest(use_case)  # type: ignore[arg-type]
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
@@ -127,14 +127,13 @@ def test_install_commands_include_spekoai_client() -> None:
     assert "textarea" in joined
 
 
-def test_page_seeds_ui_defaults_from_vertical() -> None:
+def test_page_seeds_ui_defaults_from_use_case() -> None:
     manifest = build_voice_app_manifest("healthcare", languages=["es"])
     page = _files_by_path(manifest)["app/page.tsx"]
     # Default config object is declared server-side and passed to the
     # client island so the pre-call form shows the right initial values.
     assert "DEFAULT_CONFIG" in page
     assert "'es-US'" in page
-    assert "'healthcare'" in page
     assert "systemPrompt" in page
 
 
@@ -143,7 +142,6 @@ def test_component_declares_session_config_types() -> None:
     body = _files_by_path(manifest)["components/speko-voice-session.tsx"]
     assert "SessionConfig" in body
     assert "SessionLanguage" in body
-    assert "SessionVertical" in body
     assert "SessionOptimizeFor" in body
 
 
