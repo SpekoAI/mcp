@@ -117,10 +117,10 @@ The SpekoAI platform is its own OAuth 2.1 / OIDC issuer (Better Auth's
 The endpoints live under `/api/auth/oauth2/*` on the dashboard origin,
 which rewrites through to the server.
 
-For a deployment where the dashboard is `https://platform.speko.ai`:
+For a deployment where the dashboard is `https://platform.speko.dev`:
 
 ```
-SPEKOAI_OAUTH_ISSUER=https://platform.speko.ai/api/auth/oauth2
+SPEKOAI_OAUTH_ISSUER=https://platform.speko.dev/api/auth/oauth2
 SPEKOAI_MCP_BASE_URL=https://mcp.speko.ai
 ```
 
@@ -128,7 +128,7 @@ SPEKOAI_MCP_BASE_URL=https://mcp.speko.ai
 `/authorize` and `/token` to `SPEKOAI_OAUTH_ISSUER`, so this env var must
 end at the `/oauth2` segment — no trailing slash. That is **not** the OIDC
 spec `iss` claim. The OIDC spec issuer (and the `iss` value inside tokens
-emitted by the platform) is `https://platform.speko.ai/api/auth` — one
+emitted by the platform) is `https://platform.speko.dev/api/auth` — one
 segment shorter, matching where Better Auth mounts the discovery document.
 Same host, different paths.
 
