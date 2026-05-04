@@ -24,7 +24,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from spekoai_mcp.recommendations import UseCase
+from spekoai_mcp.selector import OptimizeFor, select_ranked
 
 SpokenLanguage = Literal["en", "es"]
 Framework = Literal["nextjs"]
@@ -59,43 +59,19 @@ class ScaffoldManifest(BaseModel):
     )
 
 
-_SYSTEM_PROMPTS: dict[UseCase, str] = {
-    "general": (
-        "You are a concise, helpful voice assistant. Answer the caller's "
-        "questions directly, ask one clarifying question at a time when "
-        "you need more context, and confirm numbers, names, and dates "
-        "by repeating them back to avoid mishearing."
-    ),
-    "healthcare": (
-        "You are a voice assistant for a healthcare provider. Be concise "
-        "and empathetic. Capture chief complaint, current symptoms, and "
-        "any medications the caller mentions. Never give a diagnosis or "
-        "definitive medical advice — always recommend the caller speak "
-        "to a licensed clinician. Confirm key medical details (dosage, "
-        "drug names) by repeating them back to avoid mishearing."
-    ),
-    "finance": (
-        "You are a voice assistant for a financial services firm. Help "
-        "with account questions, transaction history, and basic banking "
-        "inquiries. Do not give investment advice. Verify caller "
-        "identity out-of-band before discussing account details. Repeat "
-        "amounts and account IDs back to confirm."
-    ),
-    "legal": (
-        "You are a voice assistant for a law firm handling client "
-        "intake. Capture the caller's name, contact information, matter "
-        "type, key dates, and a short description of the issue. Never "
-        "give legal advice or opinions on outcomes — tell the caller an "
-        "attorney will review their intake and follow up. Confirm names, "
-        "case citations, and dates by repeating them back."
-    ),
-}
-
-# Use cases whose default prompt already addresses multilingual behavior;
-# skip the generic EN/ES append for these so we don't double up. None of
-# the current use cases own their multilingual behavior in-prompt, but
-# keeping the hook in place makes it cheap to add a new one that does.
-_ALREADY_MULTILINGUAL: set[UseCase] = set()
+# Single neutral system prompt — vertical-tuned prompts will land once the
+# benchmark data is per-vertical. Until then we ship a generic, well-
+# defined voice-assistant baseline so the scaffold compiles and runs;
+# the caller is expected to overwrite this for their domain via the
+# `system_prompt` parameter.
+_DEFAULT_SYSTEM_PROMPT = (
+    "You are a concise, helpful voice assistant. Answer the caller's "
+    "questions directly, ask one clarifying question at a time when "
+    "you need more context, and confirm numbers, names, and dates by "
+    "repeating them back to avoid mishearing. Edit this prompt to "
+    "match your domain — Speko routes the audio; the prompt defines "
+    "the persona."
+)
 
 _MULTILINGUAL_APPEND = (
     " Reply in whichever language the caller uses — both English and "
@@ -108,17 +84,63 @@ _LANGUAGE_TAG: dict[SpokenLanguage, str] = {
 }
 
 
-def _default_system_prompt(
-    use_case: UseCase, languages: list[SpokenLanguage]
-) -> str:
-    base = _SYSTEM_PROMPTS[use_case]
-    if "es" in languages and use_case not in _ALREADY_MULTILINGUAL:
+def _default_system_prompt(languages: list[SpokenLanguage]) -> str:
+    base = _DEFAULT_SYSTEM_PROMPT
+    if "es" in languages:
         return base + _MULTILINGUAL_APPEND
     return base
 
 
-def _route_ts(system_prompt: str, language_tag: str) -> str:
+def _route_ts(
+    system_prompt: str,
+    language_tag: str,
+    optimize_for: OptimizeFor = "latency",
+    region: str = "global",
+) -> str:
     escaped_prompt = system_prompt.replace("\\", "\\\\").replace("`", "\\`")
+
+    # When either knob is non-default, bake it into the route handler.
+    # `latency` is the runtime default for voice apps — we leave the
+    # constant commented out so the scaffold's default body stays
+    # minimal; the Speko router infers the same axis when omitted.
+    region_line = (
+        f"const DEFAULT_REGION = '{region}';"
+        if region != "global"
+        else "// const DEFAULT_REGION = 'us-east4'; // omit to use 'global' (batch ranking)"
+    )
+    optimize_line = (
+        f"const DEFAULT_OPTIMIZE_FOR: 'latency' | 'accuracy' | 'cost' = '{optimize_for}';"
+        if optimize_for != "latency"
+        else "// const DEFAULT_OPTIMIZE_FOR: 'latency' | 'accuracy' | 'cost' = 'accuracy';"
+    )
+
+    # Run a fresh selector pass so the header comment lists the
+    # top-1 picks the runtime would route to for this (optimize_for,
+    # region) pair. English-only today; the comment carries an
+    # explicit caveat so callers see when picks were unavailable.
+    picks_header_lines: list[str] = [
+        "// === Speko routing picks (top-1 from bundled v0 fixtures) ===",
+        f"// optimize_for={optimize_for}, region={region}",
+    ]
+    selection = select_ranked(
+        language="en", region=region, optimize_for=optimize_for, limit=1
+    )
+    for label, picks in (
+        ("STT", selection.stt),
+        ("LLM", selection.llm),
+        ("TTS", selection.tts),
+        ("S2S", selection.s2s),
+    ):
+        if picks:
+            top = picks[0]
+            picks_header_lines.append(
+                f"//   {label}: {top.provider_id} (score={top.score:.3f}, p50={top.primary_latency_ms}ms)"
+            )
+        else:
+            picks_header_lines.append(f"//   {label}: (no fixture data)")
+    picks_header_lines.append("// ============================================================")
+    picks_header = "\n".join(picks_header_lines)
+
     return f"""// Next.js App Router route handler — mints a Speko conversation
 // token for the browser. The Speko server SDK does not expose a
 // sessions helper yet, so this uses raw fetch against /v1/sessions.
@@ -132,6 +154,8 @@ def _route_ts(system_prompt: str, language_tag: str) -> str:
 // Returns `{{ server_url, participant_token }}` so it plugs directly
 // into LiveKit's TokenSource.endpoint() on the client.
 
+{picks_header}
+
 export const runtime = 'nodejs';
 
 const SPEKO_API_KEY = process.env.SPEKO_API_KEY;
@@ -143,8 +167,8 @@ const SPEKO_BASE_URL = process.env.SPEKO_BASE_URL ?? 'https://api.speko.ai';
 // client can override any field per-request by sending it in the POST body.
 const DEFAULT_SYSTEM_PROMPT = `{escaped_prompt}`;
 const DEFAULT_LANGUAGE = '{language_tag}';
-// const DEFAULT_REGION = 'us-east4'; // omit to use 'global' (batch ranking)
-// const DEFAULT_OPTIMIZE_FOR: 'latency' | 'quality' = 'latency';
+{region_line}
+{optimize_line}
 // ============================================================================
 
 type SessionOverrides = {{
@@ -210,18 +234,27 @@ export async function POST(req: Request): Promise<Response> {{
 """
 
 
-def _page_tsx(system_prompt: str, language_tag: str) -> str:
+def _page_tsx(
+    system_prompt: str,
+    language_tag: str,
+    optimize_for: OptimizeFor = "latency",
+) -> str:
     escaped_prompt = system_prompt.replace("\\", "\\\\").replace("`", "\\`")
     # Page is a Server Component that hands initial config (read from
     # env-agnostic constants, not env vars) down to the client island.
     # Users edit these defaults here and in app/api/speko/route.ts
     # — the route-level defaults still apply when the client omits a
     # field, but the UI always sends explicit values.
+    #
+    # `optimize_for` is injected verbatim into the page's DEFAULT_CONFIG
+    # so the pre-call form ships with the same intent the caller asked
+    # for.
+    page_optimize = optimize_for
     return f"""import {{ SpekoVoiceSession }} from '@/components/speko-voice-session';
 
 const DEFAULT_CONFIG = {{
   language: '{language_tag}' as const,
-  optimizeFor: 'latency' as const,
+  optimizeFor: '{page_optimize}' as const,
   systemPrompt: `{escaped_prompt}`,
 }};
 
@@ -292,11 +325,20 @@ def _load_react_voice_session() -> str:
 
 
 def build_voice_app_manifest(
-    use_case: UseCase,
     languages: list[SpokenLanguage] | None = None,
     system_prompt: str | None = None,
+    optimize_for: OptimizeFor = "latency",
+    region: str = "global",
 ) -> ScaffoldManifest:
-    """Build a Next.js App Router voice-app scaffold for one Speko use case."""
+    """Build a Next.js App Router voice-app scaffold for any domain.
+
+    `optimize_for` and `region` are forwarded into the route handler:
+    when non-default the scaffold bakes the values in (the constants
+    live commented out in the default template). The route file's
+    header comment lists the top-1 STT/LLM/TTS/S2S provider picks for
+    the requested (optimize_for, region) pair so the user sees what
+    routing they're shipping before they hit deploy.
+    """
     langs: list[SpokenLanguage] = list(languages) if languages else ["en"]
     # Deduplicate while preserving order so ["en", "en"] collapses to ["en"]
     # without changing the primary language choice.
@@ -308,14 +350,16 @@ def build_voice_app_manifest(
     prompt = (
         system_prompt
         if system_prompt is not None
-        else _default_system_prompt(use_case, langs)
+        else _default_system_prompt(langs)
     )
     primary_language_tag = _LANGUAGE_TAG[langs[0]]
 
     files_list = [
         ScaffoldFile(
             path="app/api/speko/route.ts",
-            content=_route_ts(prompt, primary_language_tag),
+            content=_route_ts(
+                prompt, primary_language_tag, optimize_for=optimize_for, region=region
+            ),
             language_hint="ts",
         ),
         ScaffoldFile(
@@ -325,7 +369,7 @@ def build_voice_app_manifest(
         ),
         ScaffoldFile(
             path="app/page.tsx",
-            content=_page_tsx(prompt, primary_language_tag),
+            content=_page_tsx(prompt, primary_language_tag, optimize_for=optimize_for),
             language_hint="tsx",
         ),
         ScaffoldFile(

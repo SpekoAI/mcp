@@ -1,29 +1,27 @@
-"""Opinionated stack recommendations for the four SpekoAI use cases.
+"""Stack recommendations driven by real benchmark data.
 
-The `recommended_stack` MCP tool wraps `recommend(use_case)` unchanged —
-the rules-based logic here stays importable from tests without spinning
-up a FastMCP server.
+The `recommended_stack` MCP tool wraps `recommend(...)` — kept import-
+able from tests without a FastMCP server.
 
-The four use cases — general, healthcare, finance, legal — all target
-the same implementation stack today (Next.js App Router, Node runtime,
-`@spekoai/client` in the browser, `@spekoai/sdk` on the backend). The
-per-use-case surface is the tagline, rationale, and the compliance /
-operational warnings an agent needs to surface to the user before
-shipping a production build.
+What this module returns: the two `@spekoai/*` packages everyone needs
+plus the top-3 STT / LLM / TTS / S2S provider picks for the caller's
+optimize-for axis (`latency` | `accuracy` | `speed`), pulled from the
+v0 routing fixtures shipped in `_data/`. Vertical / use-case branching
+was deliberately removed in this revision: until the benchmark data is
+tuned per vertical, picking providers based on the vertical name would
+just be lying with a confident voice. We surface the picks honestly
+and let the caller pair them with their own domain prompt.
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
-UseCase = Literal[
-    "general",
-    "healthcare",
-    "finance",
-    "legal",
-]
+from spekoai_mcp.selector import (
+    OptimizeFor,
+    RankedCandidate,
+    select_ranked,
+)
 
 
 class PackageRecommendation(BaseModel):
@@ -42,90 +40,66 @@ class PackageRecommendation(BaseModel):
 
 
 class StackRecommendation(BaseModel):
-    """Opinionated stack for one Speko use case."""
+    """SpekoAI stack + real provider picks for one routing intent."""
 
-    use_case: UseCase
-    tagline: str = Field(description="The speko.dev positioning line for this use case.")
-    packages: list[PackageRecommendation]
-    rationale: str = Field(
-        description="Why this stack fits the use case; one paragraph."
+    optimize_for: OptimizeFor = Field(
+        description=(
+            "Optimization preset that drove the provider ranking: "
+            "`latency` (minimize first-response time — default), "
+            "`accuracy` (maximize quality scores), or `cost` "
+            "(minimize per-minute price for high-volume apps)."
+        ),
     )
-    warnings: list[str] = Field(
-        description="Use-case-specific caveats (compliance, data retention, auth)."
+    intent: dict = Field(
+        default_factory=dict,
+        description=(
+            "Echo of the (language, region, optimize_for) intent that "
+            "produced the picks."
+        ),
+    )
+    summary: str = Field(
+        description=(
+            "One-paragraph plain-English summary of what these picks "
+            "mean for the caller and how to read the four modality "
+            "lists."
+        ),
+    )
+    packages: list[PackageRecommendation] = Field(
+        description="Speko packages to install regardless of routing picks.",
+    )
+    stt: list[RankedCandidate] = Field(
+        default_factory=list,
+        description="Top-3 STT candidates for the requested intent.",
+    )
+    llm: list[RankedCandidate] = Field(
+        default_factory=list,
+        description="Top-3 LLM candidates for the requested intent.",
+    )
+    tts: list[RankedCandidate] = Field(
+        default_factory=list,
+        description="Top-3 TTS candidates for the requested intent.",
+    )
+    s2s: list[RankedCandidate] = Field(
+        default_factory=list,
+        description="Top-3 speech-to-speech candidates for the requested intent.",
+    )
+    data_generated_at: str = Field(
+        default="",
+        description="Earliest 'generated_at' across the bundled v0 routing fixtures.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Selector advisories (language gaps, S2S region fallbacks, etc.).",
     )
     next_tool: str = Field(
-        description="Suggested follow-up MCP tool to call with the chosen use case."
+        default="scaffold_voice_app",
+        description="Suggested follow-up MCP tool to call with the same intent.",
     )
     related_resources: list[str] = Field(
-        description="spekoai://docs/... URIs the agent should read first."
+        default_factory=list,
+        description="spekoai://docs/... URIs the agent should read first.",
     )
 
-
-_TAGLINES: dict[UseCase, str] = {
-    "general": "A baseline voice agent — start here if your domain isn't a specialist one.",
-    "healthcare": "Clinical-grade accuracy — 98.5% medical-term accuracy.",
-    "finance": "Audit-grade recording for regulated conversations.",
-    "legal": "Evidence-grade transcripts for client intake and matter discovery.",
-}
-
-_RATIONALES: dict[UseCase, str] = {
-    "general": (
-        "A starting-point voice agent for domains we don't route with a "
-        "specialist STT/LLM/TTS yet. @spekoai/client streams to Speko "
-        "over WebRTC; the router picks default providers balanced for "
-        "latency and cost. Swap the system prompt to fit your persona "
-        "and upgrade to a specialist use-case preset when one matches."
-    ),
-    "healthcare": (
-        "Browser-based voice intake where mishearing a dosage or drug name "
-        "is a safety event. @spekoai/client streams to Speko over WebRTC; "
-        "the router prefers STT providers benchmarked on medical "
-        "terminology. The backend mints short-lived conversation tokens "
-        "so PHI never leaves your control plane."
-    ),
-    "finance": (
-        "Customer-facing voice interactions that may be audited later. "
-        "@spekoai/client handles the real-time conversation; the Speko "
-        "API stores conversation metadata you can query for reporting. "
-        "Identity verification is out-of-band — the voice agent must not "
-        "be the sole auth factor."
-    ),
-    "legal": (
-        "Client intake and matter discovery where the transcript is the "
-        "record of record. @spekoai/client captures the conversation; "
-        "the server-side SDK can re-run transcription on the stored "
-        "audio for attorney review. The scaffold leaves the privileged-"
-        "communication retention policy to you — see the warning below."
-    ),
-}
-
-_WARNINGS: dict[UseCase, list[str]] = {
-    "general": [
-        "No domain-specific safeguards are baked in — audit the system "
-        "prompt against your domain's specific do-not-do list before shipping.",
-    ],
-    "healthcare": [
-        "Not HIPAA-compliant out of the box — sign a BAA with Speko and "
-        "your own hosting vendor before routing PHI through this stack.",
-        "STT confidence is not a diagnosis confidence. Have a clinician "
-        "review any automated triage decisions.",
-    ],
-    "finance": [
-        "Verify caller identity out-of-band (e.g. one-time code, known "
-        "device) before discussing account details — the voice agent has "
-        "no inherent authentication.",
-        "Keep an immutable call log if your regulator requires it "
-        "(FINRA 4511, MiFID II). The Speko API gives you the transcript; "
-        "retention is your responsibility.",
-    ],
-    "legal": [
-        "Transcripts of attorney-client conversations are privileged — "
-        "store them with the same access controls as matter files, not "
-        "in shared analytics buckets.",
-        "Disclose recording at the start of the call per state-specific "
-        "two-party-consent laws (e.g. CA, FL, IL, WA) before intake.",
-    ],
-}
 
 _RELATED_RESOURCES: list[str] = [
     "spekoai://docs/client-skills",
@@ -156,14 +130,62 @@ def _default_packages() -> list[PackageRecommendation]:
     ]
 
 
-def recommend(use_case: UseCase) -> StackRecommendation:
-    """Return the opinionated SpekoAI stack for one use case."""
+_SUMMARIES: dict[OptimizeFor, str] = {
+    "latency": (
+        "Latency-optimized stack — providers ranked by p50 time-to-"
+        "first-output (TTFP for STT, TTFB for TTS, TTFT for LLM, "
+        "tool-call p50 for S2S). Default for voice — the perceived "
+        "snappiness of the agent is usually the primary product signal."
+    ),
+    "accuracy": (
+        "Accuracy-optimized stack — providers ranked primarily by "
+        "quality scores (WER for STT, CER for TTS, AA index for LLM, "
+        "task-success rate for S2S). Use when transcription / response "
+        "fidelity matters more than first-response timing."
+    ),
+    "cost": (
+        "Cost-optimized stack — providers ranked primarily by per-"
+        "minute price. Useful for high-volume apps where margin "
+        "dominates UX choices, or for early experimentation before "
+        "you know which quality / latency floor your product needs."
+    ),
+}
+
+
+def recommend(
+    optimize_for: OptimizeFor = "latency",
+    language: str = "en",
+    region: str = "global",
+) -> StackRecommendation:
+    """Return the SpekoAI stack + real provider picks for one intent.
+
+    Parameters
+
+    - `optimize_for` — one of `latency` | `accuracy` | `cost`. Drives
+      the per-axis weights used to rank STT/TTS/LLM/S2S picks.
+      `latency` is the default; voice-AI users feel TTFB first.
+    - `language` — caller's spoken language. v0 fixtures cover English
+      only; non-English requests echo the intent and surface a notes
+      entry but return empty modality lists.
+    - `region` — `global` selects batch ranking for STT/TTS;
+      `us-east4`, `europe-west3`, `asia-southeast1` select streaming /
+      realtime ranking. S2S is realtime-only — `global` falls back to
+      `realtime.us-east4` and we surface that fallback in `notes`.
+    """
+    selection = select_ranked(
+        language=language, region=region, optimize_for=optimize_for, limit=3
+    )
+
     return StackRecommendation(
-        use_case=use_case,
-        tagline=_TAGLINES[use_case],
+        optimize_for=optimize_for,
+        intent=selection.intent,
+        summary=_SUMMARIES[optimize_for],
         packages=_default_packages(),
-        rationale=_RATIONALES[use_case],
-        warnings=list(_WARNINGS[use_case]),
-        next_tool="scaffold_voice_app",
+        stt=list(selection.stt),
+        llm=list(selection.llm),
+        tts=list(selection.tts),
+        s2s=list(selection.s2s),
+        data_generated_at=selection.data_generated_at,
+        notes=list(selection.notes),
         related_resources=list(_RELATED_RESOURCES),
     )

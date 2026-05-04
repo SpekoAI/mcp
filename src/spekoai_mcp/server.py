@@ -77,6 +77,20 @@ INSTRUCTIONS = "\n\n".join(
         structured metadata.
         """,
         """
+        Need a recommended stack? Call `recommended_stack(optimize_for,
+        language, region)` where `optimize_for` is one of `latency`
+        (default — minimize TTFB), `accuracy` (maximize quality
+        scores), or `cost` (minimize per-minute price). It returns
+        the @spekoai package list plus the top-3 STT / LLM / TTS /
+        S2S provider picks (with composite scores, p50 latency, and
+        per-minute cost) ranked from the bundled v0 benchmark
+        fixtures. Pair it with `scaffold_voice_app(optimize_for,
+        region, ...)` to bake those choices into a Next.js scaffold
+        the agent can execute verbatim. Vertical / use-case branching
+        is intentionally omitted in v0 — benchmark data isn't yet
+        vertical-tuned.
+        """,
+        """
         SpekoAI is a voice-AI gateway: one API that routes STT, LLM,
         and TTS calls to the best provider per (language, optimizeFor),
         with failover handled server-side. Public
@@ -245,40 +259,73 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
     @mcp.tool
     async def recommended_stack(
         _ctx: Context,
-        use_case: Annotated[
-            Literal["general", "healthcare", "finance", "legal"],
+        optimize_for: Annotated[
+            Literal["latency", "accuracy", "cost"],
             Field(
                 description=(
-                    "Speko use case. One of general, healthcare, finance, "
-                    "legal — drives the default system prompt and the "
-                    "compliance warnings surfaced to the user."
+                    "Ranking preset for the STT / LLM / TTS / S2S "
+                    "candidates. `latency` (default) minimizes time-"
+                    "to-first-output, `accuracy` maximizes quality "
+                    "scores, `cost` minimizes per-minute price. "
+                    "Vertical / use-case branching is deliberately "
+                    "not exposed yet — benchmark data isn't tuned "
+                    "per vertical."
                 ),
             ),
-        ],
+        ] = "latency",
+        language: Annotated[
+            str,
+            Field(
+                description=(
+                    "BCP-47 language tag of the caller. v0 fixtures "
+                    "cover English (`en`) only; non-English requests "
+                    "echo the intent but return empty provider picks "
+                    "plus a `notes` entry citing the gap."
+                ),
+            ),
+        ] = "en",
+        region: Annotated[
+            str,
+            Field(
+                description=(
+                    "Routing region. `global` selects batch ranking "
+                    "for STT/TTS; `us-east4`, `europe-west3`, "
+                    "`asia-southeast1` select streaming/realtime "
+                    "ranking. S2S is realtime-only — `global` falls "
+                    "back to `realtime.us-east4` and surfaces that "
+                    "fallback in `notes`."
+                ),
+            ),
+        ] = "global",
     ) -> recommendations.StackRecommendation:
-        """Return the opinionated SpekoAI stack for one Speko use case.
+        """Return the SpekoAI stack plus real provider picks.
 
-        Use this before scaffolding to surface the packages to install,
-        the use-case rationale, and any compliance / data-retention
-        warnings the user needs to know. Follow up with
-        `scaffold_voice_app(use_case=<same>)` to generate the project
-        files.
+        Use this before scaffolding to get (a) the @spekoai packages
+        to install and (b) the top-3 STT / LLM / TTS / S2S provider
+        picks for the caller's optimize-for axis. Provider rankings
+        are sourced from the bundled v0 benchmark fixtures and include
+        composite score, p50 latency, and per-minute cost where
+        published.
+
+        Example: a user asking "best stack with low latency" maps to
+        `recommended_stack(optimize_for="latency", language="en",
+        region="us-east4")`. A high-volume app prioritizing margin
+        maps to `optimize_for="cost"`. A transcription-heavy product
+        with stricter quality bars maps to `optimize_for="accuracy"`.
+
+        Follow up with `scaffold_voice_app(optimize_for=<same>,
+        region=<same>)` so the scaffold's route defaults match the
+        picks the agent just surfaced.
         """
-        return recommendations.recommend(use_case)
+        return recommendations.recommend(
+            optimize_for=optimize_for,
+            language=language,
+            region=region,
+        )
 
     @mcp.tool
     async def scaffold_voice_app(
         _ctx: Context,
-        use_case: Annotated[
-            Literal["general", "healthcare", "finance", "legal"],
-            Field(
-                description=(
-                    "Speko use case driving the default system prompt "
-                    "and related_resources. One of general, healthcare, "
-                    "finance, legal."
-                ),
-            ),
-        ],
         languages: Annotated[
             list[Literal["en", "es"]] | None,
             Field(
@@ -294,25 +341,65 @@ def create_server(auth: OAuthProxy | None = None) -> FastMCP:
             str | None,
             Field(
                 description=(
-                    "Override the use-case-specific default system "
-                    "prompt. Leave null to use the default."
+                    "Override the default neutral voice-assistant "
+                    "system prompt. Strongly recommended — set this "
+                    "to your domain-specific persona. Leave null to "
+                    "use the generic baseline."
                 ),
             ),
         ] = None,
+        optimize_for: Annotated[
+            Literal["latency", "accuracy", "cost"],
+            Field(
+                description=(
+                    "Ranking preset for the route's `intent.optimizeFor` "
+                    "default. `latency` (default) leaves the route's "
+                    "optimizeFor commented out so the Speko router picks "
+                    "with its own defaults; `accuracy` or `cost` bakes "
+                    "the preset into both the route handler and the "
+                    "page config so the scaffold ships with explicit "
+                    "intent."
+                ),
+            ),
+        ] = "latency",
+        region: Annotated[
+            str,
+            Field(
+                description=(
+                    "Routing region default for the scaffold's "
+                    "`intent.region`. `global` (default) leaves region "
+                    "off; any other value bakes the region into the "
+                    "route handler so all sessions ship with that "
+                    "intent. Header comment in the route file lists the "
+                    "STT/LLM/TTS/S2S picks for the requested "
+                    "(optimize_for, region) pair."
+                ),
+            ),
+        ] = "global",
     ) -> ToolResult:
-        """Build a Next.js App Router voice-app scaffold for one Speko
-        use case.
+        """Build a Next.js App Router voice-app scaffold.
 
         Returns an actionable manifest: a text block with step-by-step
         instructions the agent should execute verbatim, plus structured
         content with the exact file bodies, install commands, and
         env vars. Create each file at its given `path` byte-for-byte —
         no paraphrasing.
+
+        When `optimize_for` is non-`latency` or `region` is non-`global`,
+        the route handler bakes those values in (they're commented out
+        in the default scaffold) and the file's header comment lists
+        the top-1 STT / LLM / TTS / S2S provider picks the runtime
+        would route to so the user can audit before shipping.
+
+        Domain-flavored prompts: pass your own `system_prompt`. The
+        bundled default is a neutral voice-assistant baseline because
+        v0 routing data isn't yet vertical-tuned.
         """
         manifest = scaffolds.build_voice_app_manifest(
-            use_case=use_case,
             languages=languages,
             system_prompt=system_prompt,
+            optimize_for=optimize_for,
+            region=region,
         )
         return ToolResult(
             content=[TextContent(type="text", text=_render_scaffold_instructions(manifest))],

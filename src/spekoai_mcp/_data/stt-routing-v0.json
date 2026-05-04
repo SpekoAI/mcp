@@ -1,0 +1,631 @@
+{
+  "schema": "speko.routing.stt",
+  "schema_version": "0.1.0",
+  "generated_at": "2026-04-25",
+  "language_scope": ["en"],
+  "scoring": {
+    "weights": {
+      "wer": 0.50,
+      "ttfp": 0.30,
+      "cost": 0.20,
+      "_note": "v0 default vector. Higher weight on accuracy because that's the dominant signal users complain about. Latency and cost are tiebreakers."
+    },
+    "normalization": {
+      "method": "min-max-inverted",
+      "formula": "norm(x) = (max - x) / (max - min); higher = better; computed over the active candidate set after hard filters",
+      "_note": "Normalization is per-axis and per-mode. Re-normalized whenever the candidate set changes (e.g. a provider drops below the TTFP cutoff)."
+    },
+    "composite_formula": "composite = 0.50 * wer_norm + 0.30 * ttfp_norm + 0.20 * cost_norm",
+    "hard_filters": {
+      "streaming": {
+        "max_ttfp_p50_ms": 3000,
+        "exclude_warned": true,
+        "requires_streaming_protocol": true,
+        "requires_language": "en"
+      },
+      "batch": {
+        "exclude_warned": true,
+        "requires_language": "en"
+      }
+    },
+    "tiebreaker": "If composites are within 0.01, prefer lower TTFP for streaming and lower cost for batch."
+  },
+
+  "providers": [
+    {
+      "id": "deepgram-nova3",
+      "name": "Deepgram",
+      "model": "Nova-3",
+      "status": "production",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "streaming": "websocket-binary",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://api.deepgram.com/v1/listen",
+        "batch": "https://api.deepgram.com/v1/listen"
+      },
+      "languages_count": 36,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0077,
+        "tier10k": 0.0065,
+        "tier100k": 0.0055,
+        "mode_priced": "streaming",
+        "note": "Streaming rate. Batch is $0.0043/min flat."
+      },
+      "english": {
+        "wer_pct": 7.8,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 366,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 1061,
+          "europe-west3": 1136,
+          "asia-southeast1": 1172
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 0,
+          "europe-west3": 0,
+          "asia-southeast1": 0
+        }
+      },
+      "noise_robustness_avg_delta_pp": 2.6,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": 0.256, "wer_norm": 0.083, "ttfp_norm": 0.713, "cost_norm": 0.000, "passed_filter": true },
+        "streaming.europe-west3":  { "composite": 0.242, "wer_norm": 0.083, "ttfp_norm": 0.666, "cost_norm": 0.000, "passed_filter": true },
+        "streaming.asia-southeast1": { "composite": 0.283, "wer_norm": 0.083, "ttfp_norm": 0.804, "cost_norm": 0.000, "passed_filter": true },
+        "batch": { "composite": 0.611, "wer_norm": 0.290, "latency_norm": 1.000, "cost_norm": 0.828, "passed_filter": true }
+      }
+    },
+    {
+      "id": "elevenlabs-scribe-v2",
+      "name": "ElevenLabs",
+      "model": "Scribe v2 Realtime",
+      "status": "production",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "streaming": "websocket-json-base64",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://api.elevenlabs.io/v1/speech-to-text/realtime",
+        "batch": "https://api.elevenlabs.io/v1/speech-to-text"
+      },
+      "languages_count": 99,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0065,
+        "tier10k": 0.0065,
+        "tier100k": null,
+        "mode_priced": "streaming",
+        "note": "Realtime endpoint priced at Business tier ($0.39/hr). Batch Scribe v1 is $0.0037/min."
+      },
+      "english": {
+        "wer_pct": 3.4,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 1071,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 2048,
+          "europe-west3": 2119,
+          "asia-southeast1": 2231
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 229,
+          "europe-west3": 300,
+          "asia-southeast1": 437
+        }
+      },
+      "noise_robustness_avg_delta_pp": 1.7,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": 0.554, "wer_norm": 1.000, "ttfp_norm": 0.074, "cost_norm": 0.160, "passed_filter": true },
+        "streaming.europe-west3":  { "composite": 0.532, "wer_norm": 1.000, "ttfp_norm": 0.000, "cost_norm": 0.160, "passed_filter": true },
+        "streaming.asia-southeast1": { "composite": 0.551, "wer_norm": 1.000, "ttfp_norm": 0.000, "cost_norm": 0.255, "passed_filter": true },
+        "batch": { "composite": 0.894, "wer_norm": 1.000, "latency_norm": 0.830, "cost_norm": 0.727, "passed_filter": true }
+      }
+    },
+    {
+      "id": "elevenlabs-scribe-v1",
+      "name": "ElevenLabs",
+      "model": "Scribe v1",
+      "status": "production",
+      "modes_supported": ["batch"],
+      "protocols": {
+        "batch": "https"
+      },
+      "endpoints": {
+        "batch": "https://api.elevenlabs.io/v1/speech-to-text"
+      },
+      "languages_count": 99,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0037,
+        "tier10k": 0.0037,
+        "tier100k": null,
+        "mode_priced": "batch",
+        "note": "Batch-only at Business tier ($0.22/hr)."
+      },
+      "english": {
+        "wer_pct": 5.4,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 1019
+      },
+      "noise_robustness_avg_delta_pp": 1.5,
+      "warning": null,
+      "scores": {
+        "batch": { "composite": 0.763, "wer_norm": 0.677, "latency_norm": 0.843, "cost_norm": 0.853, "passed_filter": true }
+      }
+    },
+    {
+      "id": "alibaba-qwen3-asr-flash",
+      "name": "Alibaba",
+      "model": "qwen3-asr-flash",
+      "status": "production",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "websocket-json"
+      },
+      "endpoints": {
+        "batch": "https://dashscope-intl.aliyuncs.com/api/v1/services/audio/asr/transcription",
+        "streaming": "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
+      },
+      "languages_count": 90,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0021,
+        "tier10k": 0.0021,
+        "tier100k": null,
+        "mode_priced": "batch",
+        "note": "Flat across published tiers. Cheapest dedicated ASR on the bench."
+      },
+      "english": {
+        "wer_pct": 3.5,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 1021,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 6535,
+          "europe-west3": 6567,
+          "asia-southeast1": 6326
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 412,
+          "europe-west3": 415,
+          "asia-southeast1": 210
+        }
+      },
+      "noise_robustness_avg_delta_pp": 1.9,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6535 exceeds 3000ms streaming cutoff" },
+        "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6567 exceeds 3000ms streaming cutoff" },
+        "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6326 exceeds 3000ms streaming cutoff" },
+        "batch": { "composite": 0.929, "wer_norm": 0.984, "latency_norm": 0.842, "cost_norm": 0.920, "passed_filter": true }
+      }
+    },
+    {
+      "id": "openai-gpt-4o-transcribe",
+      "name": "OpenAI",
+      "model": "gpt-4o-transcribe",
+      "status": "warned",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "https-sse"
+      },
+      "endpoints": {
+        "batch": "https://api.openai.com/v1/audio/transcriptions",
+        "streaming": "https://api.openai.com/v1/audio/transcriptions"
+      },
+      "languages_count": 50,
+      "billing_model": "per-minute",
+      "cost_per_minute_usd": {
+        "tier1k": 0.006,
+        "tier10k": 0.006,
+        "tier100k": 0.006,
+        "mode_priced": "both",
+        "note": "Flat rate."
+      },
+      "english": {
+        "wer_pct": 19.4,
+        "wer_dataset": "FLEURS-calibrated long-form clean (raw, includes truncated clips)",
+        "batch_latency_p50_ms": 1064,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 585,
+          "europe-west3": 574,
+          "asia-southeast1": 739
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 817,
+          "europe-west3": 859,
+          "asia-southeast1": 1033
+        }
+      },
+      "warning": "14.6% silent-truncation rate on long-form: API returns first sentence only with no error signal. Use gpt-4o-mini-transcribe instead.",
+      "scores": {
+        "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "warned: silent-truncation pathology" },
+        "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "warned: silent-truncation pathology" },
+        "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "warned: silent-truncation pathology" },
+        "batch": { "composite": null, "passed_filter": false, "filter_reason": "warned: silent-truncation pathology" }
+      }
+    },
+    {
+      "id": "openai-gpt-4o-mini-transcribe",
+      "name": "OpenAI",
+      "model": "gpt-4o-mini-transcribe",
+      "status": "production",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "https-sse"
+      },
+      "endpoints": {
+        "batch": "https://api.openai.com/v1/audio/transcriptions",
+        "streaming": "https://api.openai.com/v1/audio/transcriptions"
+      },
+      "languages_count": 50,
+      "billing_model": "per-minute",
+      "cost_per_minute_usd": {
+        "tier1k": 0.003,
+        "tier10k": 0.003,
+        "tier100k": 0.003,
+        "mode_priced": "both",
+        "note": "Flat rate. SSE streaming uploads full audio first, then streams tokens."
+      },
+      "english": {
+        "wer_pct": 8.2,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 914,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 619,
+          "europe-west3": 643,
+          "asia-southeast1": 914
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 962,
+          "europe-west3": 958,
+          "asia-southeast1": 1329
+        }
+      },
+      "noise_robustness_avg_delta_pp": 2.2,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": 0.425, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 0.627, "passed_filter": true },
+        "streaming.europe-west3":  { "composite": 0.425, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 0.627, "passed_filter": true },
+        "streaming.asia-southeast1": { "composite": 0.500, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 1.000, "passed_filter": true },
+        "batch": { "composite": 0.550, "wer_norm": 0.226, "latency_norm": 0.868, "cost_norm": 0.882, "passed_filter": true }
+      }
+    },
+    {
+      "id": "openai-whisper-1",
+      "name": "OpenAI",
+      "model": "whisper-1",
+      "status": "production",
+      "modes_supported": ["batch"],
+      "protocols": {
+        "batch": "https"
+      },
+      "endpoints": {
+        "batch": "https://api.openai.com/v1/audio/transcriptions"
+      },
+      "languages_count": 57,
+      "billing_model": "per-minute",
+      "cost_per_minute_usd": {
+        "tier1k": 0.006,
+        "tier10k": 0.006,
+        "tier100k": 0.006,
+        "mode_priced": "batch",
+        "note": "Legacy Whisper large-v2; no streaming support."
+      },
+      "english": {
+        "wer_pct": 9.6,
+        "wer_dataset": "FLEURS-calibrated long-form clean",
+        "batch_latency_p50_ms": 1193
+      },
+      "noise_robustness_avg_delta_pp": 2.7,
+      "warning": null,
+      "scores": {
+        "batch": { "composite": 0.391, "wer_norm": 0.000, "latency_norm": 0.801, "cost_norm": 0.756, "passed_filter": true }
+      }
+    },
+    {
+      "id": "xai-grok-stt",
+      "name": "xAI",
+      "model": "Grok STT",
+      "status": "warned",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "websocket-json"
+      },
+      "endpoints": {
+        "batch": "https://api.x.ai/v1/audio/transcriptions",
+        "streaming": "wss://api.x.ai/v1/audio/transcriptions/stream"
+      },
+      "languages_count": 25,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.00167,
+        "tier10k": 0.00167,
+        "tier100k": 0.00167,
+        "mode_priced": "batch",
+        "note": "Streaming is $0.00333/min (2× batch)."
+      },
+      "english": {
+        "wer_pct": 10.9,
+        "wer_dataset": "FLEURS clean, n=168 after VAD-empty exclusion",
+        "batch_latency_p50_ms": 866,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 1454,
+          "europe-west3": 1545,
+          "asia-southeast1": 1680
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 0,
+          "europe-west3": 0,
+          "asia-southeast1": 0
+        }
+      },
+      "warning": "Aggressive VAD: 24% of FLEURS English clips returned empty transcripts (sub -40 dB triggers silent failure). Published WER excludes VAD-empty rows; raw WER is 32.6%.",
+      "scores": {
+        "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "warned: aggressive VAD silent failure" },
+        "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "warned: aggressive VAD silent failure" },
+        "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "warned: aggressive VAD silent failure" },
+        "batch": { "composite": null, "passed_filter": false, "filter_reason": "warned: aggressive VAD silent failure" }
+      }
+    },
+    {
+      "id": "assemblyai-universal-2",
+      "name": "AssemblyAI",
+      "model": "Universal-2",
+      "status": "provisional",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "websocket-json"
+      },
+      "endpoints": {
+        "batch": "https://api.assemblyai.com/v2/transcript",
+        "streaming": "wss://streaming.assemblyai.com/v3/ws"
+      },
+      "languages_count": 99,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0062,
+        "tier10k": 0.0062,
+        "tier100k": 0.0062,
+        "mode_priced": "batch",
+        "note": "Universal Streaming model is English-only."
+      },
+      "english": {
+        "wer_pct": 6.22,
+        "wer_dataset": "FLEURS English clean, n=50 long-form",
+        "batch_latency_p50_ms": 3693,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 1626,
+          "europe-west3": 1740,
+          "asia-southeast1": 1909
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 0,
+          "europe-west3": 0,
+          "asia-southeast1": 0
+        }
+      },
+      "noise_robustness_avg_delta_pp": 1.66,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": 0.351, "wer_norm": 0.413, "ttfp_norm": 0.347, "cost_norm": 0.200, "passed_filter": true },
+        "streaming.europe-west3":  { "composite": 0.324, "wer_norm": 0.413, "ttfp_norm": 0.257, "cost_norm": 0.200, "passed_filter": true },
+        "streaming.asia-southeast1": { "composite": 0.345, "wer_norm": 0.413, "ttfp_norm": 0.245, "cost_norm": 0.319, "passed_filter": true },
+        "batch": { "composite": 0.482, "wer_norm": 0.545, "latency_norm": 0.198, "cost_norm": 0.748, "passed_filter": true }
+      }
+    },
+    {
+      "id": "assemblyai-universal-3-pro",
+      "name": "AssemblyAI",
+      "model": "Universal-3 Pro",
+      "status": "provisional",
+      "modes_supported": ["batch"],
+      "protocols": {
+        "batch": "https"
+      },
+      "endpoints": {
+        "batch": "https://api.assemblyai.com/v2/transcript"
+      },
+      "languages_count": 6,
+      "billing_model": "per-second",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0067,
+        "tier10k": 0.0067,
+        "tier100k": 0.0067,
+        "mode_priced": "batch",
+        "note": "Premium tier; batch only."
+      },
+      "english": {
+        "wer_pct": 5.06,
+        "wer_dataset": "FLEURS English clean, n=50 long-form",
+        "batch_latency_p50_ms": 4171
+      },
+      "noise_robustness_avg_delta_pp": -0.04,
+      "warning": null,
+      "scores": {
+        "batch": { "composite": 0.537, "wer_norm": 0.732, "latency_norm": 0.083, "cost_norm": 0.727, "passed_filter": true }
+      }
+    },
+    {
+      "id": "google-chirp-2",
+      "name": "Google Cloud",
+      "model": "Chirp 2",
+      "status": "provisional",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "grpc-bidirectional"
+      },
+      "endpoints": {
+        "batch": "https://us-central1-speech.googleapis.com/v2/projects/{project}/locations/us-central1/recognizers/_:recognize",
+        "streaming": "us-central1-speech.googleapis.com:443"
+      },
+      "endpoint_constraint": "Chirp 2 inference is pinned to us-central1 only — multi-region clients pay full network distance to that single backend.",
+      "languages_count": 125,
+      "billing_model": "per-15s-block",
+      "cost_per_minute_usd": {
+        "tier1k": 0.024,
+        "tier10k": 0.024,
+        "tier100k": 0.018,
+        "mode_priced": "batch",
+        "note": "Standard tier $0.024/min. 60 min/month free."
+      },
+      "english": {
+        "wer_pct": 5.37,
+        "wer_dataset": "FLEURS English clean, n=50 long-form",
+        "batch_latency_p50_ms": 4517,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 6981,
+          "europe-west3": 7441,
+          "asia-southeast1": 7995
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 924,
+          "europe-west3": 1300,
+          "asia-southeast1": 2044
+        }
+      },
+      "noise_robustness_avg_delta_pp": 12.6,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6981 exceeds 3000ms streaming cutoff (upload-then-stream architecture)" },
+        "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 7441 exceeds 3000ms streaming cutoff" },
+        "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 7995 exceeds 3000ms streaming cutoff" },
+        "batch": { "composite": 0.341, "wer_norm": 0.682, "latency_norm": 0.000, "cost_norm": 0.000, "passed_filter": true }
+      }
+    },
+    {
+      "id": "gemini-25-flash-stt",
+      "name": "Google",
+      "model": "Gemini 2.5 Flash (STT)",
+      "status": "provisional",
+      "modes_supported": ["batch", "streaming"],
+      "protocols": {
+        "batch": "https",
+        "streaming": "https-sse"
+      },
+      "endpoints": {
+        "batch": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "streaming": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent"
+      },
+      "languages_count": 100,
+      "billing_model": "per-token",
+      "cost_per_minute_usd": {
+        "tier1k": 0.0002,
+        "tier10k": 0.0002,
+        "tier100k": 0.0002,
+        "mode_priced": "both",
+        "note": "Token-billed. Effective ~$0.0002/min on long-form English."
+      },
+      "english": {
+        "wer_pct": 6.03,
+        "wer_dataset": "FLEURS English clean, n=50 long-form",
+        "batch_latency_p50_ms": 2510,
+        "streaming_ttfp_p50_ms_short": {
+          "us-east4": 2162,
+          "europe-west3": 2028,
+          "asia-southeast1": 3461
+        },
+        "streaming_ttf_p50_ms_short": {
+          "us-east4": 2229,
+          "europe-west3": 2028,
+          "asia-southeast1": 3462
+        }
+      },
+      "noise_robustness_avg_delta_pp": 12.9,
+      "warning": null,
+      "scores": {
+        "streaming.us-east4":      { "composite": 0.426, "wer_norm": 0.452, "ttfp_norm": 0.000, "cost_norm": 1.000, "passed_filter": true },
+        "streaming.europe-west3":  { "composite": 0.445, "wer_norm": 0.452, "ttfp_norm": 0.062, "cost_norm": 1.000, "passed_filter": true },
+        "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 3461 exceeds 3000ms streaming cutoff (APAC)" },
+        "batch": { "composite": 0.633, "wer_norm": 0.576, "latency_norm": 0.484, "cost_norm": 1.000, "passed_filter": true }
+      }
+    }
+  ],
+
+  "rankings": {
+    "streaming": {
+      "us-east4": {
+        "primary": "elevenlabs-scribe-v2",
+        "fallback_1": "gemini-25-flash-stt",
+        "fallback_2": "openai-gpt-4o-mini-transcribe",
+        "ranked": [
+          { "id": "elevenlabs-scribe-v2",         "composite": 0.554 },
+          { "id": "gemini-25-flash-stt",          "composite": 0.426 },
+          { "id": "openai-gpt-4o-mini-transcribe", "composite": 0.425 },
+          { "id": "assemblyai-universal-2",       "composite": 0.351 },
+          { "id": "deepgram-nova3",               "composite": 0.256 }
+        ]
+      },
+      "europe-west3": {
+        "primary": "elevenlabs-scribe-v2",
+        "fallback_1": "gemini-25-flash-stt",
+        "fallback_2": "openai-gpt-4o-mini-transcribe",
+        "ranked": [
+          { "id": "elevenlabs-scribe-v2",         "composite": 0.532 },
+          { "id": "gemini-25-flash-stt",          "composite": 0.445 },
+          { "id": "openai-gpt-4o-mini-transcribe", "composite": 0.425 },
+          { "id": "assemblyai-universal-2",       "composite": 0.324 },
+          { "id": "deepgram-nova3",               "composite": 0.242 }
+        ]
+      },
+      "asia-southeast1": {
+        "primary": "elevenlabs-scribe-v2",
+        "fallback_1": "openai-gpt-4o-mini-transcribe",
+        "fallback_2": "assemblyai-universal-2",
+        "ranked": [
+          { "id": "elevenlabs-scribe-v2",          "composite": 0.551 },
+          { "id": "openai-gpt-4o-mini-transcribe", "composite": 0.500 },
+          { "id": "assemblyai-universal-2",        "composite": 0.345 },
+          { "id": "deepgram-nova3",                "composite": 0.283 }
+        ]
+      }
+    },
+    "batch": {
+      "primary": "alibaba-qwen3-asr-flash",
+      "fallback_1": "elevenlabs-scribe-v2",
+      "fallback_2": "elevenlabs-scribe-v1",
+      "ranked": [
+        { "id": "alibaba-qwen3-asr-flash",        "composite": 0.929 },
+        { "id": "elevenlabs-scribe-v2",           "composite": 0.894 },
+        { "id": "elevenlabs-scribe-v1",           "composite": 0.763 },
+        { "id": "gemini-25-flash-stt",            "composite": 0.633 },
+        { "id": "deepgram-nova3",                 "composite": 0.611 },
+        { "id": "openai-gpt-4o-mini-transcribe",  "composite": 0.550 },
+        { "id": "assemblyai-universal-3-pro",     "composite": 0.537 },
+        { "id": "assemblyai-universal-2",         "composite": 0.482 },
+        { "id": "openai-whisper-1",               "composite": 0.391 },
+        { "id": "google-chirp-2",                 "composite": 0.341 }
+      ],
+      "_note": "Batch rankings are region-agnostic — single-request latency in the bench was measured from one US dev box. Add per-region batch latency to make this region-aware."
+    }
+  },
+
+  "filtered_out": {
+    "streaming.us-east4": [
+      { "id": "alibaba-qwen3-asr-flash", "reason": "ttfp_p50_ms 6535 > 3000ms cutoff" },
+      { "id": "google-chirp-2",          "reason": "ttfp_p50_ms 6981 > 3000ms cutoff (us-central1 pinned)" },
+      { "id": "openai-gpt-4o-transcribe", "reason": "warned: 14.6% silent truncation" },
+      { "id": "xai-grok-stt",            "reason": "warned: aggressive VAD silent failure" },
+      { "id": "openai-whisper-1",         "reason": "no streaming endpoint" },
+      { "id": "elevenlabs-scribe-v1",     "reason": "no streaming endpoint" },
+      { "id": "assemblyai-universal-3-pro", "reason": "no streaming endpoint" }
+    ],
+    "streaming.asia-southeast1": [
+      { "id": "gemini-25-flash-stt",     "reason": "ttfp_p50_ms 3461 > 3000ms cutoff in APAC (passes in US/EU)" }
+    ],
+    "batch": [
+      { "id": "openai-gpt-4o-transcribe", "reason": "warned: 14.6% silent truncation" },
+      { "id": "xai-grok-stt",             "reason": "warned: aggressive VAD silent failure" }
+    ]
+  }
+}
