@@ -1,0 +1,602 @@
+"""FastMCP v3 server exposing SpekoAI knowledge to MCP clients.
+
+Surfaces:
+
+- **Resources** — `spekoai://docs/index` and `spekoai://docs/{slug}` ship
+  hosted llms.txt exports, public package READMEs, migration guides, and
+  a quickstart example inside the wheel. See `docs.py`, `resources.py`.
+- **Prompts** — `scaffold_project` (scenario, language, runtime) walks
+  an MCP client through bootstrapping a SpekoAI project. See `prompts.py`.
+- **Tools** — `search_docs` (full-text over bundled docs) and
+  `list_packages` (structured manifest).
+
+Auth model: the hosted ASGI app exposes two MCP endpoints. `/mcp` is
+public and only registers static/public knowledge surfaces. `/mcp-auth`
+accepts OAuth or Speko API-key bearer credentials and registers those same
+public surfaces plus identity-aware action tools such as `get_balance`.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Annotated, Literal
+
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.server.auth import AuthProvider
+from fastmcp.server.http import RequestContextMiddleware
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from starlette.routing import Mount, Route
+
+from spekoai_mcp import http_client, recommendations, scaffolds, search
+from spekoai_mcp.action_tools import ACTION_TOOL_NAMES, register_action_tools
+from spekoai_mcp.auth import DEFAULT_AUTH_MCP_PATH
+from spekoai_mcp.components import register_components
+from spekoai_mcp.docs import DocEntry, load_manifest
+from spekoai_mcp.prompts import register_prompts
+from spekoai_mcp.resources import register_resources
+
+PUBLIC_MCP_PATH = "/mcp"
+AUTH_MCP_PATH = DEFAULT_AUTH_MCP_PATH
+
+
+class OrganizationBalance(BaseModel):
+    """Credit balance for the caller's organization."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    balance_usd: float = Field(
+        validation_alias="balanceUsd",
+        description="Current prepaid credit balance expressed in USD.",
+    )
+    currency: Literal["USD"] = Field(default="USD", description="Currency for balance_usd.")
+    updated_at: str = Field(
+        validation_alias="updatedAt", description="ISO-8601 timestamp of the last balance mutation."
+    )
+
+
+INSTRUCTIONS = "\n\n".join(
+    " ".join(paragraph.split())
+    for paragraph in [
+        """
+        SpekoAI MCP — the authoritative source for SpekoAI's SDKs,
+        adapters, and platform.
+        """,
+        """
+        Start here: call the `scaffold_project` prompt to bootstrap a
+        new project, or read the `spekoai://docs/index` resource to see
+        every bundled doc. Prefer `spekoai://docs/llms-full` first for
+        current SDK, API, and guide details generated from docs.speko.dev;
+        use `spekoai://docs/llms` when you only need the compact index.
+        READMEs (`spekoai://docs/*-readme`) are package-level prose.
+        Use the `search_docs(query)` tool when you need to find something
+        across all bundled docs, and `list_packages()` for structured
+        package metadata.
+        """,
+        """
+        Need a recommended stack? Call `recommended_stack(optimize_for,
+        language, region)` where `optimize_for` is one of `latency`
+        (default — minimize TTFB), `accuracy` (maximize quality
+        scores), or `cost` (minimize per-minute price). It returns
+        the @spekoai package list plus the top-3 STT / LLM / TTS /
+        S2S provider picks (with composite scores, p50 latency, and
+        per-minute cost) ranked from the bundled v0 benchmark
+        fixtures. Pair it with `scaffold_voice_app(optimize_for,
+        region, ...)` to bake those choices into a Next.js scaffold
+        the agent can execute verbatim. Vertical / use-case branching
+        is intentionally omitted in v0 — benchmark data isn't yet
+        vertical-tuned.
+        """,
+        """
+        SpekoAI is a voice-AI gateway: one API that routes STT, LLM,
+        and TTS calls to the best provider per (language, region, optimizeFor),
+        with failover handled server-side. Public
+        packages: `@spekoai/sdk` (TypeScript server SDK),
+        `@spekoai/client` (browser WebRTC SDK), `spekoai` (Python
+        server SDK), `@spekoai/adapter-livekit` (LiveKit Agents
+        wrapper). `@spekoai/adapter-vapi` and `@spekoai/adapter-retell`
+        are scaffolded placeholders — not production-ready.
+        """,
+        """
+        Account-specific SpekoAI actions are not available on the public
+        `/mcp` endpoint. Private tools live on the authenticated
+        `/mcp-auth` endpoint; today that includes `get_balance` plus
+        `speko_*` build, migration, deploy, logs, calls, eval, briefing,
+        and share-card tools. The endpoint accepts OAuth or a Speko API
+        key. If a user asks to inspect, build, migrate, deploy, test,
+        roll back, check calls/logs/evals, or create share cards and the
+        matching private tool is not available, call `private_mcp_setup()`
+        and ask whether they want to connect and authenticate the SpekoAI
+        authenticated MCP.
+        """,
+    ]
+)
+
+
+class PackageInfo(BaseModel):
+    """Structured package metadata returned by `list_packages`."""
+
+    package_name: str = Field(description="Human name or npm/PyPI name.")
+    npm_or_pypi: str | None = Field(
+        description="Canonical install name, or null for internal packages."
+    )
+    status: str = Field(description="One of: stable, alpha, scaffold, internal, platform.")
+    readme_uri: str | None = Field(
+        description="MCP resource URI for the README, if one is shipped."
+    )
+    llms_uri: str | None = Field(
+        description="MCP resource URI for hosted llms-full docs, if bundled."
+    )
+
+
+class PrivateToolInfo(BaseModel):
+    """A tool that is only available on the authenticated MCP endpoint."""
+
+    name: str = Field(description="Private MCP tool name.")
+    description: str = Field(description="What the private tool does.")
+    requires_authentication: bool = Field(
+        description="Whether the tool requires an authenticated MCP session."
+    )
+
+
+class PrivateMcpSetup(BaseModel):
+    """Connection guidance for account-scoped SpekoAI MCP tools."""
+
+    authenticated_endpoint: str = Field(
+        description="Hosted authenticated MCP endpoint to use in the MCP client."
+    )
+    recommended_action: str = Field(
+        description="Whether clients should replace the public endpoint or add a second one."
+    )
+    private_tools: list[PrivateToolInfo] = Field(
+        description="Private tools available after authenticating."
+    )
+    user_prompt: str = Field(
+        description="Suggested prompt to show the user before switching/authenticating."
+    )
+    notes: list[str] = Field(description="Short implementation notes for the MCP client or agent.")
+
+
+def _authenticated_endpoint() -> str:
+    """Return the hosted/private MCP URL advertised by public discovery."""
+    base_url = os.environ.get("SPEKOAI_MCP_BASE_URL", "https://mcp.speko.ai")
+    return f"{base_url.rstrip('/')}{AUTH_MCP_PATH}"
+
+
+def _build_private_mcp_setup() -> PrivateMcpSetup:
+    endpoint = _authenticated_endpoint()
+    descriptions = {
+        "get_balance": "Gets the authenticated caller's prepaid credit balance.",
+        "speko_inspect": "Inspects a voice-agent codebase and reports migration hints.",
+        "speko_build": "Builds a Speko SessionConfig from prose.",
+        "speko_migrate": "Converts LiveKit, Pipecat, Retell, or Vapi config to Speko.",
+        "speko_deploy": "Deploys a SessionConfig as an immutable AgentVersion.",
+        "speko_rollback": "Rolls back to a historical AgentVersion.",
+        "speko_test": "Creates a test voice session for an agent or draft config.",
+        "speko_logs": "Lists recent calls/logs for an agent.",
+        "speko_calls_get": "Fetches call detail, transcript, spans, and recording links.",
+        "speko_evals_list": "Lists regression evals for an agent.",
+        "speko_evals_run": "Runs one regression eval.",
+        "speko_evals_add_from_call": "Promotes a call into a regression eval.",
+        "speko_briefing": "Renders briefing markdown for an agent or version.",
+        "speko_share": "Creates a public share-card PNG for a build.",
+        "speko_build_and_test": "Builds a draft and immediately starts a test session.",
+        "speko_migrate_and_deploy": "Migrates and deploys only when no tools need review.",
+    }
+    return PrivateMcpSetup(
+        authenticated_endpoint=endpoint,
+        recommended_action="replace_public_mcp_with_authenticated_mcp",
+        private_tools=[
+            PrivateToolInfo(
+                name=name,
+                description=descriptions[name],
+                requires_authentication=True,
+            )
+            for name in ACTION_TOOL_NAMES
+        ],
+        user_prompt=(
+            "I can help with that, but checking SpekoAI balance requires the "
+            f"authenticated SpekoAI MCP endpoint: {endpoint}. Do you want to "
+            "replace/switch your current public SpekoAI MCP connection to "
+            "the authenticated endpoint? It includes the public tools plus "
+            "`get_balance` and private `speko_*` action tools, and you can "
+            "authenticate with OAuth or a Speko API key."
+        ),
+        notes=[
+            "The public /mcp endpoint only exposes static docs, package info, "
+            "recommendations, and scaffolding.",
+            "The authenticated /mcp-auth endpoint exposes the same public "
+            "surface plus private account tools.",
+            "The authenticated endpoint accepts OAuth bearer tokens and Speko "
+            "API keys sent as Authorization: Bearer <key>.",
+            "Because /mcp-auth is a superset of /mcp, clients should usually "
+            "replace the public endpoint instead of keeping both configured.",
+            "An MCP server cannot replace itself in the client; the client or "
+            "user must update the MCP server configuration.",
+            "For OAuth, do not ask the user for tokens or cookies; let the MCP "
+            "client perform the OAuth flow. For API-key auth, use the key as a "
+            "bearer token only in clients that support private custom headers.",
+        ],
+    )
+
+
+def _render_scaffold_instructions(manifest: scaffolds.ScaffoldManifest) -> str:
+    """Render a scaffold manifest as an agent-actionable checklist.
+
+    Returned alongside the structured manifest so a receiving agent
+    (Claude Code, Cursor, etc.) has prose instructions to execute
+    without re-interpreting the JSON. File bodies are emitted verbatim
+    inside fenced blocks so the agent can copy-paste without escaping.
+    """
+    file_blocks: list[str] = []
+    for f in manifest.files:
+        fence = "```" + (f.language_hint or "")
+        file_blocks.append(f"**`{f.path}`** (action: {f.action})\n{fence}\n{f.content}\n```")
+    files_section = "\n\n".join(file_blocks)
+    installs_section = "\n".join(f"- `{cmd}`" for cmd in manifest.install_commands)
+    env_rows: list[str] = []
+    for env in manifest.env_vars:
+        required_tag = "required" if env.required else "optional"
+        example = f" (example: `{env.example}`)" if env.example else ""
+        env_rows.append(f"- `{env.name}` — {required_tag}. {env.description}{example}")
+    env_section = "\n".join(env_rows) if env_rows else "_(none)_"
+    post_section = "\n".join(f"- {step}" for step in manifest.post_install_steps)
+    docs_section = "\n".join(f"- `{uri}`" for uri in manifest.docs_resources)
+    component_section = (
+        "\n".join(f"- `{uri}`" for uri in manifest.component_resources)
+        if manifest.component_resources
+        else "_(none)_"
+    )
+    return (
+        "# Speko voice-app scaffold\n\n"
+        "Execute this scaffold verbatim — do not paraphrase file "
+        "contents. Each step is idempotent; re-running in a fresh "
+        "directory produces the same result.\n\n"
+        "## Step 1 — Create these files\n\n"
+        f"{files_section}\n\n"
+        "## Step 2 — Run install commands (in order)\n\n"
+        f"{installs_section}\n\n"
+        "## Step 3 — Set environment variables\n\n"
+        f"{env_section}\n\n"
+        "## Step 4 — Post-install\n\n"
+        f"{post_section}\n\n"
+        "## Reference docs to read next\n\n"
+        f"{docs_section}\n\n"
+        "## Inlined component resources\n\n"
+        f"{component_section}\n"
+    )
+
+
+def _build_package_infos(manifest: list[DocEntry]) -> list[PackageInfo]:
+    """Collapse per-doc manifest entries into one row per package."""
+    by_name: dict[str, dict[str, object]] = {}
+    llms_uri = next(
+        (f"spekoai://docs/{entry['slug']}" for entry in manifest if entry["slug"] == "llms-full"),
+        None,
+    )
+    for entry in manifest:
+        if entry["kind"] in {"guide", "quickstart", "llms"}:
+            continue
+        name = entry["package_name"]
+        row = by_name.setdefault(
+            name,
+            {
+                "package_name": name,
+                "npm_or_pypi": entry["npm_or_pypi"],
+                "status": entry["status"],
+                "readme_uri": None,
+                "llms_uri": llms_uri,
+            },
+        )
+        uri = f"spekoai://docs/{entry['slug']}"
+        if entry["kind"] == "readme":
+            row["readme_uri"] = uri
+    return [PackageInfo(**row) for row in by_name.values()]  # type: ignore[arg-type]
+
+
+def create_server(
+    auth: AuthProvider | None = None,
+    *,
+    include_private_tools: bool | None = None,
+) -> FastMCP:
+    """Build a FastMCP server.
+
+    Private tools default to enabled only when auth is configured, so a bare
+    `create_server()` is public-safe while `create_server(auth=...)` exposes
+    the authenticated action surface.
+    """
+    if include_private_tools is None:
+        include_private_tools = auth is not None
+
+    mcp: FastMCP = FastMCP(
+        name="spekoai",
+        instructions=INSTRUCTIONS,
+        auth=auth,
+    )
+
+    register_resources(mcp)
+    register_components(mcp)
+    register_prompts(mcp)
+
+    @mcp.tool
+    async def private_mcp_setup(_ctx: Context) -> PrivateMcpSetup:
+        """Show how to connect authenticated MCP for private account tools.
+
+        Call this when the user asks to check SpekoAI balance, credits,
+        billing, usage, organization, or other private account data but the
+        `get_balance` private tool is not available on the current public MCP.
+        The response includes the exact prompt to ask before they connect and
+        authenticate the `/mcp-auth` endpoint.
+        """
+        return _build_private_mcp_setup()
+
+    @mcp.tool
+    async def search_docs(
+        _ctx: Context,
+        query: Annotated[
+            str,
+            Field(
+                description=(
+                    "Free-text query. Matched case-insensitively against "
+                    "titles and body of every bundled SpekoAI doc."
+                ),
+            ),
+        ],
+        limit: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=20,
+                description="Max hits to return. Defaults to 5.",
+            ),
+        ] = 5,
+    ) -> list[search.DocHit]:
+        """Search bundled SpekoAI docs. Returns slug, title, score, snippet.
+
+        Use this when you need to find something across all SDKs/adapters
+        without reading every resource. Each hit's `slug` can be opened
+        directly as `spekoai://docs/{slug}`.
+        """
+        return search.search(query, limit=limit)
+
+    @mcp.tool
+    async def list_packages(_ctx: Context) -> list[PackageInfo]:
+        """List every SpekoAI package known to this server, with URIs to
+        bundled READMEs and the hosted llms-full docs resource.
+
+        Prefer this over parsing markdown when you want structured data
+        (e.g. "which packages are production-stable vs scaffold-only?").
+        """
+        return _build_package_infos(load_manifest())
+
+    # `recommendations.UseCase` / `scaffolds.SpokenLanguage` are module-level
+    # `Literal` aliases. FastMCP's tool-schema resolver (like the prompt
+    # one) uses Pydantic TypeAdapter, which cannot dereference those
+    # aliases under `from __future__ import annotations` — see the
+    # explanatory comment on `scaffold_project` in `prompts.py`. Inline
+    # the Literal values directly here to sidestep the forward-ref
+    # resolution issue without disabling future-annotations.
+    @mcp.tool
+    async def recommended_stack(
+        _ctx: Context,
+        optimize_for: Annotated[
+            Literal["latency", "accuracy", "cost"],
+            Field(
+                description=(
+                    "Ranking preset for the STT / LLM / TTS / S2S "
+                    "candidates. `latency` (default) minimizes time-"
+                    "to-first-output, `accuracy` maximizes quality "
+                    "scores, `cost` minimizes per-minute price. "
+                    "Vertical / use-case branching is deliberately "
+                    "not exposed yet — benchmark data isn't tuned "
+                    "per vertical."
+                ),
+            ),
+        ] = "latency",
+        language: Annotated[
+            str,
+            Field(
+                description=(
+                    "BCP-47 language tag of the caller. v0 fixtures "
+                    "cover English (`en`) only; non-English requests "
+                    "echo the intent but return empty provider picks "
+                    "plus a `notes` entry citing the gap."
+                ),
+            ),
+        ] = "en",
+        region: Annotated[
+            str,
+            Field(
+                description=(
+                    "Routing region. `global` selects batch ranking "
+                    "for STT/TTS; `us-east4`, `europe-west3`, "
+                    "`asia-southeast1` select streaming/realtime "
+                    "ranking. S2S is realtime-only — `global` falls "
+                    "back to `realtime.us-east4` and surfaces that "
+                    "fallback in `notes`."
+                ),
+            ),
+        ] = "global",
+    ) -> recommendations.StackRecommendation:
+        """Return the SpekoAI stack plus real provider picks.
+
+        Use this before scaffolding to get (a) the @spekoai packages
+        to install and (b) the top-3 STT / LLM / TTS / S2S provider
+        picks for the caller's optimize-for axis. Provider rankings
+        are sourced from the bundled v0 benchmark fixtures and include
+        composite score, p50 latency, and per-minute cost where
+        published.
+
+        Example: a user asking "best stack with low latency" maps to
+        `recommended_stack(optimize_for="latency", language="en",
+        region="us-east4")`. A high-volume app prioritizing margin
+        maps to `optimize_for="cost"`. A transcription-heavy product
+        with stricter quality bars maps to `optimize_for="accuracy"`.
+
+        Follow up with `scaffold_voice_app(optimize_for=<same>,
+        region=<same>)` so the scaffold's route defaults match the
+        picks the agent just surfaced.
+        """
+        return recommendations.recommend(
+            optimize_for=optimize_for,
+            language=language,
+            region=region,
+        )
+
+    @mcp.tool
+    async def scaffold_voice_app(
+        _ctx: Context,
+        languages: Annotated[
+            list[Literal["en", "es"]] | None,
+            Field(
+                description=(
+                    "Spoken languages the agent should support. Defaults "
+                    "to ['en']. The first entry sets the session's "
+                    "intent.language; adding 'es' also appends a "
+                    "multilingual note to the system prompt."
+                ),
+            ),
+        ] = None,
+        system_prompt: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Override the default neutral voice-assistant "
+                    "system prompt. Strongly recommended — set this "
+                    "to your domain-specific persona. Leave null to "
+                    "use the generic baseline."
+                ),
+            ),
+        ] = None,
+        optimize_for: Annotated[
+            Literal["latency", "accuracy", "cost"],
+            Field(
+                description=(
+                    "Ranking preset for the route's `intent.optimizeFor` "
+                    "default. `latency` (default) leaves the route's "
+                    "optimizeFor commented out so the Speko router picks "
+                    "with its own defaults; `accuracy` or `cost` bakes "
+                    "the preset into both the route handler and the "
+                    "page config so the scaffold ships with explicit "
+                    "intent."
+                ),
+            ),
+        ] = "latency",
+        region: Annotated[
+            str,
+            Field(
+                description=(
+                    "Routing region default for the scaffold's "
+                    "`intent.region`. `global` (default) leaves region "
+                    "off; any other value bakes the region into the "
+                    "route handler so all sessions ship with that "
+                    "intent. Header comment in the route file lists the "
+                    "STT/LLM/TTS/S2S picks for the requested "
+                    "(optimize_for, region) pair."
+                ),
+            ),
+        ] = "global",
+    ) -> ToolResult:
+        """Build a Next.js App Router voice-app scaffold.
+
+        Returns an actionable manifest: a text block with step-by-step
+        instructions the agent should execute verbatim, plus structured
+        content with the exact file bodies, install commands, and
+        env vars. Create each file at its given `path` byte-for-byte —
+        no paraphrasing.
+
+        When `optimize_for` is non-`latency` or `region` is non-`global`,
+        the route handler bakes those values in (they're commented out
+        in the default scaffold) and the file's header comment lists
+        the top-1 STT / LLM / TTS / S2S provider picks the runtime
+        would route to so the user can audit before shipping.
+
+        Domain-flavored prompts: pass your own `system_prompt`. The
+        bundled default is a neutral voice-assistant baseline because
+        v0 routing data isn't yet vertical-tuned.
+        """
+        manifest = scaffolds.build_voice_app_manifest(
+            languages=languages,
+            system_prompt=system_prompt,
+            optimize_for=optimize_for,
+            region=region,
+        )
+        return ToolResult(
+            content=[TextContent(type="text", text=_render_scaffold_instructions(manifest))],
+            structured_content=manifest.model_dump(),
+        )
+
+    if include_private_tools:
+
+        @mcp.tool
+        async def get_balance(_ctx: Context) -> OrganizationBalance:
+            """Get the caller's current prepaid credit balance.
+
+            Calls the SpekoAI `/v1/credits/balance` endpoint on the caller's
+            behalf using the OAuth token or API key from the current MCP
+            request. Use this to answer "how much credit do I have left?"
+            without redirecting the user to the dashboard.
+            """
+            try:
+                payload = await http_client.get_balance()
+            except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+                raise ToolError(str(exc)) from exc
+            try:
+                return OrganizationBalance.model_validate(payload)
+            except ValidationError as exc:
+                raise ToolError(
+                    f"SpekoAI /v1/credits/balance returned an unexpected response shape: {exc}"
+                ) from exc
+
+        register_action_tools(mcp)
+
+    return mcp
+
+
+def create_app(auth: AuthProvider | None = None) -> Starlette:
+    """Create the hosted ASGI app with public and optional auth MCP endpoints."""
+    public_mcp = create_server(include_private_tools=False)
+    public_app = public_mcp.http_app(path=PUBLIC_MCP_PATH)
+    auth_app: Starlette | None = None
+    if auth is not None:
+        auth_mcp = create_server(auth=auth, include_private_tools=True)
+        auth_app = auth_mcp.http_app(path=AUTH_MCP_PATH)
+
+    async def health_check(_: Request) -> PlainTextResponse:
+        return PlainTextResponse("OK")
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncGenerator[None, None]:
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(public_app.lifespan(public_app))
+            if auth_app is not None:
+                await stack.enter_async_context(auth_app.lifespan(auth_app))
+            yield
+
+    routes = [
+        Route("/health", endpoint=health_check, methods=["GET"]),
+        *public_app.routes,
+    ]
+    if auth_app is not None:
+        routes.append(Mount("/", app=auth_app))
+
+    app = Starlette(
+        routes=routes,
+        middleware=[Middleware(RequestContextMiddleware)],  # type: ignore[arg-type]
+        lifespan=lifespan,
+    )
+    app.state.path = PUBLIC_MCP_PATH
+    app.state.transport_type = public_app.state.transport_type
+    app.state.fastmcp_server = public_mcp
+    app.state.public_mcp_server = public_mcp
+    if auth_app is not None:
+        app.state.auth_mcp_server = auth_app.state.fastmcp_server
+    return app
