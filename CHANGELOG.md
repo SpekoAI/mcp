@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Promote MCP server to production.
+
 ## 0.1.1
 
 - Add Retell MCP migration planning and agent conversion tools.
