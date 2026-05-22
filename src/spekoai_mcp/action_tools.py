@@ -21,6 +21,8 @@ ACTION_TOOL_NAMES = [
     "speko_inspect",
     "speko_build",
     "speko_migrate",
+    "speko_plan_retell_migration",
+    "speko_migrate_retell_agent",
     "speko_deploy",
     "speko_rollback",
     "speko_test",
@@ -40,6 +42,8 @@ def register_action_tools(mcp: FastMCP) -> None:
     mcp.tool(speko_inspect)
     mcp.tool(speko_build)
     mcp.tool(speko_migrate)
+    mcp.tool(speko_plan_retell_migration)
+    mcp.tool(speko_migrate_retell_agent)
     mcp.tool(speko_deploy)
     mcp.tool(speko_rollback)
     mcp.tool(speko_test)
@@ -139,6 +143,193 @@ def unmappable_tools(payload: dict[str, Any]) -> list[Any]:
     if isinstance(diff, dict) and isinstance(diff.get("unmappable_tools"), list):
         return diff["unmappable_tools"]
     return []
+
+
+def retell_response_engine(agent: dict[str, Any]) -> dict[str, Any]:
+    value = agent.get("response_engine")
+    return value if isinstance(value, dict) else {}
+
+
+def retell_agent_id(agent: dict[str, Any]) -> str | None:
+    return first_str(agent, "agent_id", "id")
+
+
+def retell_agent_name(agent: dict[str, Any]) -> str:
+    return first_str(agent, "agent_name", "name") or "Retell voice agent"
+
+
+def retell_llm_id(agent: dict[str, Any]) -> str | None:
+    engine = retell_response_engine(agent)
+    return first_str(engine, "llm_id", "llmId")
+
+
+def retell_tool_names(llm: dict[str, Any] | None) -> list[str]:
+    if not llm:
+        return []
+    names: set[str] = set()
+    for key in ["general_tools", "tools", "functions", "actions"]:
+        collect_retell_tool_names(llm.get(key), names)
+    collect_retell_state_tool_names(llm.get("states"), names)
+    return sorted(names)
+
+
+def collect_retell_state_tool_names(value: Any, names: set[str]) -> None:
+    if not isinstance(value, list):
+        return
+    for state in value:
+        if isinstance(state, dict):
+            collect_retell_tool_names(state.get("tools"), names)
+
+
+def collect_retell_tool_names(value: Any, names: set[str]) -> None:
+    if not isinstance(value, list):
+        return
+    for item in value:
+        if isinstance(item, str) and item:
+            names.add(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        name = first_str(item, "name", "functionName", "tool_name")
+        if name:
+            names.add(name)
+
+
+def retell_llms_by_id(retell_llms: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    for llm in retell_llms or []:
+        llm_id = first_str(llm, "llm_id", "id")
+        if llm_id:
+            rows[llm_id] = llm
+    return rows
+
+
+def retell_candidate(
+    agent: dict[str, Any],
+    llms_by_id: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    agent_id = retell_agent_id(agent)
+    engine = retell_response_engine(agent)
+    engine_type = first_str(engine, "type") or "unknown"
+    llm_id = retell_llm_id(agent)
+    llm = llms_by_id.get(llm_id or "")
+    tool_names = retell_tool_names(llm)
+    reasons: list[str] = []
+    required_calls: list[str] = []
+    review_items: list[dict[str, Any]] = []
+
+    if engine_type == "retell-llm":
+        if not llm_id:
+            status = "needs_review"
+            recommendation = "Retell agent does not include an LLM id; inspect manually."
+            reasons.append("response_engine.type is retell-llm but llm_id is missing.")
+        elif llm is None:
+            status = "needs_llm"
+            recommendation = "Fetch the Retell LLM, then run speko_migrate_retell_agent."
+            reasons.append("Agent metadata is present, but the Retell LLM prompt was not supplied.")
+            required_calls.append(f"mcp__retellai__.get_retell_llm(llmId={llm_id!r})")
+        elif first_str(llm, "general_prompt"):
+            status = "ready"
+            recommendation = "Ready for a Speko draft migration."
+            reasons.append("Prompt-based Retell LLM agent with a retrievable general_prompt.")
+        else:
+            status = "needs_review"
+            recommendation = "Retell LLM was supplied but no general_prompt was found."
+            reasons.append("Missing general_prompt on Retell LLM payload.")
+        if tool_names:
+            review_items.append(
+                {
+                    "kind": "retell_tools",
+                    "names": tool_names,
+                    "next_step": (
+                        "Map each Retell tool to a Speko webhook, builtin tool, "
+                        "or SDK-side handler before deploying."
+                    ),
+                }
+            )
+    elif engine_type == "conversation-flow":
+        status = "manual_review"
+        recommendation = "Manual migration required unless a conversation-flow export is provided."
+        reasons.append(
+            "Retell conversation-flow agents are node graphs; the Retell MCP surface only exposed "
+            "the conversation_flow_id here, not the graph."
+        )
+        flow_id = first_str(engine, "conversation_flow_id", "conversationFlowId")
+        if flow_id:
+            required_calls.append(f"Export Retell conversation flow {flow_id!r} from Retell.")
+    else:
+        status = "needs_review"
+        recommendation = "Unsupported or unknown Retell response_engine type."
+        reasons.append(f"response_engine.type={engine_type!r}")
+
+    return {
+        "agent_id": agent_id,
+        "agent_name": retell_agent_name(agent),
+        "response_engine_type": engine_type,
+        "llm_id": llm_id,
+        "llm_supplied": llm is not None,
+        "tool_names": tool_names,
+        "status": status,
+        "recommendation": recommendation,
+        "reasons": reasons,
+        "review_items": review_items,
+        "required_retell_mcp_calls": required_calls,
+    }
+
+
+def retell_candidates_markdown(payload: dict[str, Any]) -> str:
+    lines = ["# Retell Migration Plan", ""]
+    for key in ["ready", "needs_llm", "needs_review", "manual_review"]:
+        count = payload["summary"].get(key, 0)
+        lines.append(f"- {key}: {count}")
+    lines.append("")
+    for candidate in payload["candidates"]:
+        agent_id = candidate.get("agent_id") or "unknown"
+        lines.append(
+            f"## {candidate.get('agent_name', 'Retell voice agent')} ({agent_id})"
+        )
+        lines.append(f"- status: {candidate.get('status')}")
+        lines.append(f"- recommendation: {candidate.get('recommendation')}")
+        if candidate.get("llm_id"):
+            lines.append(f"- llm_id: {candidate['llm_id']}")
+        if candidate.get("tool_names"):
+            lines.append(f"- tools needing review: {', '.join(candidate['tool_names'])}")
+        required = candidate.get("required_retell_mcp_calls") or []
+        for call in required:
+            lines.append(f"- required Retell MCP call: `{call}`")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def normalize_retell_config(
+    retell_agent: dict[str, Any],
+    retell_llm: dict[str, Any] | None,
+) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "source": "retell",
+        "agent_id": retell_agent_id(retell_agent),
+        "agent_name": retell_agent_name(retell_agent),
+        "language": first_str(retell_agent, "language"),
+        "voice_id": first_str(retell_agent, "voice_id", "voiceId"),
+        "response_engine": retell_response_engine(retell_agent),
+        "max_call_duration_ms": retell_agent.get("max_call_duration_ms"),
+        "post_call_analysis_model": retell_agent.get("post_call_analysis_model"),
+        "post_call_analysis_data": retell_agent.get("post_call_analysis_data"),
+    }
+    if retell_llm:
+        config["retell_llm"] = retell_llm
+        config["llm_id"] = first_str(retell_llm, "llm_id", "id")
+        config["general_prompt"] = first_str(retell_llm, "general_prompt")
+        config["begin_message"] = first_str(retell_llm, "begin_message")
+        config["model"] = first_str(retell_llm, "model")
+        default_variables = retell_llm.get("default_dynamic_variables")
+        if isinstance(default_variables, dict):
+            config["default_dynamic_variables"] = default_variables
+    else:
+        llm_id = retell_llm_id(retell_agent)
+        if llm_id:
+            config["llm_id"] = llm_id
+    return {key: value for key, value in config.items() if value is not None}
 
 
 def version_resource_uri(agent_id: str, version_number: int | None) -> str:
@@ -244,6 +435,118 @@ async def speko_migrate(
             payload = await deploy_payload(payload)
     except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
         raise speko_tool_error(exc, next_step="Check the config path and source format.") from exc
+    return canonical_result(payload, text=first_str(payload, "briefing_markdown"))
+
+
+async def speko_plan_retell_migration(
+    retell_agents: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description=(
+                "Agent JSON array returned by Retell MCP list_agents or individual get_agent calls."
+            )
+        ),
+    ],
+    retell_llms: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description=(
+                "Optional Retell LLM JSON array returned by list_retell_llms/get_retell_llm. "
+                "Supplying this lets the tool identify prompt-ready agents."
+            )
+        ),
+    ] = None,
+    selected_agent_ids: Annotated[
+        list[str] | None,
+        Field(description="Optional Retell agent ids to include; omit to inspect every agent."),
+    ] = None,
+) -> ToolResult:
+    """Plan which Retell agents are ready to migrate to Speko."""
+    if not retell_agents:
+        raise ToolError("retell_agents is required; call Retell MCP list_agents first.")
+    selected = set(selected_agent_ids or [])
+    llms_by_id = retell_llms_by_id(retell_llms)
+    candidates = [
+        retell_candidate(agent, llms_by_id)
+        for agent in retell_agents
+        if not selected or (retell_agent_id(agent) in selected)
+    ]
+    if selected and not candidates:
+        raise ToolError("selected_agent_ids did not match any supplied Retell agents.")
+    summary = {
+        "total": len(candidates),
+        "ready": sum(1 for c in candidates if c["status"] == "ready"),
+        "needs_llm": sum(1 for c in candidates if c["status"] == "needs_llm"),
+        "needs_review": sum(1 for c in candidates if c["status"] == "needs_review"),
+        "manual_review": sum(1 for c in candidates if c["status"] == "manual_review"),
+    }
+    payload = {
+        "source_platform": "retell",
+        "summary": summary,
+        "candidates": candidates,
+        "next_steps": [
+            (
+                "For ready prompt-based agents, call speko_migrate_retell_agent with "
+                "the matching Retell agent and LLM JSON."
+            ),
+            (
+                "For needs_llm agents, fetch the Retell LLM via Retell MCP "
+                "get_retell_llm/list_retell_llms."
+            ),
+            "For manual_review agents, export the Retell conversation-flow graph before migration.",
+        ],
+    }
+    return canonical_result(payload, text=retell_candidates_markdown(payload))
+
+
+async def speko_migrate_retell_agent(
+    retell_agent: Annotated[
+        dict[str, Any],
+        Field(description="Single Retell agent JSON returned by Retell MCP get_agent/list_agents."),
+    ],
+    retell_llm: Annotated[
+        dict[str, Any] | None,
+        Field(description="Matching Retell LLM JSON returned by get_retell_llm/list_retell_llms."),
+    ] = None,
+    deploy: Annotated[
+        bool,
+        Field(description="Deploy after conversion if no tools or flow graph need review."),
+    ] = False,
+    target_agent_id: Annotated[
+        str | None,
+        Field(description="Optional existing Speko agent id to deploy into when deploy=true."),
+    ] = None,
+) -> ToolResult:
+    """Convert one Retell MCP agent payload into a Speko SessionConfig draft."""
+    llms_by_id = retell_llms_by_id([retell_llm] if retell_llm else None)
+    candidate = retell_candidate(retell_agent, llms_by_id)
+    engine_type = candidate["response_engine_type"]
+    if engine_type == "retell-llm" and candidate["status"] == "needs_llm":
+        raise ToolError(
+            "Retell LLM payload is required for prompt migration; "
+            f"call get_retell_llm(llmId={candidate.get('llm_id')!r}) and retry."
+        )
+    if engine_type == "conversation-flow":
+        raise ToolError(
+            "Retell conversation-flow migration requires a flow export; "
+            "the Retell MCP agent payload only includes conversation_flow_id."
+        )
+
+    source_config = normalize_retell_config(retell_agent, retell_llm)
+    try:
+        payload = await http_client.parse_config("retell", json.dumps(source_config))
+        review_required = bool(unmappable_tools(payload)) or bool(candidate["review_items"])
+        payload["review_required"] = review_required
+        payload["retell_migration"] = {
+            "candidate": candidate,
+            "source_config": source_config,
+        }
+        if target_agent_id:
+            payload["agent_id"] = target_agent_id
+        if deploy and not review_required:
+            payload = await deploy_payload(payload)
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        raise speko_tool_error(exc, next_step="Check the Retell agent/LLM payloads.") from exc
     return canonical_result(payload, text=first_str(payload, "briefing_markdown"))
 
 

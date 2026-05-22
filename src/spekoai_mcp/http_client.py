@@ -211,6 +211,7 @@ async def create_test_session(
         for source_key, target_key in [
             ("voice", "voice"),
             ("systemPrompt", "systemPrompt"),
+            ("firstMessage", "firstMessage"),
             ("sttOptions", "sttOptions"),
         ]:
             if source_key in session_config and session_config[source_key] is not None:

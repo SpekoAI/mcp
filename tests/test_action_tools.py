@@ -37,7 +37,7 @@ def speko_api_mock(monkeypatch: pytest.MonkeyPatch):
         if path == "/v1/inference/sessionconfig":
             return json_response(build_payload())
         if path == "/v1/inference/parse-config":
-            return json_response(build_payload(source="vapi"))
+            return json_response(build_payload(source=str(body.get("format", "unknown"))))
         if path == "/v1/agents":
             return json_response({"id": "agent_1", "name": "Demo"})
         if path == "/v1/agents/agent_1/deploy":
@@ -86,6 +86,27 @@ async def test_private_action_tools_cover_expected_api_paths(
     await mcp.call_tool("speko_inspect", {"workspace_root": ".", "deep": False})
     await mcp.call_tool("speko_build", {"prose": "A support agent", "deploy": True})
     await mcp.call_tool("speko_migrate", {"from_platform": "vapi", "config_path": str(config)})
+    retell_agent = {
+        "agent_id": "agent_retell_1",
+        "agent_name": "Retell Support",
+        "language": "en-US",
+        "voice_id": "retell-Cimo",
+        "response_engine": {"type": "retell-llm", "llm_id": "llm_retell_1", "version": 0},
+    }
+    retell_llm = {
+        "llm_id": "llm_retell_1",
+        "general_prompt": "You are a helpful support agent.",
+        "begin_message": "Thanks for calling.",
+        "model": "gpt-4.1-mini",
+    }
+    await mcp.call_tool(
+        "speko_plan_retell_migration",
+        {"retell_agents": [retell_agent], "retell_llms": [retell_llm]},
+    )
+    retell_result = await mcp.call_tool(
+        "speko_migrate_retell_agent",
+        {"retell_agent": retell_agent, "retell_llm": retell_llm},
+    )
     await mcp.call_tool("speko_deploy", {"agent_id": "agent_1", "session_config": session_config()})
     await mcp.call_tool("speko_rollback", {"agent_id": "agent_1", "target_version_number": 1})
     await mcp.call_tool("speko_test", {"agent_id": "agent_1"})
@@ -106,6 +127,7 @@ async def test_private_action_tools_cover_expected_api_paths(
     assert ("POST", "/v1/inference/inspect") in paths
     assert ("POST", "/v1/inference/sessionconfig") in paths
     assert ("POST", "/v1/inference/parse-config") in paths
+    assert retell_result.structured_content["source"] == "retell"
     assert ("POST", "/v1/agents") in paths
     assert ("POST", "/v1/agents/agent_1/deploy") in paths
     assert ("POST", "/v1/agents/agent_1/rollback") in paths
@@ -126,6 +148,59 @@ async def test_private_server_lists_all_action_tools() -> None:
     mcp = create_server(include_private_tools=True)
     names = {tool.name for tool in await mcp.list_tools()}
     assert set(ACTION_TOOL_NAMES).issubset(names)
+
+
+async def test_retell_migration_plan_classifies_agents() -> None:
+    mcp = create_server(include_private_tools=True)
+    result = await mcp.call_tool(
+        "speko_plan_retell_migration",
+        {
+            "retell_agents": [
+                {
+                    "agent_id": "agent_ready",
+                    "agent_name": "Ready",
+                    "response_engine": {
+                        "type": "retell-llm",
+                        "llm_id": "llm_ready",
+                        "version": 0,
+                    },
+                },
+                {
+                    "agent_id": "agent_missing_llm",
+                    "agent_name": "Missing LLM",
+                    "response_engine": {
+                        "type": "retell-llm",
+                        "llm_id": "llm_missing",
+                        "version": 0,
+                    },
+                },
+                {
+                    "agent_id": "agent_flow",
+                    "agent_name": "Flow",
+                    "response_engine": {
+                        "type": "conversation-flow",
+                        "conversation_flow_id": "flow_1",
+                    },
+                },
+            ],
+            "retell_llms": [
+                {
+                    "llm_id": "llm_ready",
+                    "general_prompt": "Be helpful.",
+                    "general_tools": [{"type": "end_call", "name": "end_call"}],
+                }
+            ],
+        },
+    )
+    payload = result.structured_content or {}
+    statuses = {row["agent_id"]: row["status"] for row in payload["candidates"]}
+    assert statuses == {
+        "agent_ready": "ready",
+        "agent_missing_llm": "needs_llm",
+        "agent_flow": "manual_review",
+    }
+    ready = next(row for row in payload["candidates"] if row["agent_id"] == "agent_ready")
+    assert ready["tool_names"] == ["end_call"]
 
 
 def json_response(payload: dict[str, object], status_code: int = 200) -> httpx.Response:

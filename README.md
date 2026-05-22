@@ -106,13 +106,15 @@ Drop-in frontend components wrapping the SpekoAI SDKs. Mime type is
 | `recommended_stack` | Opinionated SpekoAI stack for one Speko use case (`general`, `healthcare`, `finance`, `legal`). Returns packages, tagline, use-case-specific rationale and compliance warnings, and a handoff to `scaffold_voice_app`. |
 | `scaffold_voice_app` | Strict Next.js App Router scaffold manifest for a browser voice app. Args: `use_case`, `languages?` (`en`/`es`, default `['en']`), `system_prompt?` (overrides the use-case default). Emits four files (route handler, React component, page, `.env.example`) plus install commands and env vars. |
 | `get_balance` | Caller's current prepaid credit balance in USD (`balance_usd`, `currency`, `updated_at`). Requires `/mcp-auth`; forwards the caller's OAuth token or API key to `api.speko.dev/v1/credits/balance`. |
+| `speko_plan_retell_migration` | Ranks Retell MCP agent payloads by migration readiness. Use after Retell MCP `list_agents` plus `list_retell_llms`/`get_retell_llm`. Requires `/mcp-auth`. |
+| `speko_migrate_retell_agent` | Converts one Retell MCP agent plus matching Retell LLM payload directly into a Speko SessionConfig draft. Requires `/mcp-auth`. |
 
 The public endpoint at `/mcp` exposes only the knowledge surface:
 resources, prompts, `search_docs`, `list_packages`, `recommended_stack`,
 and `scaffold_voice_app`. It ships static bundled data and needs no
 credentials. The authenticated endpoint at `/mcp-auth` exposes that same
-knowledge surface plus `get_balance`, an action tool that calls
-`api.speko.dev` on the caller's behalf. See the `Auth model` section below.
+knowledge surface plus private action tools such as `get_balance` and
+the `speko_*` migration/deploy/test tools. See the `Auth model` section below.
 The public endpoint also exposes `private_mcp_setup`, so agents can tell
 users about authenticated private tools and ask whether they want to
 replace/switch their public MCP connection to `/mcp-auth` when they
@@ -126,7 +128,6 @@ tools forward the caller's credential straight to the SpekoAI API. The
 credential can be an OAuth access token minted by the platform or a
 Speko API key supplied by the MCP client as `Authorization: Bearer ...`.
 
-`get_balance` is the first such action tool. When an MCP client connects
-to the hosted `/mcp-auth` endpoint, FastMCP verifies the OAuth token or
-Speko API key, and the tool forwards the same bearer credential to the
-SpekoAI API.
+When an MCP client connects to the hosted `/mcp-auth` endpoint,
+FastMCP verifies the OAuth token or Speko API key, and private action
+tools forward the same bearer credential to the SpekoAI API.

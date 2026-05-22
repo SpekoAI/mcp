@@ -178,6 +178,8 @@ def _build_private_mcp_setup() -> PrivateMcpSetup:
         "speko_inspect": "Inspects a voice-agent codebase and reports migration hints.",
         "speko_build": "Builds a Speko SessionConfig from prose.",
         "speko_migrate": "Converts LiveKit, Pipecat, Retell, or Vapi config to Speko.",
+        "speko_plan_retell_migration": "Ranks Retell MCP agent payloads by migration readiness.",
+        "speko_migrate_retell_agent": "Converts one Retell MCP agent plus LLM payload to Speko.",
         "speko_deploy": "Deploys a SessionConfig as an immutable AgentVersion.",
         "speko_rollback": "Rolls back to a historical AgentVersion.",
         "speko_test": "Creates a test voice session for an agent or draft config.",
@@ -203,7 +205,7 @@ def _build_private_mcp_setup() -> PrivateMcpSetup:
             for name in ACTION_TOOL_NAMES
         ],
         user_prompt=(
-            "I can help with that, but checking SpekoAI balance requires the "
+            "I can help with that, but private SpekoAI account actions require the "
             f"authenticated SpekoAI MCP endpoint: {endpoint}. Do you want to "
             "replace/switch your current public SpekoAI MCP connection to "
             "the authenticated endpoint? It includes the public tools plus "
