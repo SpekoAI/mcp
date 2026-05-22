@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Rebuild hosted MCP around the authenticated /mcp endpoint and unprefixed operational Speko API tools.
+
 ## 0.1.2
 
 - Promote MCP server to production.
