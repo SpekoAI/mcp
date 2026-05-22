@@ -11,11 +11,11 @@ Use this guide when converting a Vapi assistant to Speko.
 ## Agent Workflow
 
 1. Inspect Vapi assistant JSON, model, voice, transcriber, functions, server URLs, and call settings.
-2. Read `spekoai://docs/llms-full` and `spekoai://docs/adapter-vapi-readme` only as scaffold/reference material.
-3. Run `speko_migrate(from_platform="vapi", config_path=<path>, deploy=false)` when a config exists.
+2. Inspect local docs or package READMEs in the repository; the hosted MCP does not expose docs resources.
+3. Read the config and call `parse_external_config(format="vapi", raw=<file contents>)` when a config exists.
 4. Map every Vapi function explicitly to Speko webhook tools, builtins, or SDK-side handlers.
 5. Replace Vapi assistant/call creation with Speko SDK/platform session and deploy APIs.
-6. Run `speko_test`, inspect calls with `speko_logs` and `speko_calls_get`, then add evals from failing calls.
+6. Call `create_session`, inspect calls with `list_agent_calls` and `get_call`, then add evals from failing calls.
 7. Deploy only after user confirmation.
 
 ## Common Mapping

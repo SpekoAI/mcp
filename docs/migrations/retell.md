@@ -11,17 +11,13 @@ Use this guide when converting a Retell voice agent to Speko.
 ## Agent Workflow
 
 1. Inspect Retell agent JSON, prompt, voice, LLM, webhook, function, and call settings.
-2. Read `spekoai://docs/llms-full` and `spekoai://docs/adapter-retell-readme` only as scaffold/reference material.
-3. If the Retell MCP is connected, call `list_agents` and
-   `list_retell_llms`, then pass those payloads to
-   `speko_plan_retell_migration`.
-4. For each prompt-based Retell agent selected for migration, call
-   `speko_migrate_retell_agent(retell_agent=<agent>, retell_llm=<llm>, deploy=false)`.
-5. Run `speko_migrate(from_platform="retell", config_path=<path>, deploy=false)`
-   only when the source is a local Retell config file rather than Retell MCP output.
+2. Inspect local docs or package READMEs in the repository; the hosted MCP does not expose docs resources.
+3. If the Retell MCP is connected, call its agent/LLM listing tools and use the JSON payload as migration input.
+4. For each prompt-based Retell agent selected for migration, call `parse_external_config(format="retell", raw=<Retell JSON>)`.
+5. For a local Retell config file, read it and call `parse_external_config(format="retell", raw=<file contents>)`.
 6. Map every Retell function/tool explicitly to Speko webhook tools, builtins, or SDK-side handlers.
 7. Replace Retell API calls with Speko SDK/platform session, deploy, call, log, and eval APIs.
-8. Run `speko_test`, then inspect calls with `speko_logs` and `speko_calls_get`.
+8. Call `create_session`, then inspect calls with `list_agent_calls` and `get_call`.
 9. Deploy only after user confirmation.
 
 ## Common Mapping

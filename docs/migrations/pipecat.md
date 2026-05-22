@@ -12,10 +12,10 @@ Use this guide when converting a Pipecat pipeline to Speko.
 
 1. Inspect the codebase for Pipecat pipeline processors, transports, frame processors, service adapters, and function/tool callbacks.
 2. Identify current providers for STT, LLM, TTS, and speech-to-speech.
-3. If a config file exists, run `speko_migrate(from_platform="pipecat", config_path=<path>, deploy=false)`.
+3. If a config file exists, read it and call `parse_external_config(format="pipecat", raw=<file contents>)`.
 4. Map every custom processor or tool explicitly. Pipecat callbacks often mix business logic with transport behavior; separate them before moving to Speko.
 5. Replace provider-specific session startup with Speko SDK/platform session creation.
-6. Run `speko_test` and inspect `speko_logs` / `speko_calls_get`.
+6. Call `create_session`, then inspect calls with `list_agent_calls` and `get_call`.
 7. Deploy only after user confirmation.
 
 ## Common Mapping

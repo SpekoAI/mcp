@@ -41,20 +41,22 @@ def _oauth_proxy(auth):
     return auth.server
 
 
-def test_returns_none_when_fully_unset() -> None:
-    assert build_auth() is None
+def test_returns_api_key_auth_when_oauth_unset() -> None:
+    auth = build_auth()
+    assert auth.server is None
+    assert any(isinstance(v, SpekoApiKeyVerifier) for v in auth.verifiers)
 
 
-def test_returns_none_on_partial_config(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rejects_partial_oauth_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPEKOAI_OAUTH_ISSUER", "https://example.com/api/auth/oauth2")
     monkeypatch.setenv("SPEKOAI_OAUTH_CLIENT_ID", "id")
-    # client_secret + base_url missing -> fail closed, not public fallback
+    # client_secret + base_url missing -> fail closed, not API-key fallback
     with pytest.raises(ValueError, match="SPEKOAI_MCP_BASE_URL"):
         build_auth()
 
 
-def test_returns_none_when_base_url_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    # No prod-domain fallback: forgetting SPEKOAI_MCP_BASE_URL must not
+def test_rejects_oauth_when_base_url_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No prod-domain fallback for OAuth: forgetting SPEKOAI_MCP_BASE_URL must not
     # silently redirect OAuth traffic at the prod host.
     monkeypatch.setenv("SPEKOAI_OAUTH_ISSUER", "https://example.com/api/auth/oauth2")
     monkeypatch.setenv("SPEKOAI_OAUTH_CLIENT_ID", "id")
@@ -99,13 +101,11 @@ def test_trailing_slash_on_base_url_is_normalized(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("SPEKOAI_MCP_BASE_URL", "https://mcp.example.com/")
 
     proxy = _oauth_proxy(build_auth())
-    # FastMCP internally normalizes `base_url.rstrip("/") + "/mcp-auth"`
+    # FastMCP internally normalizes `base_url.rstrip("/") + "/mcp"`
     # when computing its advertised resource URL; if we don't do the
-    # same the `aud`/`resource` comparison fails with `//mcp-auth`.
-    assert proxy._token_validator.audience == "https://mcp.example.com/mcp-auth"
-    assert proxy._extra_authorize_params == {
-        "resource": "https://mcp.example.com/mcp-auth"
-    }
+    # same the `aud`/`resource` comparison fails with `//mcp`.
+    assert proxy._token_validator.audience == "https://mcp.example.com/mcp"
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com/mcp"}
 
 
 def test_audience_defaults_to_resource_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,11 +113,11 @@ def test_audience_defaults_to_resource_url(monkeypatch: pytest.MonkeyPatch) -> N
 
     proxy = _oauth_proxy(build_auth())
     # Default audience is the protected MCP resource URL
-    # (`{base_url}/mcp-auth`). This
+    # (`{base_url}/mcp`). This
     # must match the `resource` param FastMCP forwards upstream — see
     # `extra_authorize_params` below — so Better Auth's oauth-provider
     # mints a JWT with the same `aud` claim.
-    assert proxy._token_validator.audience == "https://mcp.example.com/mcp-auth"
+    assert proxy._token_validator.audience == "https://mcp.example.com/mcp"
 
 
 def test_resource_is_forwarded_upstream(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,10 +126,8 @@ def test_resource_is_forwarded_upstream(monkeypatch: pytest.MonkeyPatch) -> None
     proxy = _oauth_proxy(build_auth())
     # Without `resource` on the upstream authorize/token request, Better
     # Auth falls back to opaque tokens that JWTVerifier can't validate.
-    assert proxy._extra_authorize_params == {
-        "resource": "https://mcp.example.com/mcp-auth"
-    }
-    assert proxy._extra_token_params == {"resource": "https://mcp.example.com/mcp-auth"}
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com/mcp"}
+    assert proxy._extra_token_params == {"resource": "https://mcp.example.com/mcp"}
 
 
 def test_custom_mcp_path_sets_default_audience(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,9 +135,7 @@ def test_custom_mcp_path_sets_default_audience(monkeypatch: pytest.MonkeyPatch) 
 
     proxy = _oauth_proxy(build_auth(mcp_path="/internal/private"))
     assert proxy._token_validator.audience == "https://mcp.example.com/internal/private"
-    assert proxy._extra_authorize_params == {
-        "resource": "https://mcp.example.com/internal/private"
-    }
+    assert proxy._extra_authorize_params == {"resource": "https://mcp.example.com/internal/private"}
 
 
 async def test_api_key_verifier_accepts_valid_speko_key(

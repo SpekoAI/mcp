@@ -140,43 +140,9 @@ def test_component_resource_is_referenced() -> None:
     assert "spekoai://components/react/voice-session" in manifest.component_resources
 
 
-async def test_scaffold_voice_app_tool_advertised() -> None:
+async def test_scaffold_voice_app_tool_not_advertised() -> None:
     mcp = create_server()
-    tools = await mcp.list_tools()
-    assert any(t.name == "scaffold_voice_app" for t in tools)
-
-
-async def test_scaffold_voice_app_tool_returns_manifest() -> None:
-    mcp = create_server()
-    result = await mcp.call_tool(
-        "scaffold_voice_app",
-        {"languages": ["en", "es"]},
-    )
-    payload = result.structured_content or {}
-    paths = {f["path"] for f in payload.get("files", [])}
-    assert paths == _EXPECTED_PATHS
-    route = next(
-        f["content"] for f in payload["files"]
-        if f["path"] == "app/api/speko/route.ts"
-    )
-    assert "concise, helpful voice assistant" in route
-    assert "English and Spanish" in route
-
-
-async def test_scaffold_voice_app_tool_returns_actionable_text() -> None:
-    """The tool emits a text block alongside the structured manifest so
-    receiving agents (Claude Code, Cursor, etc.) get prose instructions
-    without re-interpreting the JSON payload."""
-    mcp = create_server()
-    result = await mcp.call_tool("scaffold_voice_app", {})
-    assert result.content, "tool must return at least one content block"
-    text_blocks = [c for c in result.content if getattr(c, "type", None) == "text"]
-    assert text_blocks, "tool must include a text content block"
-    combined = "\n".join(c.text for c in text_blocks)
-    assert "Create these files" in combined
-    assert "Run install commands" in combined
-    assert "Set environment variables" in combined
-    assert "app/api/speko/route.ts" in combined
+    assert "scaffold_voice_app" not in {tool.name for tool in await mcp.list_tools()}
 
 
 def test_scaffold_with_accuracy_bakes_in_optimize_for() -> None:
@@ -186,10 +152,7 @@ def test_scaffold_with_accuracy_bakes_in_optimize_for() -> None:
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
     assert "DEFAULT_OPTIMIZE_FOR" in route
     assert "'accuracy'" in route
-    active_lines = [
-        ln for ln in route.splitlines()
-        if ln.startswith("const DEFAULT_OPTIMIZE_FOR")
-    ]
+    active_lines = [ln for ln in route.splitlines() if ln.startswith("const DEFAULT_OPTIMIZE_FOR")]
     assert active_lines, (
         "scaffold with optimize_for='accuracy' must emit an active "
         "(non-commented) DEFAULT_OPTIMIZE_FOR declaration"
@@ -203,10 +166,7 @@ def test_scaffold_with_cost_bakes_in_optimize_for() -> None:
     manifest = build_voice_app_manifest(optimize_for="cost")
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
     assert "'cost'" in route
-    active_lines = [
-        ln for ln in route.splitlines()
-        if ln.startswith("const DEFAULT_OPTIMIZE_FOR")
-    ]
+    active_lines = [ln for ln in route.splitlines() if ln.startswith("const DEFAULT_OPTIMIZE_FOR")]
     assert active_lines
 
 
@@ -218,19 +178,11 @@ def test_scaffold_default_keeps_optimize_for_commented() -> None:
     manifest = build_voice_app_manifest()
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
     active_optimize = [
-        ln for ln in route.splitlines()
-        if ln.startswith("const DEFAULT_OPTIMIZE_FOR")
+        ln for ln in route.splitlines() if ln.startswith("const DEFAULT_OPTIMIZE_FOR")
     ]
-    active_region = [
-        ln for ln in route.splitlines()
-        if ln.startswith("const DEFAULT_REGION")
-    ]
-    assert not active_optimize, (
-        "default scaffold must leave DEFAULT_OPTIMIZE_FOR commented out"
-    )
-    assert not active_region, (
-        "default scaffold must leave DEFAULT_REGION commented out"
-    )
+    active_region = [ln for ln in route.splitlines() if ln.startswith("const DEFAULT_REGION")]
+    assert not active_optimize, "default scaffold must leave DEFAULT_OPTIMIZE_FOR commented out"
+    assert not active_region, "default scaffold must leave DEFAULT_REGION commented out"
 
 
 def test_scaffold_with_region_bakes_in_default_region() -> None:
@@ -243,17 +195,3 @@ def test_scaffold_page_optimize_for_uses_param_when_non_default() -> None:
     manifest = build_voice_app_manifest(optimize_for="cost")
     page = _files_by_path(manifest)["app/page.tsx"]
     assert "optimizeFor: 'cost' as const" in page
-
-
-async def test_scaffold_voice_app_tool_does_not_accept_use_case() -> None:
-    """Vertical branching was deliberately removed in v0."""
-    mcp = create_server()
-    tools = await mcp.list_tools()
-    tool = next(t for t in tools if t.name == "scaffold_voice_app")
-    schema_props = (tool.parameters or {}).get("properties", {})
-    assert "use_case" not in schema_props
-    assert set(schema_props.get("optimize_for", {}).get("enum", [])) == {
-        "latency",
-        "accuracy",
-        "cost",
-    }

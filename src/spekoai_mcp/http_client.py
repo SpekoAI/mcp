@@ -45,13 +45,13 @@ def get_api_base() -> str:
     ).rstrip("/")
 
 
-def _path_segment(value: str | int) -> str:
+def path_segment(value: str | int) -> str:
     return quote(str(value), safe="")
 
 
-def _with_query(path: str, query: dict[str, Any | None]) -> str:
-    clean = {key: value for key, value in query.items() if value not in (None, "")}
-    return f"{path}?{urlencode(clean)}" if clean else path
+def with_query(path: str, query: dict[str, Any | None]) -> str:
+    clean = {key: value for key, value in query.items() if value not in (None, "") and value != []}
+    return f"{path}?{urlencode(clean, doseq=True)}" if clean else path
 
 
 def _bearer_token() -> str:
@@ -59,7 +59,7 @@ def _bearer_token() -> str:
     if access_token is None:
         raise SpekoAuthError(
             "This tool requires the authenticated SpekoAI MCP endpoint. "
-            "Connect /mcp-auth with OAuth or Authorization: Bearer <Speko API key>."
+            "Connect /mcp with OAuth or Authorization: Bearer <Speko API key>."
         )
     token = getattr(access_token, "token", access_token)
     if not isinstance(token, str) or not token:
@@ -118,6 +118,46 @@ async def _call_speko_api(
     return payload
 
 
+async def call_speko_api(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return await _call_speko_api(method, path, body)
+
+
+async def call_speko_api_any(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> Any:
+    api_base = get_api_base()
+    url = f"{api_base}/{path.lstrip('/')}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0,
+            follow_redirects=True,
+            transport=_TEST_TRANSPORT,
+        ) as client:
+            resp = await client.request(
+                method.upper(),
+                url,
+                headers={"Authorization": f"Bearer {_bearer_token()}"},
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+    if resp.status_code >= 400:
+        message, trace_id = _error_details(resp)
+        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+    if not resp.content:
+        return {}
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise SpekoApiError(resp.status_code, "Speko API returned a non-JSON response.") from exc
+
+
 async def _call_speko_api_raw(
     method: str,
     path: str,
@@ -146,6 +186,14 @@ async def _call_speko_api_raw(
         content=resp.content,
         content_type=resp.headers.get("content-type", "application/octet-stream"),
     )
+
+
+async def call_speko_api_raw(
+    method: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> SpekoRawResponse:
+    return await _call_speko_api_raw(method, path, body)
 
 
 def tool_error_message(exc: Exception, *, next_step: str) -> str:
@@ -183,7 +231,7 @@ async def deploy_agent(
 ) -> dict[str, Any]:
     return await _call_speko_api(
         "POST",
-        f"/v1/agents/{_path_segment(agent_id)}/deploy",
+        f"/v1/agents/{path_segment(agent_id)}/deploy",
         {"session_config": session_config, "briefing_markdown": briefing_markdown},
     )
 
@@ -191,7 +239,7 @@ async def deploy_agent(
 async def rollback_agent(agent_id: str, target_version_number: int) -> dict[str, Any]:
     return await _call_speko_api(
         "POST",
-        f"/v1/agents/{_path_segment(agent_id)}/rollback",
+        f"/v1/agents/{path_segment(agent_id)}/rollback",
         {"target_version_number": target_version_number},
     )
 
@@ -226,29 +274,29 @@ async def create_test_session(
 
 
 async def list_agent_calls(agent_id: str, *, since: str | None, limit: int) -> dict[str, Any]:
-    path = _with_query(
-        f"/v1/agents/{_path_segment(agent_id)}/calls",
+    path = with_query(
+        f"/v1/agents/{path_segment(agent_id)}/calls",
         {"since": since, "limit": limit},
     )
     return await _call_speko_api("GET", path)
 
 
 async def get_call(call_id: str) -> dict[str, Any]:
-    return await _call_speko_api("GET", f"/v1/calls/{_path_segment(call_id)}")
+    return await _call_speko_api("GET", f"/v1/calls/{path_segment(call_id)}")
 
 
 async def list_agent_evals(agent_id: str) -> dict[str, Any]:
-    return await _call_speko_api("GET", f"/v1/agents/{_path_segment(agent_id)}/evals")
+    return await _call_speko_api("GET", f"/v1/agents/{path_segment(agent_id)}/evals")
 
 
 async def add_agent_eval(agent_id: str, body: dict[str, Any]) -> dict[str, Any]:
-    return await _call_speko_api("POST", f"/v1/agents/{_path_segment(agent_id)}/evals", body)
+    return await _call_speko_api("POST", f"/v1/agents/{path_segment(agent_id)}/evals", body)
 
 
 async def run_agent_eval(agent_id: str, eval_id: str) -> dict[str, Any]:
     return await _call_speko_api(
         "POST",
-        f"/v1/agents/{_path_segment(agent_id)}/evals/{_path_segment(eval_id)}/run",
+        f"/v1/agents/{path_segment(agent_id)}/evals/{path_segment(eval_id)}/run",
         {},
     )
 
@@ -268,5 +316,5 @@ async def render_agent_briefing(
 async def create_share_card(build_id: str, *, title: str | None = None) -> SpekoRawResponse:
     body = {"title": title} if title else {}
     return await _call_speko_api_raw(
-        "POST", f"/v1/share/build/{_path_segment(build_id)}/card.png", body
+        "POST", f"/v1/share/build/{path_segment(build_id)}/card.png", body
     )

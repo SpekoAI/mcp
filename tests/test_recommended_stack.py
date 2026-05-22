@@ -101,64 +101,6 @@ def test_intent_echo_round_trips() -> None:
     }
 
 
-async def test_recommended_stack_tool_advertised() -> None:
+async def test_recommended_stack_tool_not_advertised() -> None:
     mcp = create_server()
-    tools = await mcp.list_tools()
-    assert any(t.name == "recommended_stack" for t in tools)
-
-
-async def test_recommended_stack_tool_default_payload() -> None:
-    mcp = create_server()
-    result = await mcp.call_tool("recommended_stack", {})
-    payload = result.structured_content or {}
-    assert payload.get("optimize_for") == "latency"
-    assert payload.get("next_tool") == "scaffold_voice_app"
-    package_names = {p["name"] for p in payload.get("packages", [])}
-    assert "@spekoai/client" in package_names
-
-
-async def test_recommended_stack_tool_round_trip_new_params() -> None:
-    mcp = create_server()
-    result = await mcp.call_tool(
-        "recommended_stack",
-        {
-            "optimize_for": "latency",
-            "language": "en",
-            "region": "us-east4",
-        },
-    )
-    payload = result.structured_content or {}
-    assert payload.get("optimize_for") == "latency"
-    assert payload.get("intent", {}).get("region") == "us-east4"
-    assert payload.get("data_generated_at")
-    assert payload.get("stt"), "STT picks must be non-empty for en/us-east4"
-    assert payload.get("llm"), "LLM picks must be non-empty"
-    for c in payload["stt"]:
-        assert "provider_id" in c
-        assert "primary_latency_ms" in c
-        assert "supported" in c
-
-
-async def test_recommended_stack_tool_rejects_unknown_optimize_for() -> None:
-    mcp = create_server()
-    with pytest.raises(Exception):
-        await mcp.call_tool("recommended_stack", {"optimize_for": "vibes"})
-
-
-async def test_recommended_stack_tool_does_not_accept_use_case() -> None:
-    """Vertical branching was deliberately removed in v0 — the tool
-    should not advertise a `use_case` parameter."""
-    mcp = create_server()
-    tools = await mcp.list_tools()
-    tool = next(t for t in tools if t.name == "recommended_stack")
-    schema_props = (tool.parameters or {}).get("properties", {})
-    assert "use_case" not in schema_props, (
-        "recommended_stack must not expose `use_case` until benchmark "
-        "data is vertical-tuned"
-    )
-    # Three v0 axes only — confirm the closed enumeration.
-    assert set(schema_props.get("optimize_for", {}).get("enum", [])) == {
-        "latency",
-        "accuracy",
-        "cost",
-    }
+    assert "recommended_stack" not in {tool.name for tool in await mcp.list_tools()}

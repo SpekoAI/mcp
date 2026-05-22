@@ -1,9 +1,8 @@
-"""CLI entrypoint for the hosted HTTP server.
+"""CLI entrypoint for the hosted HTTP MCP server.
 
-The server always exposes public MCP at `/mcp`. When the four required
-OAuth env vars are set it also exposes protected MCP at `/mcp-auth`,
-alongside the OAuth operational and discovery routes needed by clients.
-The protected endpoint accepts OAuth bearer tokens and Speko API keys.
+The server exposes one protected MCP endpoint at `/mcp`. It accepts OAuth
+bearer tokens when OAuth env vars are configured, and always accepts Speko API
+keys as `Authorization: Bearer sk_*`.
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ import logging
 import uvicorn
 
 from spekoai_mcp.auth import build_auth
-from spekoai_mcp.server import AUTH_MCP_PATH, create_app
+from spekoai_mcp.server import MCP_PATH, create_app
 
 logger = logging.getLogger("spekoai_mcp")
 
@@ -30,16 +29,11 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    auth = build_auth(mcp_path=AUTH_MCP_PATH)
-    if auth is None:
-        logger.info(
-            "spekoai-mcp: running public-only at /mcp (no OAuth env vars set)."
-        )
+    auth = build_auth(mcp_path=MCP_PATH)
+    if auth.server is None:
+        logger.info("spekoai-mcp: running API-key protected MCP at %s.", MCP_PATH)
     else:
-        logger.info(
-            "spekoai-mcp: running public /mcp and OAuth/API-key protected %s.",
-            AUTH_MCP_PATH,
-        )
+        logger.info("spekoai-mcp: running OAuth/API-key protected MCP at %s.", MCP_PATH)
 
     app = create_app(auth=auth)
     # Trust X-Forwarded-* from the Cloud Run / load-balancer fronting

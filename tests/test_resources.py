@@ -6,9 +6,6 @@ list every slug, and unknown slugs must raise `ResourceError`.
 
 from __future__ import annotations
 
-import pytest
-from fastmcp.exceptions import ResourceError
-
 from spekoai_mcp.docs import all_slugs, format_index, load_manifest, read_doc
 from spekoai_mcp.server import create_server
 
@@ -40,7 +37,7 @@ def test_migration_guides_are_bundled() -> None:
         assert slug in slugs
         body = read_doc(slug)
         assert platform in body.lower()
-        assert f'speko_migrate(from_platform="{platform}"' in body
+        assert "parse_external_config" in body
 
 
 def test_llms_resources_are_bundled() -> None:
@@ -78,31 +75,7 @@ def test_no_internal_docs_are_bundled() -> None:
         )
 
 
-async def test_server_advertises_resources_and_template() -> None:
+async def test_server_does_not_advertise_resources_or_templates() -> None:
     mcp = create_server()
-    resources = await mcp.list_resources()
-    assert any(str(r.uri) == "spekoai://docs/index" for r in resources)
-    templates = await mcp.list_resource_templates()
-    assert any(t.uri_template == "spekoai://docs/{slug}" for t in templates)
-
-
-async def test_reading_index_returns_markdown() -> None:
-    mcp = create_server()
-    result = await mcp.read_resource("spekoai://docs/index")
-    content = result.contents[0]
-    assert content.content.startswith("# SpekoAI documentation index")
-
-
-async def test_reading_each_slug_returns_body() -> None:
-    mcp = create_server()
-    for slug in all_slugs():
-        result = await mcp.read_resource(f"spekoai://docs/{slug}")
-        body = result.contents[0].content
-        assert isinstance(body, str)
-        assert body.strip()
-
-
-async def test_unknown_slug_raises_resource_error() -> None:
-    mcp = create_server()
-    with pytest.raises(ResourceError, match="unknown doc slug"):
-        await mcp.read_resource("spekoai://docs/definitely-not-a-real-slug")
+    assert await mcp.list_resources() == []
+    assert await mcp.list_resource_templates() == []

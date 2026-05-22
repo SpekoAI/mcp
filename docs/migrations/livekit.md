@@ -7,19 +7,19 @@ Use this guide when converting a LiveKit Agents worker to Speko.
 - Keep LiveKit as the room/runtime when the app already depends on it.
 - Route STT, LLM, and TTS through Speko via `@spekoai/adapter-livekit`.
 - Keep custom LiveKit tools explicit. Do not assume a tool can be migrated automatically.
-- For hosted Speko deployments, convert the worker defaults into a Speko SessionConfig and deploy through `speko_deploy`.
+- For hosted Speko deployments, convert the worker defaults into a Speko SessionConfig and deploy through `deploy_agent`.
 
 ## Agent Workflow
 
 1. Inspect the codebase for `@livekit/agents`, room connection code, VAD setup, STT/LLM/TTS plugins, and tool definitions.
-2. Read `spekoai://docs/llms-full` and `spekoai://docs/adapter-livekit-readme`.
-3. If a config file exists, run `speko_migrate(from_platform="livekit", config_path=<path>, deploy=false)`.
+2. Inspect local docs or package READMEs in the repository; the hosted MCP does not expose docs resources.
+3. If a config file exists, read it and call `parse_external_config(format="livekit", raw=<file contents>)`.
 4. Map every unmappable tool to one of:
    - a Speko webhook tool,
    - a Speko builtin tool,
    - SDK-side tool handling that stays in the LiveKit worker.
 5. Update the worker to construct Speko components with the Speko SDK/client/adapter pattern.
-6. Run `speko_test` against the draft or deployed agent.
+6. Call `create_session` against the draft or deployed agent.
 7. Deploy only after the user confirms the mapped tools and behavior.
 
 ## Common Mapping

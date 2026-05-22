@@ -20,7 +20,7 @@ from fastmcp.server.auth import (
 )
 from fastmcp.utilities.logging import get_logger
 
-DEFAULT_AUTH_MCP_PATH = "/mcp-auth"
+DEFAULT_MCP_PATH = "/mcp"
 
 logger = get_logger(__name__)
 
@@ -31,9 +31,7 @@ class SpekoApiKeyVerifier(TokenVerifier):
     def __init__(self, *, api_base_url: str | None = None) -> None:
         super().__init__(required_scopes=["api_key"])
         self.api_base_url = (
-            api_base_url
-            or os.environ.get("SPEKOAI_API_URL")
-            or "https://api.speko.dev"
+            api_base_url or os.environ.get("SPEKOAI_API_URL") or "https://api.speko.dev"
         ).rstrip("/")
 
     async def verify_token(self, token: str) -> AccessToken | None:
@@ -70,9 +68,7 @@ class SpekoApiKeyVerifier(TokenVerifier):
             pass
 
         client_id = (
-            f"api-key:{claims['organization_id']}"
-            if "organization_id" in claims
-            else "api-key"
+            f"api-key:{claims['organization_id']}" if "organization_id" in claims else "api-key"
         )
         return AccessToken(
             token=token,
@@ -83,30 +79,36 @@ class SpekoApiKeyVerifier(TokenVerifier):
         )
 
 
-def build_auth(mcp_path: str = DEFAULT_AUTH_MCP_PATH) -> MultiAuth | None:
-    """Return auth for `/mcp-auth` if OAuth env vars are set, else None.
+def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
+    """Return auth for the hosted MCP endpoint.
 
-    A `None` return means no OAuth configuration was supplied at all. Partial
-    configuration (e.g. issuer set but client id missing) raises `ValueError`
-    so deployment fails closed instead of accidentally running the private MCP
-    endpoint public. When OAuth is configured, API-key verification is also
-    enabled so clients may authenticate with either OAuth or a Speko API key.
+    If the OAuth issuer/client env vars are absent, the endpoint still requires
+    a Speko API key (`Authorization: Bearer sk_*`). Partial OAuth configuration
+    raises `ValueError` so deployment fails closed. When OAuth is configured,
+    API-key verification remains enabled so clients may authenticate with
+    either OAuth or a Speko API key.
     """
-    env = {
+    oauth_env = {
         "SPEKOAI_OAUTH_ISSUER": os.environ.get("SPEKOAI_OAUTH_ISSUER"),
         "SPEKOAI_OAUTH_CLIENT_ID": os.environ.get("SPEKOAI_OAUTH_CLIENT_ID"),
         "SPEKOAI_OAUTH_CLIENT_SECRET": os.environ.get("SPEKOAI_OAUTH_CLIENT_SECRET"),
-        "SPEKOAI_MCP_BASE_URL": os.environ.get("SPEKOAI_MCP_BASE_URL"),
     }
-    configured = {name for name, value in env.items() if value}
-    if not configured:
-        return None
+    configured_oauth = {name for name, value in oauth_env.items() if value}
+    base_url = os.environ.get("SPEKOAI_MCP_BASE_URL")
+    if not configured_oauth:
+        return MultiAuth(
+            verifiers=[SpekoApiKeyVerifier()],
+            base_url=base_url or "https://mcp.speko.ai",
+        )
+
+    env = {**oauth_env, "SPEKOAI_MCP_BASE_URL": base_url}
     missing = sorted(name for name, value in env.items() if not value)
     if missing:
         raise ValueError(
             "OAuth configuration is incomplete; missing "
             f"{', '.join(missing)}. Either set all required SPEKOAI_OAUTH_* "
-            "vars or unset them all to run public-only."
+            "vars plus SPEKOAI_MCP_BASE_URL, or unset OAuth vars to run "
+            "API-key-only."
         )
 
     issuer = env["SPEKOAI_OAUTH_ISSUER"]
@@ -140,7 +142,7 @@ def build_auth(mcp_path: str = DEFAULT_AUTH_MCP_PATH) -> MultiAuth | None:
     # which FastMCP normalizes via `base_url.rstrip("/") + "/" + path`
     # (see `fastmcp/server/auth/auth.py::_get_resource_url`). Strip a
     # trailing slash on `base_url` here too — otherwise a
-    # `SPEKOAI_MCP_BASE_URL=https://host/` produces `//mcp-auth` and the
+    # `SPEKOAI_MCP_BASE_URL=https://host/` produces `//mcp` and the
     # `aud` claim stops matching FastMCP's advertised resource URL.
     # Override via SPEKOAI_OAUTH_AUDIENCE if the protected MCP endpoint
     # needs a non-default resource indicator.

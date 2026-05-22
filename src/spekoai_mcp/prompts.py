@@ -520,14 +520,14 @@ def register_prompts(mcp: FastMCP) -> None:
     ) -> list[Message]:
         guide_uri = f"spekoai://docs/migration-{from_platform}"
         config_step = (
-            f'Run `speko_migrate(from_platform="{from_platform}", '
-            f'config_path="{config_path}", deploy=false)` and inspect '
+            f'Read `{config_path}`, call `parse_external_config(format="{from_platform}", '
+            "raw=<file contents>)`, and inspect "
             "`unmappable_tools`."
             if config_path
             else (
                 "No config_path was provided. First inspect the codebase and "
                 "ask the user for the source config path if one exists; do "
-                "not run `speko_migrate` with a guessed path."
+                "not call `parse_external_config` with a guessed path."
             )
         )
         adapter_warning = ""
@@ -551,9 +551,9 @@ def register_prompts(mcp: FastMCP) -> None:
                 f"Workspace root: `{workspace_root}`\n"
                 f"Runtime target: `{runtime}`\n"
                 f"Migration guide: `{guide_uri}`\n\n"
-                "Before editing code, read the guide resource in full. Also "
-                "read the relevant SDK resources from `spekoai://docs/index` "
-                "for the runtime you are editing."
+                "Before editing code, read the local guide/source docs if "
+                "they are present in the repository. Hosted MCP docs "
+                "resources are disabled in this pass."
                 f"{adapter_warning}"
             ),
             Message(
@@ -563,7 +563,7 @@ def register_prompts(mcp: FastMCP) -> None:
                 "session creation, transport, tool/function callbacks, and "
                 "deployment path.\n"
                 "2. If authenticated Speko MCP tools are available, call "
-                f'`speko_inspect(workspace_root="{workspace_root}", '
+                f'`inspect_workspace(workspace_root="{workspace_root}", '
                 "deep=false)` to get platform-side recommendations.\n"
                 f"3. Read `{guide_uri}` again before deciding code changes."
             ),
@@ -592,12 +592,12 @@ def register_prompts(mcp: FastMCP) -> None:
             Message(
                 "Validation and deploy gate:\n"
                 "1. Run the repo's local tests/lint/build for edited code.\n"
-                "2. Run `speko_test` against the draft or deployed agent.\n"
-                "3. Inspect failures with `speko_logs` and `speko_calls_get`.\n"
-                "4. Add regression evals with `speko_evals_add_from_call` "
+                "2. Call `create_session` against the draft or deployed agent.\n"
+                "3. Inspect failures with `list_agent_calls` and `get_call`.\n"
+                "4. Add regression evals with `create_agent_eval` "
                 "for failed calls worth preserving.\n"
                 "5. Ask the user for explicit confirmation before calling "
-                "`speko_deploy` or using `speko_migrate(..., deploy=true)`. "
+                "`deploy_agent`. "
                 "Do not deploy automatically."
             ),
         ]
