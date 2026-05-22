@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Add Retell MCP migration planning and agent conversion tools.
+- Preserve Retell prompt metadata, begin messages, voices, LLM models, dynamic variables, post-call analysis, and tool names in Speko migration drafts.
+
 ## 0.0.1
 
 - Initial scaffold: FastMCP v3 server wrapping `spekoai.AsyncSpekoAI`.
