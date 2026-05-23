@@ -78,9 +78,33 @@ def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
         if isinstance(trace, str) and trace:
             trace_id = trace
         detail = payload.get("error") or payload.get("message") or payload.get("detail")
+        issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
+            if issues:
+                return f"{detail}: {issues}"[:500], trace_id
             return detail[:500], trace_id
     return json.dumps(payload)[:500], trace_id
+
+
+def _validation_issue_summary(value: Any) -> str | None:
+    if not isinstance(value, list) or not value:
+        return None
+    parts: list[str] = []
+    for item in value[:5]:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        message = item.get("message")
+        if not isinstance(message, str) or not message:
+            continue
+        if isinstance(path, str) and path:
+            parts.append(f"{path}: {message}")
+        else:
+            parts.append(message)
+    if not parts:
+        return None
+    suffix = "" if len(value) <= 5 else f"; and {len(value) - 5} more"
+    return "; ".join(parts) + suffix
 
 
 async def _call_speko_api(

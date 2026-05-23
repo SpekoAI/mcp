@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastmcp.exceptions import ToolError
 
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
@@ -178,6 +179,46 @@ async def test_action_tools_cover_expected_api_paths(
 async def test_server_lists_exact_action_tools() -> None:
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == ACTION_TOOL_NAMES
+
+
+async def test_create_agent_rejects_string_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool(
+            "create_agent",
+            {
+                "body": {
+                    "name": "Temp Migration Probe",
+                    "systemPrompt": "You are a test agent.",
+                    "intent": "customer_support",
+                }
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+def test_error_details_include_validation_issues() -> None:
+    response = httpx.Response(
+        400,
+        json={
+            "error": "Invalid request",
+            "code": "VALIDATION_ERROR",
+            "issues": [
+                {"path": "intent", "message": "Expected object, received string"},
+                {"path": "systemPrompt", "message": "Required"},
+            ],
+        },
+        headers={"x-request-id": "req_123"},
+    )
+
+    message, trace_id = http_client._error_details(response)
+
+    assert trace_id == "req_123"
+    assert message == (
+        "Invalid request: intent: Expected object, received string; systemPrompt: Required"
+    )
 
 
 EXPECTED_METHOD_PATHS = {

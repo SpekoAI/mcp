@@ -16,6 +16,13 @@ from spekoai_mcp import http_client
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
+CREATE_AGENT_NEXT_STEP = (
+    "For create_agent, pass a body like "
+    "{'name':'Support','systemPrompt':'...','intent':{'language':'en'}}. "
+    "For migrations, call parse_external_config first and pass its "
+    "agent_create_payload as create_agent.body."
+)
+
 ACTION_TOOL_NAMES = [
     "get_organization",
     "get_credit_balance",
@@ -181,9 +188,7 @@ async def call(
     try:
         payload = await http_client.call_speko_api(method, path, body)
     except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
-        raise tool_error(
-            exc, next_step="Check authentication and retry the Speko MCP request."
-        ) from exc
+        raise tool_error(exc, next_step=next_step_for_error(exc, path=path)) from exc
     return result(payload, text=text)
 
 
@@ -197,14 +202,66 @@ async def call_list(
     try:
         payload = await http_client.call_speko_api_any(method, path, body)
     except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
-        raise tool_error(
-            exc, next_step="Check authentication and retry the Speko MCP request."
-        ) from exc
+        raise tool_error(exc, next_step=next_step_for_error(exc, path=path)) from exc
     if isinstance(payload, list):
         return list_result(payload, text=text)
     if isinstance(payload, dict):
         return result(payload, text=text)
     return result({"result": payload}, text=text)
+
+
+def next_step_for_error(exc: Exception, *, path: str) -> str:
+    if isinstance(exc, http_client.SpekoAuthError):
+        return "Check authentication and retry the Speko MCP request."
+    if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 400:
+        if path == "/v1/agents":
+            return CREATE_AGENT_NEXT_STEP
+        return (
+            "Fix the request body using the validation details, then retry the "
+            "Speko MCP request."
+        )
+    if isinstance(exc, http_client.SpekoApiError) and exc.status_code in {401, 403}:
+        return "Check authentication and retry the Speko MCP request."
+    return "Retry the Speko MCP request or inspect the Speko API response details."
+
+
+def validate_create_agent_body(body: dict[str, Any]) -> None:
+    missing = [
+        key
+        for key in ("name", "systemPrompt", "intent")
+        if key not in body or body[key] in (None, "")
+    ]
+    if missing:
+        raise ToolError(
+            "Invalid create_agent body: missing required field(s) "
+            f"{', '.join(missing)}; next_step={CREATE_AGENT_NEXT_STEP}"
+        )
+
+    if not isinstance(body.get("name"), str):
+        raise ToolError(
+            "Invalid create_agent body: body.name must be a string; "
+            f"next_step={CREATE_AGENT_NEXT_STEP}"
+        )
+    if not isinstance(body.get("systemPrompt"), str):
+        raise ToolError(
+            "Invalid create_agent body: body.systemPrompt must be a string; "
+            f"next_step={CREATE_AGENT_NEXT_STEP}"
+        )
+
+    intent = body.get("intent")
+    if not isinstance(intent, dict):
+        raise ToolError(
+            "Invalid create_agent body: body.intent must be an object with a routing "
+            "language, for example {'language':'en'}. It is not a use-case string "
+            f"like 'customer_support'; next_step={CREATE_AGENT_NEXT_STEP}"
+        )
+
+    language = intent.get("language")
+    if not isinstance(language, str) or len(language.strip()) < 2:
+        raise ToolError(
+            "Invalid create_agent body: body.intent.language must be a BCP-47 "
+            f"language string such as 'en' or 'en-US'; next_step={CREATE_AGENT_NEXT_STEP}"
+        )
 
 
 async def get_organization() -> ToolResult:
@@ -260,11 +317,18 @@ async def create_agent(
     body: Annotated[
         dict[str, Any],
         Field(
-            description="JSON body for POST /v1/agents, including name, systemPrompt, and intent."
+            description=(
+                "JSON body for POST /v1/agents. Required shape: "
+                "{name: string, systemPrompt: string, intent: {language: string, "
+                "optimizeFor?: 'latency'|'quality'|'cost'}}. The intent field is "
+                "routing metadata, not a use-case string. For migrations, pass "
+                "agent_create_payload from parse_external_config."
+            )
         ),
     ],
 ) -> ToolResult:
     """Create a Speko agent."""
+    validate_create_agent_body(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
 
