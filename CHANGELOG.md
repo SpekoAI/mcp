@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- fix: create agent payload
+
 ## 0.1.3
 
 - Rebuild hosted MCP around the authenticated /mcp endpoint and unprefixed operational Speko API tools.
