@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5
+
+- Don't copy over voice id
+
 ## 0.1.4
 
 - fix: create agent payload
