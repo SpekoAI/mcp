@@ -119,11 +119,11 @@ def test_component_declares_session_config_types() -> None:
     assert "SessionOptimizeFor" in body
 
 
-def test_route_returns_livekit_tokensource_shape() -> None:
+def test_route_returns_transport_credentials() -> None:
     manifest = build_voice_app_manifest()
     route = _files_by_path(manifest)["app/api/speko/route.ts"]
-    assert "server_url: livekitUrl" in route
-    assert "participant_token: conversationToken" in route
+    assert "transportUrl" in route
+    assert "transportToken" in route
 
 
 def test_page_is_root_and_imports_component_via_alias() -> None:

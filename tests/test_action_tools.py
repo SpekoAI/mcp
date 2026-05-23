@@ -45,7 +45,15 @@ def speko_api_mock(monkeypatch: pytest.MonkeyPatch):
         if path == "/v1/sessions":
             if method == "GET":
                 return json_response({"entries": [], "nextCursor": None})
-            return json_response({"sessionId": "sess_1", "conversationToken": "tok"})
+            return json_response(
+                {
+                    "sessionId": "sess_1",
+                    "transportToken": "tok",
+                    "transportUrl": "wss://transport.example",
+                    "conversationToken": "tok",
+                    "livekitUrl": "wss://transport.example",
+                }
+            )
         if path == "/v1/agents/agent_1/calls":
             return json_response({"calls": [], "entries": []})
         if path == "/v1/agents/agent_1/evals":

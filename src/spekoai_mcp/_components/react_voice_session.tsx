@@ -96,14 +96,14 @@ export function SpekoVoiceSession({
       if (!res.ok) {
         throw new Error(`${sessionEndpoint} ${res.status}: ${await res.text()}`);
       }
-      const { server_url, participant_token } = (await res.json()) as {
-        server_url: string;
-        participant_token: string;
+      const { transportUrl, transportToken } = (await res.json()) as {
+        transportUrl: string;
+        transportToken: string;
       };
       setMessages([]);
       const conv = await VoiceConversation.create({
-        conversationToken: participant_token,
-        livekitUrl: server_url,
+        transportToken,
+        transportUrl,
         onStatusChange: (s) => setStatus(s),
         onModeChange: (m) => setMode(m),
         onMessage: (msg) => {

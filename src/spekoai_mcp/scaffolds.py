@@ -137,18 +137,13 @@ def _route_ts(
     picks_header_lines.append("// ============================================================")
     picks_header = "\n".join(picks_header_lines)
 
-    return f"""// Next.js App Router route handler — mints a Speko conversation
-// token for the browser. The Speko server SDK does not expose a
+    return f"""// Next.js App Router route handler — mints Speko media
+// transport credentials for the browser. The Speko server SDK does not expose a
 // sessions helper yet, so this uses raw fetch against /v1/sessions.
 //
-// Accepts LiveKit's standard TokenSource request body (room_name,
-// participant_identity, ...) and ignores it (Speko manages the room
-// internally). Speko-side config — systemPrompt, intent.language,
+// Accepts optional Speko-side config — systemPrompt, intent.language,
 // intent.region, intent.optimizeFor — is set below and may be
 // overridden per-request by adding the same fields to the body.
-//
-// Returns `{{ server_url, participant_token }}` so it plugs directly
-// into LiveKit's TokenSource.endpoint() on the client.
 
 {picks_header}
 
@@ -216,16 +211,12 @@ export async function POST(req: Request): Promise<Response> {{
     }});
   }}
 
-  const {{ conversationToken, livekitUrl }} = (await res.json()) as {{
-    conversationToken: string;
-    livekitUrl: string;
+  const {{ transportToken, transportUrl }} = (await res.json()) as {{
+    transportToken: string;
+    transportUrl: string;
   }};
 
-  // LiveKit's TokenSource.endpoint() expects this exact shape.
-  return Response.json(
-    {{ server_url: livekitUrl, participant_token: conversationToken }},
-    {{ status: 201 }},
-  );
+  return Response.json({{ transportToken, transportUrl }}, {{ status: 201 }});
 }}
 """
 
@@ -412,7 +403,7 @@ def build_voice_app_manifest(
             "route.ts are the fallback when the client omits a field. See "
             "spekoai://docs/llms-full for the full /v1/sessions schema.",
             "components/speko-voice-session.tsx uses @spekoai/client's "
-            "`VoiceConversation.create({conversationToken, livekitUrl, ...})` "
+            "`VoiceConversation.create({transportToken, transportUrl, ...})` "
             "and renders the transcript + mode indicator from its callbacks. "
             "See spekoai://docs/llms-full for the full callback surface "
             "(onMessage, onStatusChange, onModeChange, onError).",
