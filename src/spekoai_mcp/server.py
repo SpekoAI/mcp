@@ -16,6 +16,8 @@ from starlette.routing import Mount, Route
 
 from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
+from spekoai_mcp.docs_tools import register_docs_tools
+from spekoai_mcp.resources import register_resources
 
 MCP_PATH = DEFAULT_MCP_PATH
 
@@ -33,6 +35,13 @@ INSTRUCTIONS = "\n\n".join(
         build or migrate SessionConfig drafts.
         """,
         """
+        Docs are available in-band: call search_docs(query) to find SDK usage,
+        API body shapes, and migration steps across the bundled Speko docs,
+        then read the matching spekoai://docs/{slug} resource.
+        spekoai://docs/index lists every bundled doc. If a write tool rejects
+        a body, search the failing field name before retrying.
+        """,
+        """
         All tools require the hosted MCP endpoint at /mcp with OAuth or a Speko
         API key supplied as Authorization: Bearer sk_*. Tool names are
         intentionally unprefixed because clients may namespace them by MCP
@@ -43,13 +52,16 @@ INSTRUCTIONS = "\n\n".join(
 
 
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
-    """Build the Speko MCP server with only authenticated operational tools."""
+    """Build the Speko MCP server: authenticated operational tools plus the
+    docs self-serve surface (search_docs + spekoai://docs/* resources)."""
     mcp: FastMCP = FastMCP(
         name="spekoai",
         instructions=INSTRUCTIONS,
         auth=auth,
     )
     register_action_tools(mcp)
+    register_docs_tools(mcp)
+    register_resources(mcp)
     return mcp
 
 

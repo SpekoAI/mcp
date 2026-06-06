@@ -11,6 +11,7 @@ from starlette.testclient import TestClient
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.auth import build_auth
+from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.server import MCP_PATH, create_app, create_server
 
 
@@ -21,21 +22,23 @@ def _set_valid_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPEKOAI_MCP_BASE_URL", "https://mcp.example.com")
 
 
-async def test_server_lists_only_operational_tools() -> None:
+async def test_server_lists_operational_and_docs_tools() -> None:
     mcp = create_server()
     names = [tool.name for tool in await mcp.list_tools()]
-    assert names == ACTION_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
     assert all(not name.startswith("speko_") for name in names)
+    assert "search_docs" in names
     assert "private_mcp_setup" not in names
-    assert "search_docs" not in names
     assert "recommended_stack" not in names
     assert "scaffold_voice_app" not in names
 
 
-async def test_resources_prompts_and_templates_are_disabled() -> None:
+async def test_docs_resources_advertised_but_prompts_stay_disabled() -> None:
     mcp = create_server()
-    assert await mcp.list_resources() == []
-    assert await mcp.list_resource_templates() == []
+    resources = await mcp.list_resources()
+    assert any(str(r.uri) == "spekoai://docs/index" for r in resources)
+    templates = await mcp.list_resource_templates()
+    assert any(t.uri_template == "spekoai://docs/{slug}" for t in templates)
     assert await mcp.list_prompts() == []
 
 

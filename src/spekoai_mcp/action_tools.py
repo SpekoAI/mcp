@@ -1,8 +1,16 @@
-"""Hosted MCP tools that relay authenticated calls to the Speko API."""
+"""Hosted MCP tools that relay authenticated calls to the Speko API.
+
+Body shapes inlined into tool descriptions below are derived from the
+zod validators in `apps/server/src/routes/` (sessions.ts,
+sessions-phone.ts, agents.ts, phone-numbers.ts, knowledge-bases.ts,
+agent-evals.ts, inference.ts). Keep them in sync when the route
+schemas change; an LLM client only sees these descriptions.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -22,6 +30,33 @@ CREATE_AGENT_NEXT_STEP = (
     "For migrations, call parse_external_config first and pass its "
     "agent_create_payload as create_agent.body."
 )
+
+CREATE_SESSION_NEXT_STEP = (
+    "For create_session, pass a body like {'agentId':'<agent id>'} or "
+    "{'intent':{'language':'en'}}. Add mode:'s2s' for speech-to-speech."
+)
+
+CREATE_PHONE_SESSION_NEXT_STEP = (
+    "For create_phone_session, pass a body like "
+    "{'to':'+12015551234','agentId':'<agent id>'} or "
+    "{'to':'+12015551234','intent':{'language':'en'}}."
+)
+
+UPDATE_AGENT_NEXT_STEP = (
+    "For update_agent, pass only the fields to change, for example "
+    "{'systemPrompt':'...'} or {'intent':{'language':'es'}}."
+)
+
+CREATE_AGENT_TOOL_NEXT_STEP = (
+    "For create_agent_tool, pass a body like {'name':'lookup_order',"
+    "'description':'Look up an order by id.',"
+    "'parameters':{'type':'object','properties':{}},"
+    "'source':{'kind':'webhook','url':'https://...','secret':'<min 8 chars>'}}."
+)
+
+TOOL_SOURCE_KINDS = ("inline", "webhook", "builtin", "integration")
+
+_E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 
 ACTION_TOOL_NAMES = [
     "get_organization",
@@ -216,6 +251,12 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 400:
         if path == "/v1/agents":
             return CREATE_AGENT_NEXT_STEP
+        if path == "/v1/sessions":
+            return CREATE_SESSION_NEXT_STEP
+        if path == "/v1/sessions/phone":
+            return CREATE_PHONE_SESSION_NEXT_STEP
+        if path.endswith("/tools"):
+            return CREATE_AGENT_TOOL_NEXT_STEP
         return (
             "Fix the request body using the validation details, then retry the "
             "Speko MCP request."
@@ -261,6 +302,105 @@ def validate_create_agent_body(body: dict[str, Any]) -> None:
         raise ToolError(
             "Invalid create_agent body: body.intent.language must be a BCP-47 "
             f"language string such as 'en' or 'en-US'; next_step={CREATE_AGENT_NEXT_STEP}"
+        )
+
+
+def validate_intent_field(intent: Any, *, tool: str, next_step: str) -> None:
+    """Validate an optional routing-intent object on a session/agent body."""
+    if not isinstance(intent, dict):
+        raise ToolError(
+            f"Invalid {tool} body: body.intent must be an object with a routing "
+            "language, for example {'language':'en'}. It is not a use-case "
+            f"string like 'customer_support'; next_step={next_step}"
+        )
+    language = intent.get("language")
+    if not isinstance(language, str) or len(language.strip()) < 2:
+        raise ToolError(
+            f"Invalid {tool} body: body.intent.language must be a BCP-47 "
+            f"language string such as 'en' or 'en-US'; next_step={next_step}"
+        )
+
+
+def validate_session_target(body: dict[str, Any], *, tool: str, next_step: str) -> None:
+    """Sessions need a persisted agent or an inline routing intent."""
+    if not body.get("agentId") and not body.get("intent"):
+        raise ToolError(
+            f"Invalid {tool} body: either agentId or intent is required; "
+            f"next_step={next_step}"
+        )
+    if body.get("intent") is not None:
+        validate_intent_field(body["intent"], tool=tool, next_step=next_step)
+
+
+def validate_create_session_body(body: dict[str, Any]) -> None:
+    # Mirrors apps/server/src/routes/sessions.ts createS2sSession: an
+    # explicit s2s.provider + s2s.model pin needs neither agentId nor
+    # intent — intent is only required for automatic provider selection.
+    if body.get("mode") == "s2s":
+        raw_spec = body.get("s2s")
+        spec = raw_spec if isinstance(raw_spec, dict) else {}
+        has_provider = spec.get("provider") not in (None, "")
+        has_model = spec.get("model") not in (None, "")
+        if has_provider != has_model:
+            raise ToolError(
+                "Invalid create_session body: s2s.provider and s2s.model must "
+                f"be supplied together; next_step={CREATE_SESSION_NEXT_STEP}"
+            )
+        if has_provider and has_model:
+            if body.get("intent") is not None:
+                validate_intent_field(
+                    body["intent"],
+                    tool="create_session",
+                    next_step=CREATE_SESSION_NEXT_STEP,
+                )
+            return
+    validate_session_target(body, tool="create_session", next_step=CREATE_SESSION_NEXT_STEP)
+
+
+def validate_create_phone_session_body(body: dict[str, Any]) -> None:
+    to = body.get("to")
+    if not isinstance(to, str) or not _E164_RE.match(to):
+        raise ToolError(
+            "Invalid create_phone_session body: body.to must be an E.164 "
+            "phone number such as '+12015551234'; "
+            f"next_step={CREATE_PHONE_SESSION_NEXT_STEP}"
+        )
+    validate_session_target(
+        body, tool="create_phone_session", next_step=CREATE_PHONE_SESSION_NEXT_STEP
+    )
+
+
+def validate_update_agent_body(body: dict[str, Any]) -> None:
+    if not body:
+        raise ToolError(
+            "Invalid update_agent body: pass at least one field to change; "
+            f"next_step={UPDATE_AGENT_NEXT_STEP}"
+        )
+    if body.get("intent") is not None:
+        validate_intent_field(body["intent"], tool="update_agent", next_step=UPDATE_AGENT_NEXT_STEP)
+
+
+def validate_create_agent_tool_body(body: dict[str, Any]) -> None:
+    missing = [
+        key
+        for key in ("name", "description", "parameters", "source")
+        if key not in body or body[key] in (None, "")
+    ]
+    if missing:
+        raise ToolError(
+            "Invalid create_agent_tool body: missing required field(s) "
+            f"{', '.join(missing)}; next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
+        )
+    source = body.get("source")
+    if not isinstance(source, dict) or source.get("kind") not in TOOL_SOURCE_KINDS:
+        raise ToolError(
+            "Invalid create_agent_tool body: body.source.kind must be one of "
+            f"{', '.join(TOOL_SOURCE_KINDS)}; next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
+        )
+    if source["kind"] == "webhook" and not (source.get("url") and source.get("secret")):
+        raise ToolError(
+            "Invalid create_agent_tool body: a webhook source requires url and "
+            f"secret (>=8 chars); next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
         )
 
 
@@ -343,9 +483,33 @@ async def get_agent(
 
 async def update_agent(
     agent_id: Annotated[str, Field(description="Agent id.")],
-    body: Annotated[dict[str, Any], Field(description="JSON body for PATCH /v1/agents/{id}.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for PATCH /v1/agents/{id}. All fields optional; "
+                "only supplied fields change, and null clears a nullable "
+                "field. Fields: name (string, <=120 chars), systemPrompt "
+                "(string), voice (string|null), intent ({language: BCP-47 "
+                "string, optimizeFor?: 'latency'|'quality'|'cost'}), "
+                "llmOptions ({temperature?: 0-2, maxTokens?: int, model?: "
+                "string}|null), stackPreferences ({allowedProviders?: "
+                "{stt?|llm?|tts?|s2s?: string[]}}|null), sttOptions "
+                "({keywords?: string[], <=200 entries}|null), ttsOptions "
+                "({speed?: 0.5-2, model?: string}|null), runMode "
+                "('cascade'|'s2s'), backgroundAudio ({ambient?: {clip: "
+                "'office-ambience'|'keyboard-typing'|'keyboard-typing2', "
+                "volume?: 0-1}}|null), speechNormalization "
+                "({pronunciationDictionary?: {term: spoken}, "
+                "textReplacements?: {from: to}}|null), webhooks "
+                "({preCall?|postCall?|status?: {url: string, headers?: "
+                "object, timeoutMs?: 100-8000}|null}|null)."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Update one Speko agent."""
+    validate_update_agent_body(body)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",
@@ -377,10 +541,26 @@ async def list_agent_tools(
 async def create_agent_tool(
     agent_id: Annotated[str, Field(description="Agent id.")],
     body: Annotated[
-        dict[str, Any], Field(description="JSON body for POST /v1/agents/{agentId}/tools.")
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/agents/{agentId}/tools. Required "
+                "shape: {name: identifier string (<=64 chars, "
+                "[a-zA-Z_][a-zA-Z0-9_]*), description: string (1-1024 "
+                "chars), parameters: JSON Schema object for the tool's "
+                "arguments, source: one of {kind:'inline'} | "
+                "{kind:'webhook', url: string URL, secret: string (>=8 "
+                "chars), headers?: object, timeoutMs?: 100-4000, "
+                "responseMode?: 'sync'|'async', asyncAck?: string} | "
+                "{kind:'builtin', name: string, config?: any} | "
+                "{kind:'integration', installationId: uuid, appKey: "
+                "string, actionKey: string, config?: any}}."
+            )
+        ),
     ],
 ) -> ToolResult:
     """Create a tool on an agent."""
+    validate_create_agent_tool_body(body)
     return await call(
         "POST",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools",
@@ -406,7 +586,15 @@ async def update_agent_tool(
     tool_id: Annotated[str, Field(description="Tool id.")],
     body: Annotated[
         dict[str, Any],
-        Field(description="JSON body for PATCH /v1/agents/{agentId}/tools/{toolId}."),
+        Field(
+            description=(
+                "JSON body for PATCH /v1/agents/{agentId}/tools/{toolId}. "
+                "All fields optional: description (1-1024 chars), "
+                "parameters (JSON Schema object), source (same shapes as "
+                "create_agent_tool; for kind 'webhook', secret is optional "
+                "on update; omit it to keep the existing secret)."
+            )
+        ),
     ],
 ) -> ToolResult:
     """Update one agent tool."""
@@ -481,16 +669,69 @@ async def list_agent_versions(
 
 
 async def create_session(
-    body: Annotated[dict[str, Any], Field(description="JSON body for POST /v1/sessions.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/sessions. Required: either agentId "
+                "(string, persisted agent whose fields seed the session) or "
+                "intent ({language: BCP-47 string such as 'en', region?: "
+                "string (default 'global'), optimizeFor?: "
+                "'balanced'|'accuracy'|'latency'|'cost'}); exception: mode "
+                "'s2s' with both s2s.provider and s2s.model pinned needs "
+                "neither. Optional: mode ('cascade' | 's2s'; when omitted, "
+                "defaults to 's2s' if the referenced agent's run mode is "
+                "'s2s', else 'cascade'), voice (string), "
+                "systemPrompt (string), firstMessage (string <=2000 chars; "
+                "null or '' opens the session listening), llm "
+                "({temperature?: 0-2, maxTokens?: int}), ttsOptions "
+                "({sampleRate?: int, speed?: number}), sttOptions "
+                "({keywords?: string[], <=200 entries}), backgroundAudio "
+                "({ambient?: {clip: 'office-ambience'|'keyboard-typing'|"
+                "'keyboard-typing2', volume?: 0-1}}), constraints "
+                "({allowedProviders?: {stt?|llm?|tts?|s2s?: string[]}}), "
+                "metadata (object), ttlSeconds (int, <=86400, default 900), "
+                "identity (string <=128). For mode 's2s' add s2s "
+                "({provider?: 'openai'|'google'|'xai'|'inworld'|'alibaba', "
+                "model?: string, voice?: string, systemPrompt?: string, "
+                "temperature?: 0-2, inputSampleRate?/outputSampleRate?: "
+                "16000|24000, tools?: [{name, description, parameters}]}); "
+                "s2s ttlSeconds caps at 3600 (default 1800). Per-call "
+                "fields win over agent defaults."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Create a browser/WebRTC or server-to-server voice session."""
+    validate_create_session_body(body)
     return await call("POST", "/v1/sessions", body=body, text="Created session.")
 
 
 async def create_phone_session(
-    body: Annotated[dict[str, Any], Field(description="JSON body for POST /v1/sessions/phone.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/sessions/phone. Required: to (E.164 "
+                "string such as '+12015551234') plus either agentId "
+                "(string) or intent ({language: BCP-47 string, optimizeFor?: "
+                "'balanced'|'accuracy'|'latency'|'cost'}). Optional: from "
+                "(E.164 string; defaults to an owned phone number), voice "
+                "(string), systemPrompt (string), firstMessage (string), "
+                "llm ({temperature?: 0-2, maxTokens?: int}), ttsOptions "
+                "({sampleRate?: int, speed?: number}), sttOptions "
+                "({keywords?: string[], <=200 entries}), telephony "
+                "({region?: string, amd?: {mode: "
+                "'agent'|'carrier'|'disabled' (default 'agent'), "
+                "timeoutSeconds?: int <=60}}), constraints "
+                "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
+                "metadata (object). Per-call fields win over agent defaults."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Create an outbound phone session."""
+    validate_create_phone_session_body(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 
@@ -614,7 +855,20 @@ async def search_available_phone_numbers(
 
 
 async def create_phone_number(
-    body: Annotated[dict[str, Any], Field(description="JSON body for POST /v1/phone-numbers.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/phone-numbers. Required: e164 "
+                "(E.164 string such as '+12015551234'; pick one from "
+                "search_available_phone_numbers). Optional: direction "
+                "('inbound'|'outbound'|'both', default 'outbound'), label "
+                "(string <=120), agentId (string; agent that answers "
+                "inbound calls on this number), dispatchMetadataTemplate "
+                "(object)."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Provision a phone number."""
     return await call("POST", "/v1/phone-numbers", body=body, text="Created phone number.")
@@ -634,7 +888,15 @@ async def get_phone_number(
 async def update_phone_number(
     phone_number_id: Annotated[str, Field(description="Phone-number row id.")],
     body: Annotated[
-        dict[str, Any], Field(description="JSON body for PATCH /v1/phone-numbers/{id}.")
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for PATCH /v1/phone-numbers/{id}. All fields "
+                "optional: direction ('inbound'|'outbound'|'both'), label "
+                "(string <=120 | null), agentId (string to relink, null to "
+                "unlink), dispatchMetadataTemplate (object | null)."
+            )
+        ),
     ],
 ) -> ToolResult:
     """Update one phone number."""
@@ -658,7 +920,16 @@ async def delete_phone_number(
 
 
 async def create_knowledge_base(
-    body: Annotated[dict[str, Any], Field(description="JSON body for POST /v1/knowledge-bases.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/knowledge-bases. Required shape: "
+                "{agentId: string, name: string (1-120 chars)}. Optional: "
+                "description (string <=2000)."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Create a knowledge base."""
     return await call("POST", "/v1/knowledge-bases", body=body, text="Created knowledge base.")
@@ -712,7 +983,16 @@ async def create_knowledge_document(
     knowledge_base_id: Annotated[str, Field(description="Knowledge-base id.")],
     body: Annotated[
         dict[str, Any],
-        Field(description="JSON body for POST /v1/knowledge-bases/{kbId}/documents."),
+        Field(
+            description=(
+                "JSON body for POST /v1/knowledge-bases/{kbId}/documents. "
+                "Required shape: {filename: string (1-512 chars), "
+                "contentType: MIME string such as 'text/markdown' (<=120 "
+                "chars), sizeBytes: non-negative int}. Optional: metadata "
+                "(object). The response includes an upload URL; PUT the "
+                "file bytes there, then call finalize_knowledge_document."
+            )
+        ),
     ],
 ) -> ToolResult:
     """Create a knowledge document row and upload URL."""
@@ -783,7 +1063,23 @@ async def list_agent_evals(
 
 async def create_agent_eval(
     agent_id: Annotated[str, Field(description="Agent id.")],
-    body: Annotated[dict[str, Any], Field(description="JSON body for POST /v1/agents/{id}/evals.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/agents/{id}/evals. Required shape: "
+                "{name: string (1-160 chars), expected_behavior: string}. "
+                "Optional: description (string <=1024), assertion_kind "
+                "('contains_phrase'|'tool_called'|'language_switched'|"
+                "'within_latency'|'no_hallucination'|'custom', default "
+                "'custom'), assertion_config (object, default {}), "
+                "input_kind ('transcript'|'audio_url'|'assertion_only', "
+                "default 'transcript'), input_payload (object, default {}), "
+                "source_call_id (uuid of the call to promote), "
+                "block_deploy_on_fail (bool, default true)."
+            )
+        ),
+    ],
 ) -> ToolResult:
     """Create an eval for an agent."""
     return await call(
@@ -834,7 +1130,16 @@ async def inspect_workspace(
 async def build_session_config(
     body: Annotated[
         dict[str, Any],
-        Field(description="JSON body for POST /v1/inference/sessionconfig."),
+        Field(
+            description=(
+                "JSON body for POST /v1/inference/sessionconfig. All fields "
+                "optional: prose (natural-language description of the agent "
+                "to build), intent (routing-intent object such as "
+                "{'language':'en'}), workspace_context ({repo_languages?: "
+                "string[], framework_hints?: string[]}). Unknown extra keys "
+                "are passed through."
+            )
+        ),
     ],
 ) -> ToolResult:
     """Build a Speko SessionConfig draft from prose and hints."""

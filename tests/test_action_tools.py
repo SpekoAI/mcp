@@ -10,6 +10,7 @@ from fastmcp.exceptions import ToolError
 
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
+from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.server import create_server
 
 
@@ -186,7 +187,7 @@ async def test_action_tools_cover_expected_api_paths(
 
 async def test_server_lists_exact_action_tools() -> None:
     names = [tool.name for tool in await create_server().list_tools()]
-    assert names == ACTION_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 async def test_create_agent_rejects_string_intent_before_api(
@@ -201,6 +202,153 @@ async def test_create_agent_rejects_string_intent_before_api(
                     "systemPrompt": "You are a test agent.",
                     "intent": "customer_support",
                 }
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_requires_agent_or_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="either agentId or intent is required"):
+        await create_server().call_tool("create_session", {"body": {"mode": "cascade"}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_rejects_string_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool(
+            "create_session", {"body": {"intent": "customer_support"}}
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_pinned_provider_model_needs_no_agent_or_intent(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    # Mirrors createS2sSession in apps/server/src/routes/sessions.ts: an
+    # explicit provider+model pin requires neither agentId nor intent.
+    await create_server().call_tool(
+        "create_session",
+        {"body": {"mode": "s2s", "s2s": {"provider": "openai", "model": "gpt-realtime"}}},
+    )
+
+    assert [(call["method"], call["path"]) for call in speko_api_mock] == [
+        ("POST", "/v1/sessions")
+    ]
+
+
+async def test_create_session_s2s_without_pin_requires_agent_or_intent(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="either agentId or intent is required"):
+        await create_server().call_tool("create_session", {"body": {"mode": "s2s"}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_rejects_provider_without_model_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="must be supplied together"):
+        await create_server().call_tool(
+            "create_session",
+            {"body": {"mode": "s2s", "s2s": {"provider": "openai"}}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_pinned_still_validates_intent_shape(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool(
+            "create_session",
+            {
+                "body": {
+                    "mode": "s2s",
+                    "s2s": {"provider": "openai", "model": "gpt-realtime"},
+                    "intent": "customer_support",
+                }
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_phone_session_rejects_non_e164_to_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="E.164"):
+        await create_server().call_tool(
+            "create_phone_session",
+            {"body": {"to": "(201) 555-0123", "agentId": "agent_1"}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_update_agent_rejects_empty_body_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="at least one field"):
+        await create_server().call_tool("update_agent", {"agent_id": "agent_1", "body": {}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_rejects_missing_fields_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="missing required field"):
+        await create_server().call_tool(
+            "create_agent_tool",
+            {"agent_id": "agent_1", "body": {"name": "lookup"}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_rejects_unknown_source_kind_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="source.kind must be one of"):
+        await create_server().call_tool(
+            "create_agent_tool",
+            {
+                "agent_id": "agent_1",
+                "body": {
+                    "name": "lookup",
+                    "description": "Look up data.",
+                    "parameters": {"type": "object"},
+                    "source": {"kind": "lambda"},
+                },
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_webhook_requires_url_and_secret_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="webhook source requires url and"):
+        await create_server().call_tool(
+            "create_agent_tool",
+            {
+                "agent_id": "agent_1",
+                "body": {
+                    "name": "lookup",
+                    "description": "Look up data.",
+                    "parameters": {"type": "object"},
+                    "source": {"kind": "webhook", "url": "https://example.com/hook"},
+                },
             },
         )
 

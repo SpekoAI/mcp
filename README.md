@@ -41,9 +41,10 @@ API-key clients:
 
 ## Surfaces
 
-This pass intentionally exposes only operational tools. MCP resources,
-resource templates, prompts, components, and docs-search tools are not
-advertised by the hosted server.
+The hosted server exposes the operational tools below plus a docs self-serve
+surface: the `search_docs` tool (full-text search over bundled Speko docs)
+and the `spekoai://docs/index` + `spekoai://docs/{slug}` resources. MCP
+prompts, components, and scaffolding tools are not advertised.
 
 Tool names are unprefixed because MCP clients may already namespace tools by
 server name.
@@ -112,6 +113,12 @@ server name.
 - `parse_external_config`
 - `render_briefing`
 - `create_share_card`
+
+### Docs
+
+- `search_docs` - full-text search over the bundled Speko docs (SDK/adapter
+  READMEs, hosted llms.txt exports, migration guides). Hits link to
+  `spekoai://docs/{slug}` resources; `spekoai://docs/index` lists every doc.
 
 ## Auth model
 

@@ -42,3 +42,12 @@ def test_hit_shape() -> None:
 def test_limit_is_respected() -> None:
     hits = search("speko", limit=3)
     assert len(hits) <= 3
+
+
+async def test_search_docs_tool_is_callable_on_the_server() -> None:
+    from spekoai_mcp.server import create_server
+
+    result = await create_server().call_tool("search_docs", {"query": "VoiceConversation"})
+    hits = result.structured_content["result"]
+    assert hits, "expected at least one hit for a seeded query"
+    assert hits[0]["slug"] == "llms-full"
