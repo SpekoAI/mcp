@@ -1,5 +1,7 @@
 # spekoai-mcp
 
+[![smithery badge](https://smithery.ai/badge/abat/speko)](https://smithery.ai/servers/abat/speko)
+
 Model Context Protocol server for [SpekoAI](https://speko.ai). The hosted
 server exposes one authenticated endpoint:
 
