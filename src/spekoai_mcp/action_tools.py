@@ -17,7 +17,7 @@ from typing import Annotated, Any, Literal
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
-from mcp.types import TextContent
+from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import http_client
@@ -58,26 +58,80 @@ TOOL_SOURCE_KINDS = ("inline", "webhook", "builtin", "integration")
 
 _E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 
-ACTION_TOOL_NAMES = [
+ACTION_TOOL_NAME_BY_FUNCTION = {
+    "get_organization": "organization.get",
+    "get_credit_balance": "credits.balance.get",
+    "list_credit_ledger": "credits.ledger.list",
+    "get_usage_summary": "usage.summary.get",
+    "list_agents": "agents.list",
+    "create_agent": "agents.create",
+    "get_agent": "agents.get",
+    "update_agent": "agents.update",
+    "delete_agent": "agents.delete",
+    "list_agent_tools": "agents.tools.list",
+    "create_agent_tool": "agents.tools.create",
+    "get_agent_tool": "agents.tools.get",
+    "update_agent_tool": "agents.tools.update",
+    "delete_agent_tool": "agents.tools.delete",
+    "deploy_agent": "agents.deploy",
+    "rollback_agent": "agents.rollback",
+    "list_agent_versions": "agents.versions.list",
+    "create_session": "sessions.create",
+    "create_phone_session": "sessions.phone.create",
+    "list_sessions": "sessions.list",
+    "get_session": "sessions.get",
+    "get_session_transcript": "sessions.transcript.get",
+    "get_session_recording": "sessions.recording.get",
+    "list_agent_calls": "agents.calls.list",
+    "get_call": "calls.get",
+    "get_call_recording": "calls.recording.get",
+    "list_phone_numbers": "phone_numbers.list",
+    "search_available_phone_numbers": "phone_numbers.available.search",
+    "create_phone_number": "phone_numbers.create",
+    "get_phone_number": "phone_numbers.get",
+    "update_phone_number": "phone_numbers.update",
+    "delete_phone_number": "phone_numbers.delete",
+    "create_knowledge_base": "knowledge_bases.create",
+    "list_knowledge_bases": "knowledge_bases.list",
+    "get_knowledge_base": "knowledge_bases.get",
+    "delete_knowledge_base": "knowledge_bases.delete",
+    "list_knowledge_documents": "knowledge_bases.documents.list",
+    "create_knowledge_document": "knowledge_bases.documents.create",
+    "get_knowledge_document": "knowledge_bases.documents.get",
+    "delete_knowledge_document": "knowledge_bases.documents.delete",
+    "finalize_knowledge_document": "knowledge_bases.documents.finalize",
+    "list_agent_evals": "agents.evals.list",
+    "create_agent_eval": "agents.evals.create",
+    "run_agent_eval": "agents.evals.run",
+    "get_eval": "evals.get",
+    "inspect_workspace": "migration.workspace.inspect",
+    "build_session_config": "migration.session_config.build",
+    "parse_external_config": "migration.external_config.parse",
+    "render_briefing": "migration.briefing.render",
+    "create_share_card": "share_cards.create",
+}
+
+ACTION_TOOL_NAMES = list(ACTION_TOOL_NAME_BY_FUNCTION.values())
+
+SPEKO_API_OUTPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Structured JSON payload returned by the Speko API or a Speko MCP helper. "
+        "Fields vary by tool and endpoint."
+    ),
+    "additionalProperties": True,
+}
+
+READ_ONLY_ACTION_TOOL_NAMES = {
     "get_organization",
     "get_credit_balance",
     "list_credit_ledger",
     "get_usage_summary",
     "list_agents",
-    "create_agent",
     "get_agent",
-    "update_agent",
-    "delete_agent",
     "list_agent_tools",
-    "create_agent_tool",
     "get_agent_tool",
-    "update_agent_tool",
-    "delete_agent_tool",
-    "deploy_agent",
-    "rollback_agent",
     "list_agent_versions",
-    "create_session",
-    "create_phone_session",
     "list_sessions",
     "get_session",
     "get_session_transcript",
@@ -87,29 +141,27 @@ ACTION_TOOL_NAMES = [
     "get_call_recording",
     "list_phone_numbers",
     "search_available_phone_numbers",
-    "create_phone_number",
     "get_phone_number",
-    "update_phone_number",
-    "delete_phone_number",
-    "create_knowledge_base",
     "list_knowledge_bases",
     "get_knowledge_base",
-    "delete_knowledge_base",
     "list_knowledge_documents",
-    "create_knowledge_document",
     "get_knowledge_document",
-    "delete_knowledge_document",
-    "finalize_knowledge_document",
     "list_agent_evals",
-    "create_agent_eval",
-    "run_agent_eval",
     "get_eval",
     "inspect_workspace",
     "build_session_config",
     "parse_external_config",
     "render_briefing",
-    "create_share_card",
-]
+}
+
+DESTRUCTIVE_ACTION_TOOL_NAMES = {
+    "delete_agent",
+    "delete_agent_tool",
+    "rollback_agent",
+    "delete_phone_number",
+    "delete_knowledge_base",
+    "delete_knowledge_document",
+}
 
 
 def register_action_tools(mcp: FastMCP) -> None:
@@ -165,7 +217,34 @@ def register_action_tools(mcp: FastMCP) -> None:
         render_briefing,
         create_share_card,
     ]:
-        mcp.tool(tool)
+        name = tool.__name__
+        public_name = ACTION_TOOL_NAME_BY_FUNCTION[name]
+        title = tool_title(name)
+        mcp.tool(
+            tool,
+            name=public_name,
+            title=title,
+            output_schema=SPEKO_API_OUTPUT_SCHEMA,
+            annotations=ToolAnnotations(
+                title=title,
+                readOnlyHint=name in READ_ONLY_ACTION_TOOL_NAMES,
+                destructiveHint=name in DESTRUCTIVE_ACTION_TOOL_NAMES,
+                idempotentHint=name in READ_ONLY_ACTION_TOOL_NAMES,
+                openWorldHint=True,
+            ),
+        )
+
+
+def tool_title(name: str) -> str:
+    """Turn snake_case tool names into compact UI titles."""
+    replacements = {
+        "id": "ID",
+        "api": "API",
+        "mcp": "MCP",
+        "s2s": "S2S",
+        "url": "URL",
+    }
+    return " ".join(replacements.get(part, part.capitalize()) for part in name.split("_"))
 
 
 def result(payload: dict[str, Any], text: str = "Speko API request completed.") -> ToolResult:

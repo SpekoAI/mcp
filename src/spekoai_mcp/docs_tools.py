@@ -13,20 +13,73 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import search
 
-DOCS_TOOL_NAMES = [
-    "search_docs",
-]
+DOCS_TOOL_NAME_BY_FUNCTION = {
+    "search_docs": "docs.search",
+}
+
+DOCS_TOOL_NAMES = list(DOCS_TOOL_NAME_BY_FUNCTION.values())
+
+SEARCH_DOCS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "description": "Bundled Speko documentation search results.",
+    "properties": {
+        "result": {
+            "type": "array",
+            "description": "Matching bundled docs, ordered by descending relevance.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "slug": {
+                        "type": "string",
+                        "description": "Doc slug readable via spekoai://docs/{slug}.",
+                    },
+                    "title": {"type": "string", "description": "Document title."},
+                    "package_name": {
+                        "type": "string",
+                        "description": "Package or docs bundle this hit came from.",
+                    },
+                    "kind": {"type": "string", "description": "Document category."},
+                    "score": {
+                        "type": "number",
+                        "description": "Relevance score; higher is better.",
+                    },
+                    "snippet": {
+                        "type": "string",
+                        "description": "Excerpt around the first match.",
+                    },
+                },
+                "required": ["slug", "title", "package_name", "kind", "score", "snippet"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["result"],
+    "additionalProperties": False,
+}
 
 
 def register_docs_tools(mcp: FastMCP) -> None:
     for tool in [
         search_docs,
     ]:
-        mcp.tool(tool)
+        mcp.tool(
+            tool,
+            name=DOCS_TOOL_NAME_BY_FUNCTION[tool.__name__],
+            title="Search Speko Docs",
+            output_schema=SEARCH_DOCS_OUTPUT_SCHEMA,
+            annotations=ToolAnnotations(
+                title="Search Speko Docs",
+                readOnlyHint=True,
+                destructiveHint=False,
+                idempotentHint=True,
+                openWorldHint=False,
+            ),
+        )
 
 
 async def search_docs(
@@ -45,7 +98,7 @@ async def search_docs(
         int,
         Field(ge=1, le=20, description="Max hits to return. Defaults to 5."),
     ] = 5,
-) -> list[search.DocHit]:
+) -> dict[str, list[search.DocHit]]:
     """Search bundled Speko docs. Returns slug, title, score, snippet.
 
     Use this to look up SDK usage, API request/body shapes, and migration
@@ -54,4 +107,4 @@ async def search_docs(
     shape. Each hit's `slug` can be opened as the `spekoai://docs/{slug}`
     resource; `spekoai://docs/index` lists every bundled doc.
     """
-    return search.search(query, limit=limit)
+    return {"result": search.search(query, limit=limit)}

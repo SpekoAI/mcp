@@ -44,81 +44,80 @@ API-key clients:
 ## Surfaces
 
 The hosted server exposes the operational tools below plus a docs self-serve
-surface: the `search_docs` tool (full-text search over bundled Speko docs)
+surface: the `docs.search` tool (full-text search over bundled Speko docs)
 and the `spekoai://docs/index` + `spekoai://docs/{slug}` resources. MCP
 prompts, components, and scaffolding tools are not advertised.
 
-Tool names are unprefixed because MCP clients may already namespace tools by
-server name.
+Tool names use domain/action dot notation for client grouping.
 
 ### Account
 
-- `get_organization`
-- `get_credit_balance`
-- `list_credit_ledger`
-- `get_usage_summary`
+- `organization.get`
+- `credits.balance.get`
+- `credits.ledger.list`
+- `usage.summary.get`
 
 ### Agents and Tools
 
-- `list_agents`
-- `create_agent`
-- `get_agent`
-- `update_agent`
-- `delete_agent`
-- `list_agent_tools`
-- `create_agent_tool`
-- `get_agent_tool`
-- `update_agent_tool`
-- `delete_agent_tool`
+- `agents.list`
+- `agents.create`
+- `agents.get`
+- `agents.update`
+- `agents.delete`
+- `agents.tools.list`
+- `agents.tools.create`
+- `agents.tools.get`
+- `agents.tools.update`
+- `agents.tools.delete`
 
 ### Versions, Sessions, and Calls
 
-- `deploy_agent`
-- `rollback_agent`
-- `list_agent_versions`
-- `create_session`
-- `create_phone_session`
-- `list_sessions`
-- `get_session`
-- `get_session_transcript`
-- `get_session_recording`
-- `list_agent_calls`
-- `get_call`
-- `get_call_recording`
+- `agents.deploy`
+- `agents.rollback`
+- `agents.versions.list`
+- `sessions.create`
+- `sessions.phone.create`
+- `sessions.list`
+- `sessions.get`
+- `sessions.transcript.get`
+- `sessions.recording.get`
+- `agents.calls.list`
+- `calls.get`
+- `calls.recording.get`
 
 ### Phone Numbers, Knowledge Bases, and Evals
 
-- `list_phone_numbers`
-- `search_available_phone_numbers`
-- `create_phone_number`
-- `get_phone_number`
-- `update_phone_number`
-- `delete_phone_number`
-- `create_knowledge_base`
-- `list_knowledge_bases`
-- `get_knowledge_base`
-- `delete_knowledge_base`
-- `list_knowledge_documents`
-- `create_knowledge_document`
-- `get_knowledge_document`
-- `delete_knowledge_document`
-- `finalize_knowledge_document`
-- `list_agent_evals`
-- `create_agent_eval`
-- `run_agent_eval`
-- `get_eval`
+- `phone_numbers.list`
+- `phone_numbers.available.search`
+- `phone_numbers.create`
+- `phone_numbers.get`
+- `phone_numbers.update`
+- `phone_numbers.delete`
+- `knowledge_bases.create`
+- `knowledge_bases.list`
+- `knowledge_bases.get`
+- `knowledge_bases.delete`
+- `knowledge_bases.documents.list`
+- `knowledge_bases.documents.create`
+- `knowledge_bases.documents.get`
+- `knowledge_bases.documents.delete`
+- `knowledge_bases.documents.finalize`
+- `agents.evals.list`
+- `agents.evals.create`
+- `agents.evals.run`
+- `evals.get`
 
 ### Build and Migration Helpers
 
-- `inspect_workspace`
-- `build_session_config`
-- `parse_external_config`
-- `render_briefing`
-- `create_share_card`
+- `migration.workspace.inspect`
+- `migration.session_config.build`
+- `migration.external_config.parse`
+- `migration.briefing.render`
+- `share_cards.create`
 
 ### Docs
 
-- `search_docs` - full-text search over the bundled Speko docs (SDK/adapter
+- `docs.search` - full-text search over the bundled Speko docs (SDK/adapter
   READMEs, hosted llms.txt exports, migration guides). Hits link to
   `spekoai://docs/{slug}` resources; `spekoai://docs/index` lists every doc.
 

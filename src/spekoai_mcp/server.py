@@ -35,7 +35,7 @@ INSTRUCTIONS = "\n\n".join(
         build or migrate SessionConfig drafts.
         """,
         """
-        Docs are available in-band: call search_docs(query) to find SDK usage,
+        Docs are available in-band: call docs.search(query) to find SDK usage,
         API body shapes, and migration steps across the bundled Speko docs,
         then read the matching spekoai://docs/{slug} resource.
         spekoai://docs/index lists every bundled doc. If a write tool rejects
@@ -43,9 +43,9 @@ INSTRUCTIONS = "\n\n".join(
         """,
         """
         All tools require the hosted MCP endpoint at /mcp with OAuth or a Speko
-        API key supplied as Authorization: Bearer sk_*. Tool names are
-        intentionally unprefixed because clients may namespace them by MCP
-        server name.
+        API key supplied as Authorization: Bearer sk_*. Tool names use
+        domain.action dot notation, for example agents.list, sessions.create,
+        docs.search, and knowledge_bases.documents.create.
         """,
     ]
 )
@@ -53,7 +53,7 @@ INSTRUCTIONS = "\n\n".join(
 
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
-    docs self-serve surface (search_docs + spekoai://docs/* resources)."""
+    docs self-serve surface (docs.search + spekoai://docs/* resources)."""
     mcp: FastMCP = FastMCP(
         name="spekoai",
         instructions=INSTRUCTIONS,

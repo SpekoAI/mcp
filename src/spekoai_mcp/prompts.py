@@ -55,7 +55,7 @@ def _voice_conversation_messages(runtime: Runtime) -> list[Message]:
             "Do NOT invent fields on `/v1/sessions` (no `agent`/`agentId`, "
             "no flat `language` — `intent` is a nested object). "
             "If any field you want to set isn't in the hosted docs, call "
-            "`search_docs('<field>')` first; don't guess."
+            "`docs.search('<field>')` first; don't guess."
         ),
         Message(
             "Architecture:\n"
@@ -229,7 +229,7 @@ def _voice_conversation_messages(runtime: Runtime) -> list[Message]:
             "button's click handler (iOS `AudioContext` needs a user "
             "gesture); (3) surface mic-permission errors via `onError`. "
             "Field reference is `spekoai://docs/llms-full`. Deeper questions: "
-            "`search_docs('<your-term>')`."
+            "`docs.search('<your-term>')`."
         ),
     ]
 
@@ -592,12 +592,12 @@ def register_prompts(mcp: FastMCP) -> None:
             Message(
                 "Validation and deploy gate:\n"
                 "1. Run the repo's local tests/lint/build for edited code.\n"
-                "2. Call `create_session` against the draft or deployed agent.\n"
-                "3. Inspect failures with `list_agent_calls` and `get_call`.\n"
-                "4. Add regression evals with `create_agent_eval` "
+                "2. Call `sessions.create` against the draft or deployed agent.\n"
+                "3. Inspect failures with `agents.calls.list` and `calls.get`.\n"
+                "4. Add regression evals with `agents.evals.create` "
                 "for failed calls worth preserving.\n"
                 "5. Ask the user for explicit confirmation before calling "
-                "`deploy_agent`. "
+                "`agents.deploy`. "
                 "Do not deploy automatically."
             ),
         ]

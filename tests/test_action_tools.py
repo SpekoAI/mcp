@@ -90,88 +90,92 @@ async def test_action_tools_cover_expected_api_paths(
     tmp_path,
 ) -> None:
     mcp = create_server()
-    await mcp.call_tool("get_organization", {})
-    await mcp.call_tool("get_credit_balance", {})
-    await mcp.call_tool("list_credit_ledger", {"limit": 25, "kind": "grant,debit"})
-    await mcp.call_tool("get_usage_summary", {"from_": "2026-05-01T00:00:00.000Z"})
-    await mcp.call_tool("list_agents", {})
-    await mcp.call_tool("create_agent", {"body": agent_body()})
-    await mcp.call_tool("get_agent", {"agent_id": "agent_1"})
-    await mcp.call_tool("update_agent", {"agent_id": "agent_1", "body": {"name": "Demo v2"}})
-    await mcp.call_tool("delete_agent", {"agent_id": "agent_1"})
-    await mcp.call_tool("list_agent_tools", {"agent_id": "agent_1"})
-    await mcp.call_tool("create_agent_tool", {"agent_id": "agent_1", "body": tool_body()})
-    await mcp.call_tool("get_agent_tool", {"agent_id": "agent_1", "tool_id": "tool_1"})
+    await mcp.call_tool("organization.get", {})
+    await mcp.call_tool("credits.balance.get", {})
+    await mcp.call_tool("credits.ledger.list", {"limit": 25, "kind": "grant,debit"})
+    await mcp.call_tool("usage.summary.get", {"from_": "2026-05-01T00:00:00.000Z"})
+    await mcp.call_tool("agents.list", {})
+    await mcp.call_tool("agents.create", {"body": agent_body()})
+    await mcp.call_tool("agents.get", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.update", {"agent_id": "agent_1", "body": {"name": "Demo v2"}})
+    await mcp.call_tool("agents.delete", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.tools.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.tools.create", {"agent_id": "agent_1", "body": tool_body()})
+    await mcp.call_tool("agents.tools.get", {"agent_id": "agent_1", "tool_id": "tool_1"})
     await mcp.call_tool(
-        "update_agent_tool",
+        "agents.tools.update",
         {"agent_id": "agent_1", "tool_id": "tool_1", "body": {"description": "Updated"}},
     )
-    await mcp.call_tool("delete_agent_tool", {"agent_id": "agent_1", "tool_id": "tool_1"})
+    await mcp.call_tool("agents.tools.delete", {"agent_id": "agent_1", "tool_id": "tool_1"})
     await mcp.call_tool(
-        "deploy_agent",
+        "agents.deploy",
         {"agent_id": "agent_1", "session_config": session_config(), "source": "test"},
     )
-    await mcp.call_tool("rollback_agent", {"agent_id": "agent_1", "target_version_number": 1})
-    await mcp.call_tool("list_agent_versions", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.rollback", {"agent_id": "agent_1", "target_version_number": 1})
+    await mcp.call_tool("agents.versions.list", {"agent_id": "agent_1"})
     await mcp.call_tool(
-        "create_session", {"body": {"mode": "cascade", "intent": {"language": "en"}}}
+        "sessions.create", {"body": {"mode": "cascade", "intent": {"language": "en"}}}
     )
     await mcp.call_tool(
-        "create_phone_session",
+        "sessions.phone.create",
         {"body": {"to": "+12015550123", "intent": {"language": "en"}}},
     )
-    await mcp.call_tool("list_sessions", {"limit": 10, "agent": "agent_1"})
-    await mcp.call_tool("get_session", {"session_id": "sess_1"})
-    await mcp.call_tool("get_session_transcript", {"session_id": "sess_1"})
-    await mcp.call_tool("get_session_recording", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.list", {"limit": 10, "agent": "agent_1"})
+    await mcp.call_tool("sessions.get", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.transcript.get", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.recording.get", {"session_id": "sess_1"})
     await mcp.call_tool(
-        "list_agent_calls", {"agent_id": "agent_1", "since": "2026-05-01T00:00:00.000Z"}
+        "agents.calls.list", {"agent_id": "agent_1", "since": "2026-05-01T00:00:00.000Z"}
     )
-    await mcp.call_tool("get_call", {"call_id": "call_1"})
-    await mcp.call_tool("get_call_recording", {"call_id": "call_1"})
-    await mcp.call_tool("list_phone_numbers", {})
-    await mcp.call_tool("search_available_phone_numbers", {"area_code": "415", "limit": 2})
-    await mcp.call_tool("create_phone_number", {"body": {"e164": "+12015550123"}})
-    await mcp.call_tool("get_phone_number", {"phone_number_id": "pn_1"})
+    await mcp.call_tool("calls.get", {"call_id": "call_1"})
+    await mcp.call_tool("calls.recording.get", {"call_id": "call_1"})
+    await mcp.call_tool("phone_numbers.list", {})
+    await mcp.call_tool("phone_numbers.available.search", {"area_code": "415", "limit": 2})
+    await mcp.call_tool("phone_numbers.create", {"body": {"e164": "+12015550123"}})
+    await mcp.call_tool("phone_numbers.get", {"phone_number_id": "pn_1"})
     await mcp.call_tool(
-        "update_phone_number", {"phone_number_id": "pn_1", "body": {"label": "Main"}}
+        "phone_numbers.update", {"phone_number_id": "pn_1", "body": {"label": "Main"}}
     )
-    await mcp.call_tool("delete_phone_number", {"phone_number_id": "pn_1"})
+    await mcp.call_tool("phone_numbers.delete", {"phone_number_id": "pn_1"})
     await mcp.call_tool(
-        "create_knowledge_base", {"body": {"agentId": "agent_1", "name": "Default"}}
+        "knowledge_bases.create", {"body": {"agentId": "agent_1", "name": "Default"}}
     )
-    await mcp.call_tool("list_knowledge_bases", {"agent_id": "agent_1"})
-    await mcp.call_tool("get_knowledge_base", {"knowledge_base_id": "kb_1"})
-    await mcp.call_tool("delete_knowledge_base", {"knowledge_base_id": "kb_1"})
-    await mcp.call_tool("list_knowledge_documents", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool("knowledge_bases.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("knowledge_bases.get", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool("knowledge_bases.delete", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool("knowledge_bases.documents.list", {"knowledge_base_id": "kb_1"})
     await mcp.call_tool(
-        "create_knowledge_document",
+        "knowledge_bases.documents.create",
         {
             "knowledge_base_id": "kb_1",
             "body": {"filename": "faq.md", "contentType": "text/markdown", "sizeBytes": 12},
         },
     )
     await mcp.call_tool(
-        "get_knowledge_document",
+        "knowledge_bases.documents.get",
         {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
     )
     await mcp.call_tool(
-        "delete_knowledge_document",
+        "knowledge_bases.documents.delete",
         {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
     )
     await mcp.call_tool(
-        "finalize_knowledge_document",
+        "knowledge_bases.documents.finalize",
         {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
     )
-    await mcp.call_tool("list_agent_evals", {"agent_id": "agent_1"})
-    await mcp.call_tool("create_agent_eval", {"agent_id": "agent_1", "body": eval_body()})
-    await mcp.call_tool("run_agent_eval", {"agent_id": "agent_1", "eval_id": "eval_1"})
-    await mcp.call_tool("get_eval", {"eval_id": "eval_1"})
-    await mcp.call_tool("inspect_workspace", {"workspace_root": str(tmp_path), "deep": False})
-    await mcp.call_tool("build_session_config", {"body": {"prose": "A support agent"}})
-    await mcp.call_tool("parse_external_config", {"format": "vapi", "raw": '{"name":"Demo"}'})
-    await mcp.call_tool("render_briefing", {"agent_id": "agent_1"})
-    share_result = await mcp.call_tool("create_share_card", {"build_id": "build_1"})
+    await mcp.call_tool("agents.evals.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.evals.create", {"agent_id": "agent_1", "body": eval_body()})
+    await mcp.call_tool("agents.evals.run", {"agent_id": "agent_1", "eval_id": "eval_1"})
+    await mcp.call_tool("evals.get", {"eval_id": "eval_1"})
+    await mcp.call_tool(
+        "migration.workspace.inspect", {"workspace_root": str(tmp_path), "deep": False}
+    )
+    await mcp.call_tool("migration.session_config.build", {"body": {"prose": "A support agent"}})
+    await mcp.call_tool(
+        "migration.external_config.parse", {"format": "vapi", "raw": '{"name":"Demo"}'}
+    )
+    await mcp.call_tool("migration.briefing.render", {"agent_id": "agent_1"})
+    share_result = await mcp.call_tool("share_cards.create", {"build_id": "build_1"})
 
     paths = {(call["method"], call["path"]) for call in speko_api_mock}
     assert paths == EXPECTED_METHOD_PATHS
@@ -195,7 +199,7 @@ async def test_create_agent_rejects_string_intent_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="body.intent must be an object"):
         await create_server().call_tool(
-            "create_agent",
+            "agents.create",
             {
                 "body": {
                     "name": "Temp Migration Probe",
@@ -212,7 +216,7 @@ async def test_create_session_requires_agent_or_intent_before_api(
     speko_api_mock: list[dict[str, object]],
 ) -> None:
     with pytest.raises(ToolError, match="either agentId or intent is required"):
-        await create_server().call_tool("create_session", {"body": {"mode": "cascade"}})
+        await create_server().call_tool("sessions.create", {"body": {"mode": "cascade"}})
 
     assert speko_api_mock == []
 
@@ -222,7 +226,7 @@ async def test_create_session_rejects_string_intent_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="body.intent must be an object"):
         await create_server().call_tool(
-            "create_session", {"body": {"intent": "customer_support"}}
+            "sessions.create", {"body": {"intent": "customer_support"}}
         )
 
     assert speko_api_mock == []
@@ -234,7 +238,7 @@ async def test_create_session_s2s_pinned_provider_model_needs_no_agent_or_intent
     # Mirrors createS2sSession in apps/server/src/routes/sessions.ts: an
     # explicit provider+model pin requires neither agentId nor intent.
     await create_server().call_tool(
-        "create_session",
+        "sessions.create",
         {"body": {"mode": "s2s", "s2s": {"provider": "openai", "model": "gpt-realtime"}}},
     )
 
@@ -247,7 +251,7 @@ async def test_create_session_s2s_without_pin_requires_agent_or_intent(
     speko_api_mock: list[dict[str, object]],
 ) -> None:
     with pytest.raises(ToolError, match="either agentId or intent is required"):
-        await create_server().call_tool("create_session", {"body": {"mode": "s2s"}})
+        await create_server().call_tool("sessions.create", {"body": {"mode": "s2s"}})
 
     assert speko_api_mock == []
 
@@ -257,7 +261,7 @@ async def test_create_session_s2s_rejects_provider_without_model_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="must be supplied together"):
         await create_server().call_tool(
-            "create_session",
+            "sessions.create",
             {"body": {"mode": "s2s", "s2s": {"provider": "openai"}}},
         )
 
@@ -269,7 +273,7 @@ async def test_create_session_s2s_pinned_still_validates_intent_shape(
 ) -> None:
     with pytest.raises(ToolError, match="body.intent must be an object"):
         await create_server().call_tool(
-            "create_session",
+            "sessions.create",
             {
                 "body": {
                     "mode": "s2s",
@@ -287,7 +291,7 @@ async def test_create_phone_session_rejects_non_e164_to_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="E.164"):
         await create_server().call_tool(
-            "create_phone_session",
+            "sessions.phone.create",
             {"body": {"to": "(201) 555-0123", "agentId": "agent_1"}},
         )
 
@@ -298,7 +302,7 @@ async def test_update_agent_rejects_empty_body_before_api(
     speko_api_mock: list[dict[str, object]],
 ) -> None:
     with pytest.raises(ToolError, match="at least one field"):
-        await create_server().call_tool("update_agent", {"agent_id": "agent_1", "body": {}})
+        await create_server().call_tool("agents.update", {"agent_id": "agent_1", "body": {}})
 
     assert speko_api_mock == []
 
@@ -308,7 +312,7 @@ async def test_create_agent_tool_rejects_missing_fields_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="missing required field"):
         await create_server().call_tool(
-            "create_agent_tool",
+            "agents.tools.create",
             {"agent_id": "agent_1", "body": {"name": "lookup"}},
         )
 
@@ -320,7 +324,7 @@ async def test_create_agent_tool_rejects_unknown_source_kind_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="source.kind must be one of"):
         await create_server().call_tool(
-            "create_agent_tool",
+            "agents.tools.create",
             {
                 "agent_id": "agent_1",
                 "body": {
@@ -340,7 +344,7 @@ async def test_create_agent_tool_webhook_requires_url_and_secret_before_api(
 ) -> None:
     with pytest.raises(ToolError, match="webhook source requires url and"):
         await create_server().call_tool(
-            "create_agent_tool",
+            "agents.tools.create",
             {
                 "agent_id": "agent_1",
                 "body": {

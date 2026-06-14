@@ -27,10 +27,30 @@ async def test_server_lists_operational_and_docs_tools() -> None:
     names = [tool.name for tool in await mcp.list_tools()]
     assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
     assert all(not name.startswith("speko_") for name in names)
-    assert "search_docs" in names
+    assert "docs.search" in names
+    assert "search_docs" not in names
+    assert "create_agent" not in names
     assert "private_mcp_setup" not in names
     assert "recommended_stack" not in names
     assert "scaffold_voice_app" not in names
+
+
+async def test_tools_expose_quality_metadata() -> None:
+    tools = await create_server().list_tools()
+
+    assert all(tool.title for tool in tools)
+    assert all(tool.output_schema for tool in tools)
+    assert all(tool.output_schema["type"] == "object" for tool in tools)
+    assert all(tool.annotations is not None for tool in tools)
+
+    by_name = {tool.name: tool for tool in tools}
+    assert by_name["organization.get"].annotations.readOnlyHint is True
+    assert by_name["organization.get"].annotations.destructiveHint is False
+    assert by_name["agents.create"].annotations.readOnlyHint is False
+    assert by_name["agents.create"].annotations.destructiveHint is False
+    assert by_name["agents.delete"].annotations.destructiveHint is True
+    assert by_name["docs.search"].annotations.openWorldHint is False
+    assert by_name["docs.search"].output_schema["properties"]["result"]["type"] == "array"
 
 
 async def test_docs_resources_advertised_but_prompts_stay_disabled() -> None:
@@ -93,7 +113,7 @@ async def test_get_credit_balance_forwards_auth_and_payload(
 
     monkeypatch.setattr(http_client.httpx, "AsyncClient", FakeAsyncClient)
 
-    result = await create_server().call_tool("get_credit_balance", {})
+    result = await create_server().call_tool("credits.balance.get", {})
     payload = result.structured_content or {}
 
     assert captured["method"] == "GET"
@@ -129,7 +149,7 @@ async def test_api_errors_become_tool_errors(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(http_client.httpx, "AsyncClient", FakeAsyncClient)
 
     with pytest.raises(ToolError, match="Speko API returned 0"):
-        await create_server().call_tool("get_credit_balance", {})
+        await create_server().call_tool("credits.balance.get", {})
 
 
 def test_asgi_health_is_public() -> None:

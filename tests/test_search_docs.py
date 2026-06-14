@@ -1,4 +1,4 @@
-"""Tests for the `search_docs` tool / `search` module."""
+"""Tests for the `docs.search` tool / `search` module."""
 
 from __future__ import annotations
 
@@ -44,10 +44,10 @@ def test_limit_is_respected() -> None:
     assert len(hits) <= 3
 
 
-async def test_search_docs_tool_is_callable_on_the_server() -> None:
+async def test_docs_search_tool_is_callable_on_the_server() -> None:
     from spekoai_mcp.server import create_server
 
-    result = await create_server().call_tool("search_docs", {"query": "VoiceConversation"})
+    result = await create_server().call_tool("docs.search", {"query": "VoiceConversation"})
     hits = result.structured_content["result"]
     assert hits, "expected at least one hit for a seeded query"
     assert hits[0]["slug"] == "llms-full"
