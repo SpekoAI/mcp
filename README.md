@@ -120,6 +120,67 @@ server name.
   READMEs, hosted llms.txt exports, migration guides). Hits link to
   `spekoai://docs/{slug}` resources; `spekoai://docs/index` lists every doc.
 
+## Real phone calls from Claude Code
+
+Three tools let an MCP client place real, disclosed phone calls on the
+user's behalf:
+
+- `lookup_business` - resolve a business name (plus optional location) to
+  dialable candidates and mint a signed `dial_token` for each callable one.
+- `make_call` - place the call authorized by a `dial_token`, pursue a single
+  transactional objective, and stay open until the call finishes, returning
+  the outcome plus the transcript.
+- `call_me` - ring the account owner's own verified phone number to deliver
+  a message (`notify`) or to also relay the owner's spoken reply
+  (`converse`).
+
+The flow is always lookup first, then dial:
+
+```txt
+lookup_business("Joe's Pizza", "New York")
+  -> candidates with line types and a dial_token for each callable business
+make_call(dial_token, "Do you have a table for 4 at 8pm?", "Amirlan")
+  -> waits for the call, returns the OUTCOME line and the transcript
+```
+
+If a call outlives the client timeout, `make_call` returns the `call_id`;
+use `get_call(call_id)` to check it later.
+
+### Safety rails
+
+- **Business lines only.** Every candidate phone number goes through a
+  carrier line-type check; mobile and personal lines are never dialed.
+- **Hard-coded AI disclosure.** Every call opens with a mandatory
+  AI-disclosure sentence that no parameter can override, and the agent
+  truthfully confirms it is an AI when asked.
+- **Objective screening, block-list first.** Selling, promotion, surveys,
+  fundraising, and campaigning are refused before dialing, and the
+  block-list always wins — a blocked intent cannot ride in on transactional
+  wording. Objectives matching no blocked keyword (reservations,
+  availability, pricing, order status, and other neutral questions) are
+  allowed, and the in-call system prompt additionally forbids selling or
+  promotion.
+- **No recordings exposed.** Calling tools return outcomes and transcripts
+  only; they never expose call recordings.
+- **Quiet hours.** `make_call` is refused outside 08:00-21:00 destination
+  local time and fails closed when the destination's UTC offset is unknown
+  (`lookup_business` marks such candidates as not callable). `call_me` is
+  exempt: it only ever dials the account owner's own verified number.
+- **Signed dial tokens bound to the account.** `make_call` only accepts
+  short-lived tokens minted by `lookup_business` and bound to the calling
+  account's credential — raw phone numbers and foreign tokens are rejected.
+
+### Self-hosting environment variables
+
+The hosted server at `mcp.speko.ai` has these configured already. When
+self-hosting, set:
+
+| Variable | Purpose |
+| --- | --- |
+| `SPEKO_DIAL_TOKEN_SECRET` | Secret used to sign and verify `dial_token`s. |
+| `GOOGLE_PLACES_API_KEY` | Google Places lookup behind `lookup_business`. |
+| `TWILIO_LOOKUP_SID` / `TWILIO_LOOKUP_TOKEN` | Twilio carrier line-type lookup (or use `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`). |
+
 ## Auth model
 
 The server has no long-lived SpekoAI credential of its own. Tools forward the

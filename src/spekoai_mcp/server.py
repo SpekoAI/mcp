@@ -16,6 +16,7 @@ from starlette.routing import Mount, Route
 
 from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
+from spekoai_mcp.call_tools import register_call_tools
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.resources import register_resources
 
@@ -47,6 +48,15 @@ INSTRUCTIONS = "\n\n".join(
         intentionally unprefixed because clients may namespace them by MCP
         server name.
         """,
+        """
+        To place a real phone call for the user ("call X and ask Y"), first
+        call lookup_business(name, location) to resolve the business and
+        obtain a dial_token, then make_call(dial_token, objective,
+        caller_name) - it stays open until the call finishes and returns the
+        outcome plus the transcript. Every call opens with a non-removable AI
+        disclosure. Use call_me to ring the user's own verified number, and
+        get_call(call_id) if a call outlives the client timeout.
+        """,
     ]
 )
 
@@ -60,6 +70,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
         auth=auth,
     )
     register_action_tools(mcp)
+    register_call_tools(mcp)
     register_docs_tools(mcp)
     register_resources(mcp)
     return mcp
