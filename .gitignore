@@ -1,0 +1,10 @@
+# Generated at build time by scripts/sync_docs.py. Committing these
+# would let dev drift vs. the sibling packages slip in unnoticed — the
+# build / Nx target / pytest conftest all regenerate on demand.
+src/spekoai_mcp/_docs/*.md
+src/spekoai_mcp/_docs/manifest.json
+
+# uv / build artifacts
+.venv/
+dist/
+.pytest_cache/
