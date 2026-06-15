@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
+from functools import lru_cache
+from importlib.resources import files
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
@@ -11,7 +13,7 @@ from fastmcp.server.http import RequestContextMiddleware
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Mount, Route
 
 from spekoai_mcp.action_tools import register_action_tools
@@ -51,6 +53,15 @@ INSTRUCTIONS = "\n\n".join(
 )
 
 
+@lru_cache(maxsize=1)
+def _glama_manifest() -> str:
+    """The Glama connector manifest, bundled in the wheel and served at
+    `/.well-known/glama.json`. Hosting it here means glama.ai validates the
+    connector against the hosted MCP origin (mcp.speko.dev) rather than the
+    marketing site."""
+    return (files("spekoai_mcp") / "_well_known" / "glama.json").read_text(encoding="utf-8")
+
+
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
     docs self-serve surface (docs.search + spekoai://docs/* resources)."""
@@ -75,6 +86,9 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
 
+    async def glama_manifest(_: Request) -> Response:
+        return Response(_glama_manifest(), media_type="application/json")
+
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncGenerator[None, None]:
         async with AsyncExitStack() as stack:
@@ -84,6 +98,7 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     app = Starlette(
         routes=[
             Route("/health", endpoint=health_check, methods=["GET"]),
+            Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
             Mount("/", app=mcp_app),
         ],
         middleware=[Middleware(RequestContextMiddleware)],  # type: ignore[arg-type]

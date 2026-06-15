@@ -182,6 +182,16 @@ def test_asgi_mcp_rejects_missing_bearer_with_oauth(monkeypatch: pytest.MonkeyPa
     assert response.headers["www-authenticate"].startswith("Bearer ")
 
 
+def test_asgi_serves_glama_manifest() -> None:
+    with TestClient(create_app()) as client:
+        response = client.get("/.well-known/glama.json")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["$schema"] == "https://glama.ai/mcp/schemas/connector.json"
+    assert body["maintainers"][0]["email"] == "abat@speko.ai"
+
+
 def test_asgi_oauth_metadata_advertises_mcp_resource(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_oauth_env(monkeypatch)
     auth = build_auth(mcp_path=MCP_PATH)
