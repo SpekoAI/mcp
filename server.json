@@ -1,13 +1,13 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.spekoAI/mcp",
+  "name": "ai.speko/mcp",
   "title": "Speko AI",
   "description": "Manage Speko voice-AI agents, sessions, calls, phone numbers, knowledge bases, evals, and docs.",
   "repository": {
     "url": "https://github.com/SpekoAI/mcp",
     "source": "github"
   },
-  "version": "0.1.7",
+  "version": "1.0.12",
   "websiteUrl": "https://speko.ai",
   "remotes": [
     {
