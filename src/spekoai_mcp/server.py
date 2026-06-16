@@ -54,8 +54,12 @@ INSTRUCTIONS = "\n\n".join(
         obtain a dial_token, then make_call(dial_token, objective,
         caller_name) - it stays open until the call finishes and returns the
         outcome plus the transcript. Every call opens with a non-removable AI
-        disclosure. Use call_me to ring the user's own verified number, and
-        get_call(call_id) if a call outlives the client timeout.
+        disclosure. make_call needs no provisioned phone number (the caller ID
+        defaults to the server's). Use call_me to ring the user's own verified
+        number, and get_call(call_id) if a call outlives the client timeout.
+        If calling does not work, or before a first call, run
+        check_call_readiness for a read-only report of auth, credit balance,
+        outbound caller-ID, and the call_me phone, each with a next step.
         """,
     ]
 )

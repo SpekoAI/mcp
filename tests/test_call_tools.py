@@ -81,12 +81,25 @@ def speko_api(monkeypatch: pytest.MonkeyPatch):
     calls: list[dict[str, Any]] = []
     config: dict[str, Any] = {
         "dial_status": 200,
-        "dial_response": {"id": "sess_1", "status": "queued"},
+        # Contract-accurate dial response: sessionId + status "dialing" (a real
+        # dial). "dialing-stub" (SIP not configured) is exercised separately.
+        "dial_response": {"sessionId": "sess_1", "status": "dialing"},
         "poll_status": 200,
         "statuses": ["ringing", "in_progress", "completed"],
         "transcript_status": 200,
         "transcript_payload": {"transcript": transcript_turns()},
         "organization": {"id": "org_1", "verifiedPhone": OWNER_PHONE},
+        "organization_status": 200,
+        "balance": {"balanceUsd": 5.0},
+        "phone_numbers": [
+            {
+                "id": "pn_1",
+                "e164": "+12025550111",
+                "source": "managed",
+                "direction": "outbound",
+                "setupStatus": {"status": "ready", "outboundReady": True, "issues": []},
+            }
+        ],
     }
     state = {"polls": 0}
 
@@ -124,7 +137,16 @@ def speko_api(monkeypatch: pytest.MonkeyPatch):
                 )
             return httpx.Response(200, json=config["transcript_payload"])
         if request.method == "GET" and path == "/v1/organization":
+            if config["organization_status"] != 200:
+                return httpx.Response(
+                    config["organization_status"],
+                    json={"error": "Unauthorized", "code": "UNAUTHORIZED"},
+                )
             return httpx.Response(200, json=config["organization"])
+        if request.method == "GET" and path == "/v1/credits/balance":
+            return httpx.Response(200, json=config["balance"])
+        if request.method == "GET" and path == "/v1/phone-numbers":
+            return httpx.Response(200, json=config["phone_numbers"])
         return httpx.Response(200, json={"ok": True, "path": path})
 
     monkeypatch.setattr(
@@ -165,12 +187,16 @@ def call_server() -> FastMCP:
 # ── helpers ──────────────────────────────────────────────────────────
 
 
-def transcript_turns() -> list[dict[str, str]]:
+def transcript_turns() -> list[dict[str, Any]]:
+    # Mirrors the real GET /v1/sessions/{id}/transcript shape: turns keyed by
+    # `index` + `source` ("user" | "agent"), NOT `role` (see llms-full.md
+    # report.transcript.entries). Using the real shape here keeps the suite
+    # honest about source-vs-role and outcome extraction.
     return [
-        {"role": "user", "text": "Hello, Joe's Pizza."},
-        {"role": "agent", "text": "Hi, do you have a table for 4 at 8pm?"},
-        {"role": "user", "text": "Yes we do, under what name?"},
-        {"role": "agent", "text": f"OUTCOME: {OUTCOME_TEXT}"},
+        {"index": 0, "source": "user", "text": "Hello, Joe's Pizza."},
+        {"index": 1, "source": "agent", "text": "Hi, do you have a table for 4 at 8pm?"},
+        {"index": 2, "source": "user", "text": "Yes we do, under what name?"},
+        {"index": 3, "source": "agent", "text": f"OUTCOME: {OUTCOME_TEXT}"},
     ]
 
 
@@ -667,11 +693,12 @@ async def test_call_me_notify_happy_path(
 async def test_call_me_converse_returns_reply_and_transcript(
     call_server: FastMCP, speko_api: SimpleNamespace
 ) -> None:
+    # Real transcript shape: speaker keyed by `source`, not `role`.
     turns = [
-        {"role": "agent", "text": "What would you like me to do next?"},
-        {"role": "user", "text": "Please order sushi for dinner."},
-        {"role": "user", "text": "Around 7pm works."},
-        {"role": "agent", "text": "OUTCOME: user wants sushi ordered for 7pm"},
+        {"index": 0, "source": "agent", "text": "What would you like me to do next?"},
+        {"index": 1, "source": "user", "text": "Please order sushi for dinner."},
+        {"index": 2, "source": "user", "text": "Around 7pm works."},
+        {"index": 3, "source": "agent", "text": "OUTCOME: user wants sushi ordered for 7pm"},
     ]
     speko_api.config["transcript_payload"] = {"transcript": turns}
     res = await call_server.call_tool(
@@ -875,3 +902,194 @@ async def test_lookup_business_missing_dial_secret_maps_to_tool_error(
         )
     assert "lookup_business again" in str(excinfo.value)  # actionable next_step
     assert speko_api.calls == []
+
+
+# ── dialing-stub: SIP not configured, call NOT placed ────────────────
+
+
+async def test_make_call_dialing_stub_is_not_placed_and_never_polls(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    # When the deployment has no SIP/telephony, the dial 200 carries
+    # status "dialing-stub" and no call is placed. make_call must fail fast,
+    # not poll a never-terminal session for the full duration cap.
+    speko_api.config["dial_response"] = {"sessionId": "sess_1", "status": "dialing-stub"}
+    res = await call_server.call_tool(
+        "make_call",
+        {"dial_token": make_token(), "objective": TABLE_OBJECTIVE, "caller_name": "Amirlan"},
+    )
+    data = res.structured_content
+    assert data["status"] == "not_placed"
+    assert data["duration_seconds"] == 0
+    assert data["transcript"] is None
+    text = res.content[0].text
+    assert "NOT placed" in text
+    assert "dialing-stub" in text
+    # exactly one dial POST, and never a status poll or transcript fetch
+    assert len(dial_bodies(speko_api)) == 1
+    assert all(call["path"] != "/v1/sessions/sess_1" for call in speko_api.calls)
+    assert all(call["path"] != "/v1/sessions/sess_1/transcript" for call in speko_api.calls)
+    # the dial that was attempted still carried the mandatory AI disclosure
+    assert_disclosure_on_every_dial(speko_api)
+
+
+async def test_call_me_dialing_stub_is_not_placed(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    speko_api.config["dial_response"] = {"sessionId": "sess_1", "status": "dialing-stub"}
+    res = await call_server.call_tool("call_me", {"message": "Your build finished."})
+    data = res.structured_content
+    assert data["status"] == "not_placed"
+    assert "reply" not in data  # converse extraction is skipped for a non-placed call
+    assert "NOT placed" in res.content[0].text
+    assert all(call["path"] != "/v1/sessions/sess_1" for call in speko_api.calls)
+
+
+async def test_make_call_no_session_id_does_not_claim_the_call_was_dialed(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    # A conforming 200 always returns a session id; a body with none is a
+    # contract violation and must not be reported as a successful dial.
+    speko_api.config["dial_response"] = {"status": "dialing"}
+    with pytest.raises(ToolError) as excinfo:
+        await call_server.call_tool(
+            "make_call",
+            {"dial_token": make_token(), "objective": TABLE_OBJECTIVE, "caller_name": "Amirlan"},
+        )
+    msg = str(excinfo.value)
+    assert "no session id" in msg
+    assert "dialed the call" not in msg  # must not over-claim success
+    assert "list_sessions" in msg
+    # never polled or fetched a transcript for a call that may not exist
+    assert all(call["path"] != "/v1/sessions/sess_1" for call in speko_api.calls)
+
+
+# ── call_me no-phone error: debuggable, no fictitious verify flow ────
+
+
+async def test_call_me_no_phone_error_lists_org_keys_and_no_fake_flow(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    speko_api.config["organization"] = {"id": "org_1", "name": "Acme", "plan": "pro"}
+    with pytest.raises(ToolError, match="No verified phone number") as excinfo:
+        await call_server.call_tool("call_me", {"message": "ping the owner"})
+    msg = str(excinfo.value)
+    assert "top-level keys" in msg
+    assert "name" in msg and "plan" in msg  # actual org keys surfaced for debugging
+    assert "no personal-phone verify endpoint" in msg  # honest about the API reality
+    assert dial_bodies(speko_api) == []
+
+
+# ── check_call_readiness: read-only self-serve preflight ─────────────
+
+
+async def test_check_call_readiness_all_ready(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    res = await call_server.call_tool("check_call_readiness", {})
+    data = res.structured_content
+    assert data["auth"]["ok"] is True
+    assert data["auth"]["organization_id"] == "org_1"
+    assert data["credits"]["sufficient"] is True
+    assert data["credits"]["balance_usd"] == 5.0
+    assert data["outbound"]["any_outbound_ready"] is True
+    assert data["outbound"]["server_default_possible"] is True
+    assert data["call_me"]["ready"] is True
+    assert data["call_me"]["detected_phone"] == OWNER_PHONE
+    assert data["next_steps"] == []
+    assert "Ready to call: yes" in res.content[0].text
+    # strictly read-only: only GETs, never a dial
+    assert {call["method"] for call in speko_api.calls} == {"GET"}
+    assert all(call["path"] != "/v1/sessions/phone" for call in speko_api.calls)
+
+
+async def test_check_call_readiness_caveats_never_block_on_zero_numbers(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    # Low credit, no owned numbers, no verified phone: report caveats, but
+    # still flag that the server-default caller ID can place calls (never
+    # declare the account unable to call just because it owns zero numbers).
+    speko_api.config["balance"] = {"balanceUsd": 0.10}
+    speko_api.config["phone_numbers"] = []
+    speko_api.config["organization"] = {"id": "org_1", "name": "Acme"}
+    res = await call_server.call_tool("check_call_readiness", {})
+    data = res.structured_content
+    assert data["auth"]["ok"] is True
+    assert data["credits"]["sufficient"] is False
+    assert data["outbound"]["any_outbound_ready"] is False
+    assert data["outbound"]["server_default_possible"] is True
+    assert data["call_me"]["ready"] is False
+    assert data["call_me"]["detected_phone"] is None
+    steps = " ".join(data["next_steps"])
+    assert "Add prepaid credits" in steps
+    assert "no outbound-ready caller ID" in steps
+    assert "verified personal phone" in steps
+    assert "with caveats" in res.content[0].text
+
+
+async def test_check_call_readiness_surfaces_number_setup_issues(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    speko_api.config["phone_numbers"] = [
+        {
+            "id": "pn_1",
+            "e164": "+12025550111",
+            "source": "managed",
+            "direction": "outbound",
+            "setupStatus": {
+                "status": "action_required",
+                "outboundReady": False,
+                "issues": ["10DLC registration pending"],
+            },
+        }
+    ]
+    res = await call_server.call_tool("check_call_readiness", {})
+    data = res.structured_content
+    assert data["outbound"]["any_outbound_ready"] is False
+    assert data["outbound"]["owned_numbers"][0]["setup_status"] == "action_required"
+    steps = " ".join(data["next_steps"])
+    assert "10DLC registration pending" in steps
+    assert "+12025550111" in steps
+
+
+async def test_check_call_readiness_auth_failure_is_not_ready(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    speko_api.config["organization_status"] = 401
+    res = await call_server.call_tool("check_call_readiness", {})
+    data = res.structured_content
+    assert data["auth"]["ok"] is False
+    assert data["auth"]["error"] is not None
+    assert data["call_me"]["detected_phone"] is None
+    assert any("authentication" in step.lower() for step in data["next_steps"])
+    assert "authentication failed" in res.content[0].text
+
+
+async def test_check_call_readiness_zero_numbers_with_credit_is_ready_via_default(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    # Owning zero outbound numbers must NOT be reported as a blocker: the
+    # server-default caller ID can place the call. Headline stays "yes".
+    speko_api.config["phone_numbers"] = []
+    res = await call_server.call_tool("check_call_readiness", {})
+    data = res.structured_content
+    assert data["credits"]["sufficient"] is True
+    assert data["outbound"]["any_outbound_ready"] is False
+    assert data["outbound"]["server_default_possible"] is True
+    text = res.content[0].text
+    assert "Ready to call: yes" in text
+    assert "server-default" in text
+
+
+async def test_call_me_converse_dialing_stub_skips_reply(
+    call_server: FastMCP, speko_api: SimpleNamespace
+) -> None:
+    speko_api.config["dial_response"] = {"sessionId": "sess_1", "status": "dialing-stub"}
+    res = await call_server.call_tool(
+        "call_me", {"message": "What should I do next?", "mode": "converse"}
+    )
+    data = res.structured_content
+    assert data["status"] == "not_placed"
+    assert "reply" not in data  # reply extraction is skipped for a non-placed call
+    assert "NOT placed" in res.content[0].text
+    assert all(call["path"] != "/v1/sessions/sess_1/transcript" for call in speko_api.calls)

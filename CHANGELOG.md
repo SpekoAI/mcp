@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1
+
+- Add `check_call_readiness`: a read-only preflight that reports, in one call, whether the account can place calls — authentication and organization id, prepaid credit balance vs. the per-call minimum, outbound caller-ID readiness (owned numbers and their setup status), and the `call_me` verified phone — each with a concrete next step. Grounded only in existing endpoints (`/v1/organization`, `/v1/credits/balance`, `/v1/phone-numbers`); it issues only GET requests and never dials. This makes getting set up to call self-serve from inside the MCP client.
+- Fail fast when outbound telephony is not configured: a `dialing-stub` dial response (the deployment has no SIP/caller ID, so the call is not actually placed) now returns immediately as `not_placed` with a clear message instead of polling a never-terminal session for the full wait limit. Applies to both `make_call` and `call_me`.
+- Fix `call_me` `converse` mode: real Speko transcripts key each turn's speaker as `source` (`"user"`/`"agent"`), not `role`, so reply extraction previously matched nothing and always reported "no recognizable reply." Reply extraction now reads `source`.
+- Clearer, non-looping guidance: `make_call` dial-time rejections caused by a missing caller ID / unconfigured telephony point at `check_call_readiness` / `list_phone_numbers` instead of looping back to `lookup_business` (which cannot fix configuration). The `call_me` "no verified phone" error now lists the actual organization keys returned and is honest that the public API has no personal-phone verify endpoint, instead of pointing at a dashboard flow that does not exist. The non-conforming "no session id on a 200" path no longer claims the call was dialed.
+- Document that `make_call` needs no provisioned phone number (the `from` caller ID defaults to the deployment's server default) and that `call_me` is the only calling tool that needs a verified phone.
+
 ## 0.2.0
 
 - Add real outbound calling tools: `lookup_business` resolves a business (Google Places + Twilio line-type check) and mints signed, account-bound dial tokens; `make_call` places a disclosed, objective-scoped phone call and waits for the outcome plus transcript; `call_me` rings the account owner's verified number in `notify` or `converse` mode.

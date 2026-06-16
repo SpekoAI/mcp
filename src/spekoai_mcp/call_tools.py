@@ -45,6 +45,16 @@ MIN_CALL_SECONDS = 30
 NOTIFY_CALL_SECONDS = 120
 CONVERSE_CALL_SECONDS = 180
 
+# POST /v1/sessions/phone returns status "dialing" on a real dial or
+# "dialing-stub" when the deployment has no SIP/telephony configured. A stub
+# means the call was NOT placed, so we must never poll it (that would wait the
+# full duration cap) and never advise a retry (it would just re-stub).
+STUB_DIAL_STATUS = "dialing-stub"
+NOT_PLACED_STATUS = "not_placed"
+
+# Outbound calls debit prepaid credits; check_call_readiness warns below this.
+MIN_CALL_BALANCE_USD = 0.50
+
 TERMINAL_STATUSES = frozenset(
     {
         "completed",
@@ -62,7 +72,7 @@ TERMINAL_STATUSES = frozenset(
 
 CALL_ME_MODES = ("notify", "converse")
 
-CALL_TOOL_NAMES = ["lookup_business", "make_call", "call_me"]
+CALL_TOOL_NAMES = ["lookup_business", "make_call", "call_me", "check_call_readiness"]
 
 # Tests monkeypatch this with an async no-op to skip real waiting.
 _SLEEP: Callable[[float], Awaitable[Any]] = asyncio.sleep
@@ -101,9 +111,41 @@ CALL_ME_NEXT_STEP = (
     "'converse'; the call always goes to the account's verified phone number."
 )
 
+# Why call_me can't always be made self-serve here: the public Speko API has no
+# personal-phone OTP/verify endpoint (phone-number KYB is *business*
+# verification, a different thing), and GET /v1/organization's exact response
+# shape is undocumented. So we read the verified phone best-effort and, when
+# absent, point at check_call_readiness (which echoes what the org returned)
+# rather than at a verify flow that has no API surface. make_call to a business
+# never needs this.
+CALL_ME_NO_PHONE_NEXT_STEP = (
+    "call_me dials the organization's verified personal phone, read from "
+    "GET /v1/organization, but none of the recognized fields held an E.164 "
+    "number. Run check_call_readiness to see what the organization returned, "
+    "then attach a verified personal phone for this account (a dashboard-only "
+    "step: the public API has no personal-phone verify endpoint). make_call to "
+    "a business does not need a verified personal phone."
+)
+
 PHONE_VERIFICATION_NEXT_STEP = (
-    "Complete phone verification in the Speko dashboard so a verified phone "
-    "number is attached to the organization, then run call_me again."
+    "Attach a usable verified phone number to the organization (see "
+    "check_call_readiness), then run call_me again."
+)
+
+# Dial-time failures on make_call must NOT loop the client back to
+# lookup_business when the real cause is a missing caller ID / unconfigured
+# telephony (re-resolving the business cannot fix that). Cover both causes.
+MAKE_CALL_DIAL_NEXT_STEP = (
+    "The dial request was rejected. If this is a caller-ID/telephony "
+    "configuration error (no caller ID or SIP configured for this organization "
+    "or deployment), run check_call_readiness then list_phone_numbers/"
+    "get_organization - re-running lookup_business cannot fix it. Otherwise run "
+    "lookup_business to mint a fresh dial_token and retry make_call."
+)
+
+CHECK_READINESS_NEXT_STEP = (
+    "Run check_call_readiness for a read-only report of auth, credit balance, "
+    "outbound caller-ID, and the call_me phone before placing a call."
 )
 
 AUTH_NEXT_STEP = "Check authentication and retry the Speko MCP request."
@@ -155,11 +197,19 @@ _ORG_NESTED_KEYS = ("organization", "owner", "profile")
 _AGENT_ROLES = frozenset({"agent", "assistant", "ai", "bot", "system"})
 _TURN_LIST_KEYS = ("transcript", "turns", "entries", "messages")
 _TURN_TEXT_KEYS = ("text", "content", "message")
-_TURN_ROLE_KEYS = ("role", "speaker", "participant")
+# "source" first: the real Speko transcript keys each turn's speaker as
+# `source` ("user" | "agent" | ...), not `role`. Without it, converse-mode
+# reply extraction skipped every turn and returned nothing on real calls.
+_TURN_ROLE_KEYS = ("source", "role", "speaker", "participant")
+
+# GET /v1/phone-numbers returns the list either bare or wrapped; tolerate both.
+_PHONE_LIST_KEYS = ("result", "items", "data", "phoneNumbers", "phone_numbers")
+# Credit balance: REST wire uses balanceUsd; the Python SDK uses balance_usd.
+_BALANCE_KEYS = ("balanceUsd", "balance_usd", "balance")
 
 
 def register_call_tools(mcp: FastMCP) -> None:
-    for tool in [lookup_business, make_call, call_me]:
+    for tool in [lookup_business, make_call, call_me, check_call_readiness]:
         mcp.tool(tool)
 
 
@@ -336,6 +386,29 @@ def _verified_phone_from(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _as_list(payload: Any) -> list[Any]:
+    """Coerce a list endpoint's response to a list, tolerating bare or wrapped."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in _PHONE_LIST_KEYS:
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _balance_usd_from(payload: Any) -> float | None:
+    """Pull the prepaid USD balance out of a credits-balance payload."""
+    if not isinstance(payload, dict):
+        return None
+    for key in _BALANCE_KEYS:
+        value = payload.get(key)
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return float(value)
+    return None
+
+
 def _provider_next_step(exc: ProviderError) -> str:
     """Explain which third-party provider is unconfigured or failing."""
     if exc.provider == "places":
@@ -382,15 +455,33 @@ async def _run_phone_call(
             exc, next_step=AUTH_NEXT_STEP if auth_failure else dial_next_step
         ) from exc
     call_id = _session_id(dial)
+    status = str(dial.get("status") or "").lower()
+    if status == STUB_DIAL_STATUS:
+        # The deployment has no outbound SIP/telephony configured: the API
+        # accepted the request but did NOT place a call. Return immediately
+        # instead of polling a session that will never go terminal. Callers
+        # surface a clear "not placed" message; never advise a retry.
+        return {
+            "status": NOT_PLACED_STATUS,
+            "call_id": call_id,
+            "duration_seconds": 0,
+            "outcome": None,
+            "transcript": None,
+        }
     if call_id is None:
+        # A conforming 200 always carries a session id, so this is a
+        # non-conforming response (e.g. a proxy stripped the body); do not
+        # assume a call is in flight or bind to an unrelated older session.
         raise ToolError(
-            "Speko dialed the call but returned no session id; next_step=Use "
-            "list_sessions to find the in-flight call, then get_call(call_id)."
+            "Speko returned a 200 with no session id, which the API contract "
+            "should never do, so the call may not have been placed; "
+            "next_step=Do not assume a call is in flight. Check recent calls "
+            "with list_sessions (newest first) before acting on any result, "
+            "and report this non-conforming response."
         )
     session_path = f"/v1/sessions/{http_client.path_segment(call_id)}"
     elapsed = 0
     polls = 0
-    status = str(dial.get("status") or "").lower()
     while status not in TERMINAL_STATUSES and elapsed < max_duration_seconds:
         interval = _FAST_POLL_SECONDS if polls < _FAST_POLLS else _SLOW_POLL_SECONDS
         await _SLEEP(interval)
@@ -642,8 +733,19 @@ async def make_call(
         },
         "telephony": {"amd": {"mode": "agent"}},
     }
-    summary = await _run_phone_call(body, duration_cap, ctx, "Call", MAKE_CALL_NEXT_STEP)
+    summary = await _run_phone_call(body, duration_cap, ctx, "Call", MAKE_CALL_DIAL_NEXT_STEP)
     call_id = summary["call_id"]
+    if summary["status"] == NOT_PLACED_STATUS:
+        return result(
+            summary,
+            text=(
+                f"The call to {business_name} was NOT placed: this Speko deployment "
+                "has no outbound SIP/caller-ID configured (dial status "
+                "'dialing-stub'). Configure a caller ID or SIP trunk for the "
+                "organization, then run make_call again. "
+                + CHECK_READINESS_NEXT_STEP
+            ),
+        )
     if summary["status"] == "timeout":
         return result(
             summary,
@@ -705,9 +807,13 @@ async def call_me(
         ) from exc
     phone = _verified_phone_from(organization)
     if phone is None:
+        # Surface the actual top-level org keys (names only, never values) so a
+        # missing/renamed field is debuggable instead of a dead-end.
+        seen = ", ".join(sorted(k for k in organization if isinstance(k, str))) or "(none)"
         raise ToolError(
             "No verified phone number is attached to this account; "
-            f"next_step={PHONE_VERIFICATION_NEXT_STEP}"
+            f"GET /v1/organization returned top-level keys: {seen}; "
+            f"next_step={CALL_ME_NO_PHONE_NEXT_STEP}"
         )
     blocked = dial_blocked_reason(phone)
     if blocked is not None:
@@ -727,9 +833,19 @@ async def call_me(
         "telephony": {"amd": {"mode": "agent"}},
     }
     summary = await _run_phone_call(body, duration_cap, ctx, "Personal call", CALL_ME_NEXT_STEP)
+    call_id = summary["call_id"]
+    if summary["status"] == NOT_PLACED_STATUS:
+        return result(
+            summary,
+            text=(
+                "The call to your number was NOT placed: this Speko deployment has no "
+                "outbound SIP/caller-ID configured (dial status 'dialing-stub'). "
+                "Configure a caller ID or SIP trunk for the organization, then run "
+                "call_me again. " + CHECK_READINESS_NEXT_STEP
+            ),
+        )
     if mode == "converse":
         summary["reply"] = extract_reply(summary.get("transcript"))
-    call_id = summary["call_id"]
     if summary["status"] == "timeout":
         return result(
             summary,
@@ -757,3 +873,133 @@ async def call_me(
             f"'{summary['status']}'."
         ),
     )
+
+
+async def _readiness_get(path: str) -> tuple[Any, str | None]:
+    """GET a Speko endpoint for the readiness report; return (payload, error)."""
+    try:
+        return await http_client.call_speko_api_any("GET", path), None
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        return None, str(exc)
+
+
+async def check_call_readiness() -> ToolResult:
+    """Read-only preflight: can this account place calls?
+
+    Reports, in one pass, whether the caller is authenticated, has enough
+    prepaid credit, has an outbound-ready caller ID, and has a verified phone
+    for call_me - each with a concrete next step. It only issues GET requests
+    and never dials. Run it first when calling does not work, or as the simple
+    "am I set up?" check before the first make_call. make_call to a business
+    needs only auth + credit + an outbound caller ID (the deployment's
+    server-default caller ID counts, so owning zero numbers is not a blocker);
+    call_me additionally needs a verified personal phone on the organization.
+    """
+    org_raw, org_err = await _readiness_get("/v1/organization")
+    balance_raw, balance_err = await _readiness_get("/v1/credits/balance")
+    numbers_raw, numbers_err = await _readiness_get("/v1/phone-numbers")
+
+    org = org_raw if isinstance(org_raw, dict) else {}
+    auth_ok = org_err is None
+    org_id = org.get("id")
+    organization_id = org_id if isinstance(org_id, str) else None
+
+    balance_usd = _balance_usd_from(balance_raw)
+    credits_sufficient = balance_usd is not None and balance_usd >= MIN_CALL_BALANCE_USD
+
+    owned: list[dict[str, Any]] = []
+    any_outbound_ready = False
+    for row in _as_list(numbers_raw):
+        if not isinstance(row, dict):
+            continue
+        setup = row.get("setupStatus")
+        setup = setup if isinstance(setup, dict) else {}
+        outbound_ready = bool(setup.get("outboundReady"))
+        any_outbound_ready = any_outbound_ready or outbound_ready
+        raw_status = setup.get("status")
+        raw_issues = setup.get("issues")
+        owned.append(
+            {
+                "e164": row.get("e164"),
+                "direction": row.get("direction"),
+                "source": row.get("source"),
+                "setup_status": raw_status if isinstance(raw_status, str) else None,
+                "outbound_ready": outbound_ready,
+                "issues": [str(i) for i in raw_issues] if isinstance(raw_issues, list) else [],
+            }
+        )
+
+    detected_phone = _verified_phone_from(org)
+    call_me_ready = detected_phone is not None and dial_blocked_reason(detected_phone) is None
+
+    next_steps: list[str] = []
+    if not auth_ok:
+        next_steps.append(AUTH_NEXT_STEP)
+    if not credits_sufficient:
+        shown = f"${balance_usd:.2f}" if balance_usd is not None else "unknown"
+        next_steps.append(
+            f"Add prepaid credits (current balance {shown}); outbound calls debit "
+            "credits per minute, so top up before make_call or call_me."
+        )
+    if not any_outbound_ready:
+        next_steps.append(
+            "You own no outbound-ready caller ID. make_call and call_me can still "
+            "work if this deployment has a server-default caller ID (the 'from' "
+            "field is optional), so try a call first. To register your own, import "
+            "a SIP-trunk number you already own or buy a managed US number (managed "
+            "numbers require KYB business verification plus credits)."
+        )
+    for row in owned:
+        if row["setup_status"] and row["setup_status"] != "ready" and row["issues"]:
+            label = row["e164"] or "an owned number"
+            next_steps.append(f"Resolve setup issues for {label}: {', '.join(row['issues'])}.")
+    if detected_phone is None:
+        next_steps.append(
+            "No verified personal phone was detected on the organization, so call_me "
+            "may not work (make_call to a business does not need one). Attach a "
+            "verified phone for this account if you want call_me."
+        )
+
+    if not auth_ok:
+        headline = "Ready to call: no - authentication failed."
+    elif not credits_sufficient:
+        headline = "Ready to call: with caveats - see next_steps."
+    elif any_outbound_ready:
+        headline = "Ready to call: yes."
+    else:
+        # Owns no outbound-ready caller ID, but 'from' is optional, so the
+        # deployment's server default should place the call. Owning zero
+        # numbers is not a blocker - say yes, but flag the dependency so a
+        # later 'dialing-stub' result is not a surprise.
+        headline = (
+            "Ready to call: yes (relying on the deployment's server-default "
+            "caller ID; if a call returns 'dialing-stub', no outbound number is "
+            "configured)."
+        )
+
+    payload: dict[str, Any] = {
+        "auth": {"ok": auth_ok, "organization_id": organization_id, "error": org_err},
+        "credits": {
+            "balance_usd": balance_usd,
+            "minimum_usd": MIN_CALL_BALANCE_USD,
+            "sufficient": credits_sufficient,
+            "error": balance_err,
+        },
+        "outbound": {
+            "owned_numbers": owned,
+            "any_outbound_ready": any_outbound_ready,
+            # 'from' is optional on POST /v1/sessions/phone, so the deployment's
+            # server-default caller ID can place calls even with zero owned
+            # numbers; never report "not ready" on owned-count alone.
+            "server_default_possible": True,
+            "error": numbers_err,
+        },
+        "call_me": {
+            "detected_phone": detected_phone,
+            "ready": call_me_ready,
+            "org_keys_seen": sorted(k for k in org if isinstance(k, str)),
+        },
+        "next_steps": next_steps,
+    }
+    text = headline if not next_steps else f"{headline} {' '.join(next_steps)}"
+    return result(payload, text=text)

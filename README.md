@@ -125,6 +125,8 @@ server name.
 Three tools let an MCP client place real, disclosed phone calls on the
 user's behalf:
 
+- `check_call_readiness` - read-only "am I set up to call?" preflight (auth,
+  credit, outbound caller ID, `call_me` phone).
 - `lookup_business` - resolve a business name (plus optional location) to
   dialable candidates and mint a signed `dial_token` for each callable one.
 - `make_call` - place the call authorized by a `dial_token`, pursue a single
@@ -133,6 +135,11 @@ user's behalf:
 - `call_me` - ring the account owner's own verified phone number to deliver
   a message (`notify`) or to also relay the owner's spoken reply
   (`converse`).
+- `check_call_readiness` - read-only preflight that reports, in one call,
+  whether the account can place calls: authentication, prepaid credit
+  balance, outbound caller-ID readiness, and the `call_me` verified phone -
+  each with a concrete next step. Run it first if a call does not work, or as
+  the simple "am I set up?" check before the first `make_call`.
 
 The flow is always lookup first, then dial:
 
@@ -143,8 +150,16 @@ make_call(dial_token, "Do you have a table for 4 at 8pm?", "Amirlan")
   -> waits for the call, returns the OUTCOME line and the transcript
 ```
 
+`make_call` does **not** require the account to own a phone number: the `from`
+caller ID is optional and resolves to the deployment's server default, so a
+new user can call a business without provisioning anything. `call_me` is the
+only tool that needs a verified phone (the account owner's own number).
+`check_call_readiness` makes both prerequisites self-serve to diagnose.
+
 If a call outlives the client timeout, `make_call` returns the `call_id`;
-use `get_call(call_id)` to check it later.
+use `get_call(call_id)` to check it later. If the deployment has no outbound
+SIP/telephony configured, a dial returns immediately as **not placed**
+(status `dialing-stub`) with a clear message instead of hanging.
 
 ### Safety rails
 
