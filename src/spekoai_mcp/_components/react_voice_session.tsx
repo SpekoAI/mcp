@@ -44,13 +44,6 @@ export interface SpekoVoiceSessionProps {
   className?: string;
 }
 
-interface TranscriptEntry {
-  id: string;
-  source: ConversationMessage['source'];
-  text: string;
-  isFinal: boolean;
-}
-
 export function SpekoVoiceSession({
   sessionEndpoint = '/api/speko',
   defaults,
@@ -62,7 +55,7 @@ export function SpekoVoiceSession({
   );
   const [status, setStatus] = useState<ConversationStatus>('disconnected');
   const [mode, setMode] = useState<ConversationMode>('listening');
-  const [messages, setMessages] = useState<TranscriptEntry[]>([]);
+  const [messages, setMessages] = useState<readonly ConversationMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
@@ -106,8 +99,8 @@ export function SpekoVoiceSession({
         transportUrl,
         onStatusChange: (s) => setStatus(s),
         onModeChange: (m) => setMode(m),
-        onMessage: (msg) => {
-          setMessages((prev) => mergeMessage(prev, msg));
+        onTranscript: (transcript) => {
+          setMessages(transcript);
         },
         onError: (err) => {
           setError(err instanceof Error ? err.message : String(err));
@@ -190,30 +183,6 @@ export function SpekoVoiceSession({
   );
 }
 
-function mergeMessage(
-  prev: TranscriptEntry[],
-  msg: ConversationMessage,
-): TranscriptEntry[] {
-  const last = prev[prev.length - 1];
-  // Interim updates from the same speaker overwrite the last entry until
-  // a final lands; a final message promotes the interim to stable and
-  // starts a fresh slot for whatever comes next.
-  if (last && !last.isFinal && last.source === msg.source) {
-    const next = prev.slice(0, -1);
-    next.push({ ...last, text: msg.text, isFinal: msg.isFinal });
-    return next;
-  }
-  return [
-    ...prev,
-    {
-      id: `${msg.source}-${prev.length}-${Date.now()}`,
-      source: msg.source,
-      text: msg.text,
-      isFinal: msg.isFinal,
-    },
-  ];
-}
-
 function ModeIndicator({ mode }: { mode: ConversationMode }) {
   const label = mode === 'speaking' ? 'Agent speaking' : 'Listening';
   const tone =
@@ -241,7 +210,7 @@ function Transcript({
   messages,
   mode,
 }: {
-  messages: TranscriptEntry[];
+  messages: readonly ConversationMessage[];
   mode: ConversationMode;
 }) {
   if (messages.length === 0) {
@@ -255,21 +224,25 @@ function Transcript({
   }
   return (
     <ol className="flex max-h-80 flex-col gap-3 overflow-y-auto">
-      {messages.map((m) => (
-        <li key={m.id} className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[#A8A29E]">
-            {m.source === 'user' ? 'You' : 'Agent'}
-          </span>
-          <span
-            className={
-              'text-sm leading-relaxed ' +
-              (m.isFinal ? 'text-[#1C1917]' : 'italic text-[#57534E]')
-            }
-          >
-            {m.text}
-          </span>
-        </li>
-      ))}
+      {messages.map((m, i) => {
+        const key =
+          m.segmentId != null ? `${m.source}-${m.segmentId}` : `${m.source}-${i}`;
+        return (
+          <li key={key} className="flex flex-col gap-1">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-[#A8A29E]">
+              {m.source === 'user' ? 'You' : 'Agent'}
+            </span>
+            <span
+              className={
+                'text-sm leading-relaxed ' +
+                (m.isFinal ? 'text-[#1C1917]' : 'italic text-[#57534E]')
+              }
+            >
+              {m.text}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
