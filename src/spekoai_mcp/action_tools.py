@@ -64,6 +64,7 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "list_credit_ledger": "credits.ledger.list",
     "get_usage_summary": "usage.summary.get",
     "list_agents": "agents.list",
+    "preview_stacks": "agents.preview_stacks",
     "create_agent": "agents.create",
     "get_agent": "agents.get",
     "update_agent": "agents.update",
@@ -128,6 +129,7 @@ READ_ONLY_ACTION_TOOL_NAMES = {
     "list_credit_ledger",
     "get_usage_summary",
     "list_agents",
+    "preview_stacks",
     "get_agent",
     "list_agent_tools",
     "get_agent_tool",
@@ -171,6 +173,7 @@ def register_action_tools(mcp: FastMCP) -> None:
         list_credit_ledger,
         get_usage_summary,
         list_agents,
+        preview_stacks,
         create_agent,
         get_agent,
         update_agent,
@@ -532,6 +535,54 @@ async def list_agents() -> ToolResult:
     return await call_list("GET", "/v1/agents", text="Retrieved agents.")
 
 
+async def preview_stacks(
+    description: Annotated[
+        str,
+        Field(
+            description=(
+                "One line on what the agent does (e.g. 'a dental clinic phone "
+                "receptionist that books appointments'). Used to tailor the picks."
+            )
+        ),
+    ],
+    region: Annotated[
+        str,
+        Field(
+            description=(
+                "Region for latency-aware picks. Default 'usa' (United States). "
+                "Only 'usa' is supported today; more regions later."
+            )
+        ),
+    ] = "usa",
+) -> ToolResult:
+    """Preview the THREE voice-stack options before creating an agent — so the user picks.
+
+    Returns the same recommendation the dashboard's agent-create shows, as three tiers.
+    Present them to the user with these labels and each tier's STT / LLM / TTS:
+        premium        -> "Quality"
+        balanced       -> "Fastest"
+        cost_optimized -> "Cheapest"
+    Ask which one they want (and confirm the region — default USA). Then call create_agent
+    with the chosen objective mapped to intent.optimizeFor:
+        Quality -> 'quality',  Fastest -> 'latency',  Cheapest -> 'cost'
+    plus intent.region. The server then pins that tier's failover stack automatically, so
+    the created agent matches exactly what you previewed.
+    """
+    return await call(
+        "POST",
+        "/v1/recommend-stack/from-description",
+        body={
+            "description": description,
+            "constraints": {"language": "en", "region": region},
+        },
+        text=(
+            "Stack options — map tiers premium=Quality, balanced=Fastest, "
+            "cost_optimized=Cheapest. Show each tier's stt/llm/tts and let the user pick, "
+            "then call create_agent with the chosen objective + region."
+        ),
+    )
+
+
 async def create_agent(
     body: Annotated[
         dict[str, Any],
@@ -539,14 +590,19 @@ async def create_agent(
             description=(
                 "JSON body for POST /v1/agents. Required shape: "
                 "{name: string, systemPrompt: string, intent: {language: string, "
-                "optimizeFor?: 'latency'|'quality'|'cost'}}. The intent field is "
-                "routing metadata, not a use-case string. For migrations, pass "
+                "optimizeFor?: 'latency'|'quality'|'cost', region?: string}}. "
+                "FIRST call preview_stacks and let the user choose Quality / Fastest / "
+                "Cheapest and the region (default 'usa'); then set intent.optimizeFor "
+                "(Quality->'quality', Fastest->'latency', Cheapest->'cost') and "
+                "intent.region so the server pins the matching failover stack. The intent "
+                "field is routing metadata, not a use-case string. For migrations, pass "
                 "agent_create_payload from parse_external_config."
             )
         ),
     ],
 ) -> ToolResult:
-    """Create a Speko agent."""
+    """Create a Speko agent. Prefer calling preview_stacks first so the user picks the
+    stack objective (Quality/Fastest/Cheapest) and region before the agent is created."""
     validate_create_agent_body(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
