@@ -591,18 +591,24 @@ async def create_agent(
                 "JSON body for POST /v1/agents. Required shape: "
                 "{name: string, systemPrompt: string, intent: {language: string, "
                 "optimizeFor?: 'latency'|'quality'|'cost', region?: string}}. "
-                "FIRST call preview_stacks and let the user choose Quality / Fastest / "
-                "Cheapest and the region (default 'usa'); then set intent.optimizeFor "
-                "(Quality->'quality', Fastest->'latency', Cheapest->'cost') and "
-                "intent.region so the server pins the matching failover stack. The intent "
-                "field is routing metadata, not a use-case string. For migrations, pass "
-                "agent_create_payload from parse_external_config."
+                "ALWAYS call preview_stacks FIRST and have the USER choose Quality / "
+                "Fastest / Cheapest and the region (default 'usa') — do NOT pick the "
+                "objective for them and do NOT let it default silently. Then set "
+                "intent.optimizeFor (Quality->'quality', Fastest->'latency', "
+                "Cheapest->'cost') and intent.region so the server pins the matching "
+                "failover stack. The intent field is routing metadata, not a use-case "
+                "string. (Only exception: migrations — pass agent_create_payload from "
+                "parse_external_config, which create without asking.)"
             )
         ),
     ],
 ) -> ToolResult:
-    """Create a Speko agent. Prefer calling preview_stacks first so the user picks the
-    stack objective (Quality/Fastest/Cheapest) and region before the agent is created."""
+    """Create a Speko agent.
+
+    ALWAYS call preview_stacks first and ask the USER to choose the stack objective
+    (Quality/Fastest/Cheapest) and region BEFORE creating — never pick the objective for
+    them or let the server default silently. Only skip this for migrations
+    (parse_external_config), which create without asking."""
     validate_create_agent_body(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
