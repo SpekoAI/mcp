@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9
+
+- Advertise `offline_access` (plus the standard OIDC scopes) in the OAuth metadata so MCP clients receive a refresh token — clients like Claude Code no longer re-authenticate on every restart (#740).
+- `create_agent` always previews and prompts for objective/region instead of applying a silent default; add a `preview_stacks` tool (#721, #722).
+- Agent creation drives the whole stack from the live selector / region (#681).
+- Centralize transcript reconciliation in `@spekoai/client` and migrate consumers (#694).
+- Cross-platform `uv`-guarded nx targets (Windows `cmd.exe`).
+
 ## 0.1.8
 
 - Serve the Glama connector manifest at `/.well-known/glama.json` from the hosted MCP origin (moved out of the marketing site), so glama.ai validates against `mcp.speko.dev`.
