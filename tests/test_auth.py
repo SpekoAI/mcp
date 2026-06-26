@@ -80,6 +80,22 @@ def test_builds_proxy_for_valid_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert any(isinstance(v, SpekoApiKeyVerifier) for v in auth.verifiers)
 
 
+def test_advertises_offline_access_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_valid_env(monkeypatch)
+    proxy = _oauth_proxy(build_auth())
+    # `scopes_supported` in the advertised OAuth metadata is sourced from
+    # `client_registration_options.valid_scopes` (mcp.server.auth.routes).
+    # `offline_access` MUST be advertised: per MCP SEP-2207 a client only
+    # requests it when the AS advertises it, and Better Auth's oauth-provider
+    # mints a refresh token only when the granted scope contains it. Without
+    # this, clients (e.g. Claude Code) get a short-lived JWT with no refresh
+    # token and re-auth via the browser on every restart.
+    valid_scopes = proxy.client_registration_options.valid_scopes
+    assert valid_scopes is not None
+    assert "offline_access" in valid_scopes
+    assert {"openid", "profile", "email"} <= set(valid_scopes)
+
+
 def test_audience_override(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_env(monkeypatch)
     monkeypatch.setenv("SPEKOAI_OAUTH_AUDIENCE", "https://mcp.example.com")

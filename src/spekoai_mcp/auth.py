@@ -22,6 +22,20 @@ from fastmcp.utilities.logging import get_logger
 
 DEFAULT_MCP_PATH = "/mcp"
 
+# Scopes the proxy advertises to downstream MCP clients via its
+# `/.well-known/oauth-authorization-server` metadata (`scopes_supported`).
+# `offline_access` is load-bearing: per MCP SEP-2207 a client (e.g. Claude
+# Code) only requests `offline_access` when the authorization server
+# advertises it, and Better Auth's oauth-provider only mints a refresh token
+# when the granted scope contains `offline_access`
+# (@better-auth/oauth-provider dist/index.mjs: `scopes.includes("offline_access")`).
+# Without advertising it, the client receives only a ~1h JWT access token and
+# no refresh token, so it must redo the full browser auth on every restart.
+# These four match oauth-provider's default supported scopes. `valid_scopes`
+# is advertise-only — it does not enforce scopes on inbound tokens (that's the
+# verifier's `required_scopes`, which we deliberately leave unset).
+OAUTH_ADVERTISED_SCOPES = ["openid", "profile", "email", "offline_access"]
+
 logger = get_logger(__name__)
 
 
@@ -163,6 +177,11 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
             audience=audience,
         ),
         base_url=base_url,
+        # Advertise `offline_access` (+ the standard OIDC scopes) so clients
+        # request it and Better Auth mints a refresh token — otherwise clients
+        # get a ~1h JWT with no refresh token and re-auth via the browser on
+        # every restart. See `OAUTH_ADVERTISED_SCOPES`.
+        valid_scopes=OAUTH_ADVERTISED_SCOPES,
         # Force the upstream to mint a JWT access token by sending
         # `resource` on both legs of the auth-code flow. Without this
         # the Inspector (and other clients that don't send `resource`
