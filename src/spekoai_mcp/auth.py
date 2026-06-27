@@ -58,9 +58,12 @@ class _ScopeNormalizingOAuthProxy(OAuthProxy):
 
     async def get_client(self, client_id: str):  # type: ignore[override]
         client = await super().get_client(client_id)
-        if client is not None:
-            client.scope = " ".join(OAUTH_ADVERTISED_SCOPES)
-        return client
+        if client is None:
+            return None
+        # Return a COPY with the scope normalized rather than mutating the stored
+        # client object in place — the underlying store may hand back a shared/
+        # cached instance, and aliasing the change back into it is surprising.
+        return client.model_copy(update={"scope": " ".join(OAUTH_ADVERTISED_SCOPES)})
 
 
 class SpekoApiKeyVerifier(TokenVerifier):

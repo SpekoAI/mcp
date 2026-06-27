@@ -112,31 +112,33 @@ def test_registers_dcr_clients_with_default_scopes(monkeypatch: pytest.MonkeyPat
     assert {"openid", "profile", "email"} <= set(default_scopes)
 
 
+@pytest.mark.parametrize("registered_scope", ["", "offline_access"])
 async def test_get_client_normalizes_empty_or_partial_scope(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, registered_scope: str
 ) -> None:
     from mcp.shared.auth import OAuthClientInformationFull
     from pydantic import AnyUrl
 
     _set_valid_env(monkeypatch)
     proxy = _oauth_proxy(build_auth())
-    # A client that registered with an EMPTY scope is the exact case that produced
+    # Empty ("") and partial registered scopes were the exact cases that produced
     # `invalid_scope: Client was not registered with scope openid`: `default_scopes`
     # only covers an OMITTED scope, not empty/partial/grandfathered clients. On
     # load, get_client must normalize the scope to the advertised set so the
     # /authorize scope check passes.
+    cid = f"client-{registered_scope or 'empty'}"
     await proxy.register_client(
         OAuthClientInformationFull(
-            client_id="empty-scope-client",
+            client_id=cid,
             client_secret=None,
             redirect_uris=[AnyUrl("http://localhost:1234/cb")],
             grant_types=["authorization_code", "refresh_token"],
             response_types=["code"],
             token_endpoint_auth_method="none",
-            scope="",
+            scope=registered_scope,
         )
     )
-    loaded = await proxy.get_client("empty-scope-client")
+    loaded = await proxy.get_client(cid)
     assert loaded is not None
     assert loaded.scope is not None
     assert "openid" in loaded.scope
