@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11
+
+- Fully fix `invalid_scope: Client was not registered with scope openid` (0.1.10 was incomplete). `default_scopes` only covers a client that registers with an OMITTED scope; clients that register with an empty (`""`) or partial scope — and clients registered before `offline_access` was advertised — still failed the `/authorize` scope check. Normalize every loaded client's scope to the advertised set in `get_client`, so the advertised scopes are always grantable for new, partial, and grandfathered clients alike (no cache-clearing needed). The scope the client actually requests is still what's forwarded upstream.
+
 ## 0.1.10
 
 - Fix `invalid_scope: Client was not registered with scope openid` on OAuth sign-in (regression from 0.1.9). `valid_scopes` only advertises/bounds scopes; it doesn't assign any at registration, so DCR clients that register without an explicit scope (e.g. Claude Code) ended up with an empty registered scope and then failed the `/authorize` scope check for the now-advertised `openid`. Set `default_scopes` so a no-scope registration is granted `openid`/`profile`/`email`/`offline_access` (matching what the client requests and what we forward upstream).

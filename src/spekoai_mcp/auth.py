@@ -39,6 +39,30 @@ OAUTH_ADVERTISED_SCOPES = ["openid", "profile", "email", "offline_access"]
 logger = get_logger(__name__)
 
 
+class _ScopeNormalizingOAuthProxy(OAuthProxy):
+    """`OAuthProxy` that guarantees every client may use the advertised scopes.
+
+    DCR clients vary in what scope they register with: some omit it (handled by
+    `default_scopes`), but others send `""` or a partial set, and clients that
+    registered BEFORE we advertised `offline_access` have an empty stored scope.
+    The MCP SDK validates the `/authorize` (and token) scopes against the
+    client's REGISTERED scope, so any client that didn't register `openid` fails
+    with `invalid_scope: Client was not registered with scope openid`.
+
+    Since we only ever advertise `OAUTH_ADVERTISED_SCOPES`, broadening every
+    loaded client to exactly that set is safe and makes the advertised scopes
+    always grantable — for new, partial, and grandfathered clients alike, with no
+    cache-clearing. The scope the client actually REQUESTS is still what gets
+    forwarded upstream, so this only relaxes the local subset check.
+    """
+
+    async def get_client(self, client_id: str):  # type: ignore[override]
+        client = await super().get_client(client_id)
+        if client is not None:
+            client.scope = " ".join(OAUTH_ADVERTISED_SCOPES)
+        return client
+
+
 class SpekoApiKeyVerifier(TokenVerifier):
     """Validate Speko API keys against the Speko API."""
 
@@ -166,7 +190,7 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
         f"{base_url.rstrip('/')}{normalized_path}",
     )
 
-    oauth = OAuthProxy(
+    oauth = _ScopeNormalizingOAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",
         upstream_token_endpoint=f"{issuer}/token",
         upstream_client_id=client_id,

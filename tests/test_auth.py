@@ -112,6 +112,37 @@ def test_registers_dcr_clients_with_default_scopes(monkeypatch: pytest.MonkeyPat
     assert {"openid", "profile", "email"} <= set(default_scopes)
 
 
+async def test_get_client_normalizes_empty_or_partial_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp.shared.auth import OAuthClientInformationFull
+    from pydantic import AnyUrl
+
+    _set_valid_env(monkeypatch)
+    proxy = _oauth_proxy(build_auth())
+    # A client that registered with an EMPTY scope is the exact case that produced
+    # `invalid_scope: Client was not registered with scope openid`: `default_scopes`
+    # only covers an OMITTED scope, not empty/partial/grandfathered clients. On
+    # load, get_client must normalize the scope to the advertised set so the
+    # /authorize scope check passes.
+    await proxy.register_client(
+        OAuthClientInformationFull(
+            client_id="empty-scope-client",
+            client_secret=None,
+            redirect_uris=[AnyUrl("http://localhost:1234/cb")],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+            token_endpoint_auth_method="none",
+            scope="",
+        )
+    )
+    loaded = await proxy.get_client("empty-scope-client")
+    assert loaded is not None
+    assert loaded.scope is not None
+    assert "openid" in loaded.scope
+    assert "offline_access" in loaded.scope
+
+
 def test_audience_override(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_env(monkeypatch)
     monkeypatch.setenv("SPEKOAI_OAUTH_AUDIENCE", "https://mcp.example.com")
