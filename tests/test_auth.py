@@ -96,6 +96,22 @@ def test_advertises_offline_access_scope(monkeypatch: pytest.MonkeyPatch) -> Non
     assert {"openid", "profile", "email"} <= set(valid_scopes)
 
 
+def test_registers_dcr_clients_with_default_scopes(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_valid_env(monkeypatch)
+    proxy = _oauth_proxy(build_auth())
+    # DCR clients (e.g. Claude Code) register WITHOUT a scope and only request
+    # scopes at /authorize, where the MCP SDK validates them against the client's
+    # REGISTERED scope. `default_scopes` is what a no-scope registration is
+    # granted, so it MUST include the scopes we advertise — otherwise the client
+    # registers empty and the advertised `openid` request fails with
+    # `invalid_scope: Client was not registered with scope openid`. Regression
+    # guard for that.
+    default_scopes = proxy.client_registration_options.default_scopes
+    assert default_scopes is not None
+    assert "offline_access" in default_scopes
+    assert {"openid", "profile", "email"} <= set(default_scopes)
+
+
 def test_audience_override(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_env(monkeypatch)
     monkeypatch.setenv("SPEKOAI_OAUTH_AUDIENCE", "https://mcp.example.com")

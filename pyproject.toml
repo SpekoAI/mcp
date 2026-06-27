@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "spekoai-mcp"
-version = "0.1.9"
+version = "0.1.10"
 description = "Model Context Protocol server for SpekoAI — voice-AI tools for Claude Code, OpenCode, Cursor, and other AI coding tools"
 readme = "README.md"
 license = { text = "MIT" }

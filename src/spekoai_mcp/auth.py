@@ -191,4 +191,14 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
         extra_authorize_params={"resource": audience},
         extra_token_params={"resource": audience},
     )
+    # `valid_scopes` only ADVERTISES + bounds scopes; it does not assign any at
+    # registration. DCR clients (e.g. Claude Code) register WITHOUT a scope and
+    # only request scopes at `/authorize`, where the MCP SDK validates them
+    # against the client's REGISTERED scope. With no `default_scopes`, a no-scope
+    # registration leaves the client with an empty scope, so the now-advertised
+    # `openid` request fails: `invalid_scope: Client was not registered with
+    # scope openid`. Assign `default_scopes` so a no-scope registration is
+    # granted exactly what we advertise (and forward upstream). OAuthProxy has no
+    # constructor arg for this, so set it on the options before get_routes() runs.
+    oauth.client_registration_options.default_scopes = OAUTH_ADVERTISED_SCOPES
     return MultiAuth(server=oauth, verifiers=[SpekoApiKeyVerifier()])

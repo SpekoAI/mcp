@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10
+
+- Fix `invalid_scope: Client was not registered with scope openid` on OAuth sign-in (regression from 0.1.9). `valid_scopes` only advertises/bounds scopes; it doesn't assign any at registration, so DCR clients that register without an explicit scope (e.g. Claude Code) ended up with an empty registered scope and then failed the `/authorize` scope check for the now-advertised `openid`. Set `default_scopes` so a no-scope registration is granted `openid`/`profile`/`email`/`offline_access` (matching what the client requests and what we forward upstream).
+
 ## 0.1.9
 
 - Advertise `offline_access` (plus the standard OIDC scopes) in the OAuth metadata so MCP clients receive a refresh token — clients like Claude Code no longer re-authenticate on every restart (#740).
