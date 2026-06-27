@@ -22,48 +22,7 @@ from fastmcp.utilities.logging import get_logger
 
 DEFAULT_MCP_PATH = "/mcp"
 
-# Scopes the proxy advertises to downstream MCP clients via its
-# `/.well-known/oauth-authorization-server` metadata (`scopes_supported`).
-# `offline_access` is load-bearing: per MCP SEP-2207 a client (e.g. Claude
-# Code) only requests `offline_access` when the authorization server
-# advertises it, and Better Auth's oauth-provider only mints a refresh token
-# when the granted scope contains `offline_access`
-# (@better-auth/oauth-provider dist/index.mjs: `scopes.includes("offline_access")`).
-# Without advertising it, the client receives only a ~1h JWT access token and
-# no refresh token, so it must redo the full browser auth on every restart.
-# These four match oauth-provider's default supported scopes. `valid_scopes`
-# is advertise-only — it does not enforce scopes on inbound tokens (that's the
-# verifier's `required_scopes`, which we deliberately leave unset).
-OAUTH_ADVERTISED_SCOPES = ["openid", "profile", "email", "offline_access"]
-
 logger = get_logger(__name__)
-
-
-class _ScopeNormalizingOAuthProxy(OAuthProxy):
-    """`OAuthProxy` that guarantees every client may use the advertised scopes.
-
-    DCR clients vary in what scope they register with: some omit it (handled by
-    `default_scopes`), but others send `""` or a partial set, and clients that
-    registered BEFORE we advertised `offline_access` have an empty stored scope.
-    The MCP SDK validates the `/authorize` (and token) scopes against the
-    client's REGISTERED scope, so any client that didn't register `openid` fails
-    with `invalid_scope: Client was not registered with scope openid`.
-
-    Since we only ever advertise `OAUTH_ADVERTISED_SCOPES`, broadening every
-    loaded client to exactly that set is safe and makes the advertised scopes
-    always grantable — for new, partial, and grandfathered clients alike, with no
-    cache-clearing. The scope the client actually REQUESTS is still what gets
-    forwarded upstream, so this only relaxes the local subset check.
-    """
-
-    async def get_client(self, client_id: str):  # type: ignore[override]
-        client = await super().get_client(client_id)
-        if client is None:
-            return None
-        # Return a COPY with the scope normalized rather than mutating the stored
-        # client object in place — the underlying store may hand back a shared/
-        # cached instance, and aliasing the change back into it is surprising.
-        return client.model_copy(update={"scope": " ".join(OAUTH_ADVERTISED_SCOPES)})
 
 
 class SpekoApiKeyVerifier(TokenVerifier):
@@ -193,7 +152,7 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
         f"{base_url.rstrip('/')}{normalized_path}",
     )
 
-    oauth = _ScopeNormalizingOAuthProxy(
+    oauth = OAuthProxy(
         upstream_authorization_endpoint=f"{issuer}/authorize",
         upstream_token_endpoint=f"{issuer}/token",
         upstream_client_id=client_id,
@@ -204,11 +163,6 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
             audience=audience,
         ),
         base_url=base_url,
-        # Advertise `offline_access` (+ the standard OIDC scopes) so clients
-        # request it and Better Auth mints a refresh token — otherwise clients
-        # get a ~1h JWT with no refresh token and re-auth via the browser on
-        # every restart. See `OAUTH_ADVERTISED_SCOPES`.
-        valid_scopes=OAUTH_ADVERTISED_SCOPES,
         # Force the upstream to mint a JWT access token by sending
         # `resource` on both legs of the auth-code flow. Without this
         # the Inspector (and other clients that don't send `resource`
@@ -218,14 +172,4 @@ def build_auth(mcp_path: str = DEFAULT_MCP_PATH) -> MultiAuth:
         extra_authorize_params={"resource": audience},
         extra_token_params={"resource": audience},
     )
-    # `valid_scopes` only ADVERTISES + bounds scopes; it does not assign any at
-    # registration. DCR clients (e.g. Claude Code) register WITHOUT a scope and
-    # only request scopes at `/authorize`, where the MCP SDK validates them
-    # against the client's REGISTERED scope. With no `default_scopes`, a no-scope
-    # registration leaves the client with an empty scope, so the now-advertised
-    # `openid` request fails: `invalid_scope: Client was not registered with
-    # scope openid`. Assign `default_scopes` so a no-scope registration is
-    # granted exactly what we advertise (and forward upstream). OAuthProxy has no
-    # constructor arg for this, so set it on the options before get_routes() runs.
-    oauth.client_registration_options.default_scopes = OAUTH_ADVERTISED_SCOPES
     return MultiAuth(server=oauth, verifiers=[SpekoApiKeyVerifier()])

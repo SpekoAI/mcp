@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.12
+
+- Revert the `offline_access` OAuth-scope work (0.1.9–0.1.11). Advertising scopes pushed sign-in into FastMCP's consent step, which fails with `Authorization session mismatch` on multi-instance / cold-started Cloud Run: the proxy's consent cookies + transaction store use a per-process key with no shared backing store, so the state set at `/authorize` can't be verified at consent/callback when a different instance handles it. Restores the prior `OAuthProxy` config (no advertised scopes) so sign-in works without errors. Clients re-authenticate per session again — the refresh-token feature will return once the proxy has a fixed `jwt_signing_key` + a shared `client_storage` (Redis).
+
 ## 0.1.11
 
 - Fully fix `invalid_scope: Client was not registered with scope openid` (0.1.10 was incomplete). `default_scopes` only covers a client that registers with an OMITTED scope; clients that register with an empty (`""`) or partial scope — and clients registered before `offline_access` was advertised — still failed the `/authorize` scope check. Normalize every loaded client's scope to the advertised set in `get_client`, so the advertised scopes are always grantable for new, partial, and grandfathered clients alike (no cache-clearing needed). The scope the client actually requests is still what's forwarded upstream.
