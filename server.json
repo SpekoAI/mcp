@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.speko/mcp",
+  "title": "Speko AI",
+  "description": "Manage Speko voice-AI agents, sessions, calls, phone numbers, knowledge bases, evals, and docs.",
+  "repository": {
+    "url": "https://github.com/SpekoAI/mcp",
+    "source": "github"
+  },
+  "version": "1.0.12",
+  "websiteUrl": "https://speko.ai",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.speko.ai/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Optional Speko API key for clients that do not use OAuth. Use Bearer sk_...",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": true,
+          "placeholder": "Bearer sk_live_..."
+        }
+      ]
+    }
+  ]
+}
