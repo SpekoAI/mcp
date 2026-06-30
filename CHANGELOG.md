@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13
+
+- Added new agents.test_call_agent tool
+
 ## 0.1.12
 
 - Revert the `offline_access` OAuth-scope work (0.1.9–0.1.11). Advertising scopes pushed sign-in into FastMCP's consent step, which fails with `Authorization session mismatch` on multi-instance / cold-started Cloud Run: the proxy's consent cookies + transaction store use a per-process key with no shared backing store, so the state set at `/authorize` can't be verified at consent/callback when a different instance handles it. Restores the prior `OAuthProxy` config (no advertised scopes) so sign-in works without errors. Clients re-authenticate per session again — the refresh-token feature will return once the proxy has a fixed `jwt_signing_key` + a shared `client_storage` (Redis).
