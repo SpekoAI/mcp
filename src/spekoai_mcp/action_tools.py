@@ -77,6 +77,7 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "deploy_agent": "agents.deploy",
     "rollback_agent": "agents.rollback",
     "list_agent_versions": "agents.versions.list",
+    "test_call_agent": "agents.test_call",
     "create_session": "sessions.create",
     "create_phone_session": "sessions.phone.create",
     "list_sessions": "sessions.list",
@@ -186,6 +187,7 @@ def register_action_tools(mcp: FastMCP) -> None:
         deploy_agent,
         rollback_agent,
         list_agent_versions,
+        test_call_agent,
         create_session,
         create_phone_session,
         list_sessions,
@@ -340,8 +342,7 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         if path.endswith("/tools"):
             return CREATE_AGENT_TOOL_NEXT_STEP
         return (
-            "Fix the request body using the validation details, then retry the "
-            "Speko MCP request."
+            "Fix the request body using the validation details, then retry the Speko MCP request."
         )
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code in {401, 403}:
         return "Check authentication and retry the Speko MCP request."
@@ -407,8 +408,7 @@ def validate_session_target(body: dict[str, Any], *, tool: str, next_step: str) 
     """Sessions need a persisted agent or an inline routing intent."""
     if not body.get("agentId") and not body.get("intent"):
         raise ToolError(
-            f"Invalid {tool} body: either agentId or intent is required; "
-            f"next_step={next_step}"
+            f"Invalid {tool} body: either agentId or intent is required; next_step={next_step}"
         )
     if body.get("intent") is not None:
         validate_intent_field(body["intent"], tool=tool, next_step=next_step)
@@ -806,6 +806,88 @@ async def list_agent_versions(
         "GET",
         f"/v1/agents/{http_client.path_segment(agent_id)}/versions",
         text="Retrieved agent versions.",
+    )
+
+
+async def test_call_agent(
+    agent_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Agent id to test (the agent under test). It answers first, using its saved config."
+            )
+        ),
+    ],
+    objective: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Plain-language goal for a synthesized caller, e.g. 'Ask the all-you-can-eat "
+                "price and whether there's a vegan broth, then book a table for 4 on Friday at "
+                "7pm under Alex.' Provide this, OR caller_agent_id, OR caller_system_prompt."
+            )
+        ),
+    ] = None,
+    caller_agent_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Use another persisted agent as the caller instead of a synthesized persona."
+            )
+        ),
+    ] = None,
+    caller_system_prompt: Annotated[
+        str | None,
+        Field(description="Full system prompt for the caller persona; overrides objective."),
+    ] = None,
+    caller_first_message: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Caller's opening line. Defaults to listening first so the two agents don't "
+                "greet over each other (only the agent under test greets)."
+            )
+        ),
+    ] = None,
+    ttl_seconds: Annotated[
+        int | None,
+        Field(description="Hard wall-clock cap in seconds (30-1800, default 180)."),
+    ] = None,
+    record: Annotated[
+        bool | None,
+        Field(
+            description="Record the conversation. Default true (subject to org recording settings)."
+        ),
+    ] = None,
+) -> ToolResult:
+    """Start an agent-to-agent test call.
+
+    Dispatches the agent under test plus a caller (a persona synthesized from
+    `objective`, or another agent via `caller_agent_id`) into ONE LiveKit room with
+    NO phone/SIP leg — so it CANNOT hairpin the way dialing the agent's own number
+    does. Returns immediately with session ids; the conversation runs in the
+    background. To review it: poll calls.get(agentSessionId) until it ends, then
+    read sessions.transcript.get(agentSessionId) and calls.recording.get(agentSessionId).
+    Provide exactly one of objective / caller_agent_id / caller_system_prompt.
+    """
+    body: dict[str, Any] = {}
+    if objective is not None:
+        body["objective"] = objective
+    if caller_agent_id is not None:
+        body["callerAgentId"] = caller_agent_id
+    if caller_system_prompt is not None:
+        body["callerSystemPrompt"] = caller_system_prompt
+    if caller_first_message is not None:
+        body["callerFirstMessage"] = caller_first_message
+    if ttl_seconds is not None:
+        body["ttlSeconds"] = ttl_seconds
+    if record is not None:
+        body["record"] = record
+    return await call(
+        "POST",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/test-call",
+        body=body,
+        text="Started agent-to-agent test call.",
     )
 
 

@@ -114,6 +114,10 @@ async def test_action_tools_cover_expected_api_paths(
     await mcp.call_tool("agents.rollback", {"agent_id": "agent_1", "target_version_number": 1})
     await mcp.call_tool("agents.versions.list", {"agent_id": "agent_1"})
     await mcp.call_tool(
+        "agents.test_call",
+        {"agent_id": "agent_1", "objective": "Ask the hours and book a table for 2."},
+    )
+    await mcp.call_tool(
         "sessions.create", {"body": {"mode": "cascade", "intent": {"language": "en"}}}
     )
     await mcp.call_tool(
@@ -225,9 +229,7 @@ async def test_create_session_rejects_string_intent_before_api(
     speko_api_mock: list[dict[str, object]],
 ) -> None:
     with pytest.raises(ToolError, match="body.intent must be an object"):
-        await create_server().call_tool(
-            "sessions.create", {"body": {"intent": "customer_support"}}
-        )
+        await create_server().call_tool("sessions.create", {"body": {"intent": "customer_support"}})
 
     assert speko_api_mock == []
 
@@ -242,9 +244,7 @@ async def test_create_session_s2s_pinned_provider_model_needs_no_agent_or_intent
         {"body": {"mode": "s2s", "s2s": {"provider": "openai", "model": "gpt-realtime"}}},
     )
 
-    assert [(call["method"], call["path"]) for call in speko_api_mock] == [
-        ("POST", "/v1/sessions")
-    ]
+    assert [(call["method"], call["path"]) for call in speko_api_mock] == [("POST", "/v1/sessions")]
 
 
 async def test_create_session_s2s_without_pin_requires_agent_or_intent(
@@ -399,6 +399,7 @@ EXPECTED_METHOD_PATHS = {
     ("POST", "/v1/agents/agent_1/deploy"),
     ("POST", "/v1/agents/agent_1/rollback"),
     ("GET", "/v1/agents/agent_1/versions"),
+    ("POST", "/v1/agents/agent_1/test-call"),
     ("POST", "/v1/sessions"),
     ("POST", "/v1/sessions/phone"),
     ("GET", "/v1/sessions"),
