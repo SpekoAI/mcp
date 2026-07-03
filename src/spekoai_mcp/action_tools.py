@@ -106,6 +106,12 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "create_agent_eval": "agents.evals.create",
     "run_agent_eval": "agents.evals.run",
     "get_eval": "evals.get",
+    "list_monitors": "agents.monitors.list",
+    "create_monitor": "agents.monitors.create",
+    "update_monitor": "agents.monitors.update",
+    "delete_monitor": "agents.monitors.delete",
+    "list_monitor_events": "agents.monitors.events.list",
+    "list_online_eval_results": "agents.monitoring.results.list",
     "inspect_workspace": "migration.workspace.inspect",
     "build_session_config": "migration.session_config.build",
     "parse_external_config": "migration.external_config.parse",
@@ -151,6 +157,9 @@ READ_ONLY_ACTION_TOOL_NAMES = {
     "get_knowledge_document",
     "list_agent_evals",
     "get_eval",
+    "list_monitors",
+    "list_monitor_events",
+    "list_online_eval_results",
     "inspect_workspace",
     "build_session_config",
     "parse_external_config",
@@ -164,6 +173,7 @@ DESTRUCTIVE_ACTION_TOOL_NAMES = {
     "delete_phone_number",
     "delete_knowledge_base",
     "delete_knowledge_document",
+    "delete_monitor",
 }
 
 
@@ -216,6 +226,12 @@ def register_action_tools(mcp: FastMCP) -> None:
         create_agent_eval,
         run_agent_eval,
         get_eval,
+        list_monitors,
+        create_monitor,
+        update_monitor,
+        delete_monitor,
+        list_monitor_events,
+        list_online_eval_results,
         inspect_workspace,
         build_session_config,
         parse_external_config,
@@ -1332,6 +1348,106 @@ async def get_eval(
     """Get eval detail and recent runs."""
     return await call(
         "GET", f"/v1/evals/{http_client.path_segment(eval_id)}", text="Retrieved eval."
+    )
+
+
+async def list_monitors(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+) -> ToolResult:
+    """List an agent's alert monitors — rules that watch an eval metric on scored
+    production calls and notify when it crosses a threshold."""
+    return await call_list(
+        "GET",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/monitors",
+        text="Retrieved monitors.",
+    )
+
+
+async def create_monitor(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/agents/{agentId}/monitors. Required: name "
+                "(string); metric_ref (e.g. 'pass_rate' | 'latency.p95_ms' | 'verdict'); "
+                "aggregation ('single' = evaluate the latest scored call [recommended], "
+                "'rolling_window', or 'on_run_complete'); operator ('lt'|'lte'|'gt'|'gte'"
+                "|'eq'|'neq'); and a threshold — threshold_float (number) for numeric "
+                "metrics OR threshold_string for the 'verdict' metric. Optional: "
+                "description; window_size_runs (int); channels (object) selecting where "
+                "the alert lands — {slack: {channel: '#alerts' | webhookUrl: 'https://"
+                "hooks.slack.com/…'}, email: {recipients: 'a@b.com, c@d.com'}, webhook: "
+                "{url, secret}}. Empty channels just tracks breaches in the dashboard."
+            )
+        ),
+    ],
+) -> ToolResult:
+    """Create an alert monitor on an agent (fires when a metric crosses its threshold)."""
+    return await call(
+        "POST",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/monitors",
+        body=body,
+        text="Created monitor.",
+    )
+
+
+async def update_monitor(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+    monitor_id: Annotated[str, Field(description="Monitor id.")],
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for PATCH /v1/agents/{agentId}/monitors/{monitorId}. All "
+                "fields optional: name, description, metric_ref, aggregation, operator, "
+                "threshold_float, threshold_string, window_size_runs, channels, status "
+                "('active'|'deleted')."
+            )
+        ),
+    ],
+) -> ToolResult:
+    """Update an alert monitor (threshold, channels, status, etc.)."""
+    return await call(
+        "PATCH",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/monitors/{http_client.path_segment(monitor_id)}",
+        body=body,
+        text="Updated monitor.",
+    )
+
+
+async def delete_monitor(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+    monitor_id: Annotated[str, Field(description="Monitor id.")],
+) -> ToolResult:
+    """Delete an alert monitor."""
+    return await call(
+        "DELETE",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/monitors/{http_client.path_segment(monitor_id)}",
+        text="Deleted monitor.",
+    )
+
+
+async def list_monitor_events(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+    monitor_id: Annotated[str, Field(description="Monitor id.")],
+) -> ToolResult:
+    """List a monitor's firing history (breach events + observed values)."""
+    return await call_list(
+        "GET",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/monitors/{http_client.path_segment(monitor_id)}/events",
+        text="Retrieved monitor events.",
+    )
+
+
+async def list_online_eval_results(
+    agent_id: Annotated[str, Field(description="Agent id.")],
+) -> ToolResult:
+    """List production calls scored by online monitoring (verdict + scores per call)."""
+    return await call_list(
+        "GET",
+        f"/v1/agents/{http_client.path_segment(agent_id)}/online-eval-results",
+        text="Retrieved scored production calls.",
     )
 
 
