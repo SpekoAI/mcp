@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.14
+
+- Builder tool profile: ?profile=builder serves a 12-tool preset for AI app builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) incl. new voices.list, models.list, and code_snippets.get; default profile byte-identical
+
 ## Unreleased
 
 - Builder tool profile: `/mcp?profile=builder` serves a curated 12-tool
