@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.15
+
+- Bring back silent token refresh (SPE-142), opt-in by env so deploying the image without infra prep changes nothing. `SPEKOAI_OAUTH_JWT_SIGNING_KEY` gives the proxy a fixed signing key for its own JWTs; `SPEKOAI_OAUTH_REDIS_URL` moves ALL OAuth state (DCR clients, transactions, auth codes, JTI mappings, upstream tokens, refresh-token metadata) from the per-instance disk store to a shared, Fernet-encrypted, `spekoai-mcp-oauth`-prefixed Redis so it survives restarts and is shared across Cloud Run instances; `SPEKOAI_OAUTH_ADVERTISE_OFFLINE_ACCESS=true` re-applies the 0.1.9–0.1.11 scope work (advertised `offline_access` + `default_scopes` + scope-normalizing `get_client`, now also covering CIMD clients like current Claude Code) so clients receive refresh tokens. Advertising fails closed unless the signing key and Redis are configured — the 0.1.9 "Authorization session mismatch" config can't be redeployed by accident. All three unset → behavior identical to 0.1.12/0.1.13.
+
 ## 0.1.14
 
 - Builder tool profile: ?profile=builder serves a 12-tool preset for AI app builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) incl. new voices.list, models.list, and code_snippets.get; default profile byte-identical

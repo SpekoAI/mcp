@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "spekoai-mcp"
-version = "0.1.14"
+version = "0.1.15"
 description = "Model Context Protocol server for SpekoAI — voice-AI tools for Claude Code, OpenCode, Cursor, and other AI coding tools"
 readme = "README.md"
 license = { text = "MIT" }
@@ -26,6 +26,11 @@ classifiers = [
 dependencies = [
   "fastmcp>=3.0,<4",
   "httpx>=0.28,<1",
+  # `redis` extra: FastMCP's OAuthProxy `client_storage` can point at a shared
+  # Redis (SPEKOAI_OAUTH_REDIS_URL) so OAuth state survives across Cloud Run
+  # instances. FastMCP itself only pulls the filetree/keyring/memory extras;
+  # the RedisStore raises ImportError without this.
+  "py-key-value-aio[redis]>=0.4.4,<0.5",
   "pydantic>=2.0.0,<3",
 ]
 # Note: the SpekoAI Python SDK (`spekoai`) is intentionally NOT a
@@ -42,6 +47,7 @@ Issues = "https://github.com/SpekoAI/mcp/issues"
 
 [dependency-groups]
 dev = [
+  "fakeredis>=2.26",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "ruff>=0.8",
