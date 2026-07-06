@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Builder tool profile: `/mcp?profile=builder` serves a curated 12-tool
+  preset for app builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) —
+  reads `docs.search`, `voices.list`, `models.list`, `agents.list`,
+  `agents.get`, `agents.preview_stacks`, the `agents.test_call` review
+  path (`calls.get`, `sessions.transcript.get`, `calls.recording.get`),
+  the new `code_snippets.get` (ready-to-paste web-voice-call +
+  session-mint code for nextjs/react/node/python/curl), and writes
+  limited to `agents.create` + `agents.test_call`. The default `/mcp`
+  surface is unchanged; the three builder-only tools are hidden (and not
+  callable) without the query param.
+
 ## 0.1.13
 
 - Added new agents.test_call_agent tool

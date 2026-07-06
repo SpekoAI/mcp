@@ -50,6 +50,37 @@ prompts, components, and scaffolding tools are not advertised.
 
 Tool names use domain/action dot notation for client grouping.
 
+### Builder profile
+
+App builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) can add the
+server with a curated, right-sized preset instead of the full operational
+surface:
+
+```txt
+https://mcp.speko.ai/mcp?profile=builder
+```
+
+Auth is identical to `/mcp` (same OAuth flow, same API-key header). The
+builder profile advertises exactly these tools:
+
+- `docs.search` — bundled Speko docs search
+- `voices.list` — TTS voice + provider catalog
+- `models.list` — STT/LLM/TTS/S2S provider+model catalog (`allowedProviders` ids)
+- `agents.list` / `agents.get` — read agent configs
+- `agents.preview_stacks` — the stack preview `agents.create` requires first
+- `calls.get` / `sessions.transcript.get` / `calls.recording.get` — the
+  `agents.test_call` review path (poll the call, read transcript/recording)
+- `code_snippets.get` — ready-to-paste integration code (web voice call +
+  server-side session mint) for `nextjs`, `react`, `node`, `python`, or `curl`
+- `agents.create` / `agents.test_call` — the only writes
+
+`voices.list`, `models.list`, and `code_snippets.get` exist only in the
+builder profile. Any other `profile` value (or none) serves the default
+surface below, unchanged. Note that MCP tools only inform the builder's
+agent during code generation — the generated app cannot call MCP tools at
+runtime. Runtime integration is a `SPEKO_API_KEY` environment variable
+plus the SDKs, which is exactly what `code_snippets.get` returns.
+
 ### Account
 
 - `organization.get`

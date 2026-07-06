@@ -18,7 +18,9 @@ from starlette.routing import Mount, Route
 
 from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
+from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
+from spekoai_mcp.profiles import ToolProfileMiddleware
 from spekoai_mcp.resources import register_resources
 
 MCP_PATH = DEFAULT_MCP_PATH
@@ -64,7 +66,13 @@ def _glama_manifest() -> str:
 
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
-    docs self-serve surface (docs.search + spekoai://docs/* resources)."""
+    docs self-serve surface (docs.search + spekoai://docs/* resources).
+
+    One server serves two per-request tool profiles (see `profiles.py`):
+    the default full surface, and a curated builder preset selected with
+    `/mcp?profile=builder`. Builder-only tools are registered LAST so the
+    default profile's tool ordering stays byte-identical after the
+    middleware filters them out."""
     mcp: FastMCP = FastMCP(
         name="spekoai",
         instructions=INSTRUCTIONS,
@@ -73,6 +81,8 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_action_tools(mcp)
     register_docs_tools(mcp)
     register_resources(mcp)
+    register_builder_tools(mcp)
+    mcp.add_middleware(ToolProfileMiddleware())
     return mcp
 
 
