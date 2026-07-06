@@ -1,0 +1,465 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+from typing import Any
+
+import httpx
+import pytest
+from fastmcp.exceptions import ToolError
+
+import spekoai_mcp.http_client as http_client
+from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
+from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
+from spekoai_mcp.server import create_server
+
+
+@pytest.fixture
+def speko_api_mock(monkeypatch: pytest.MonkeyPatch):
+    calls: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8") or "{}")
+        calls.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "query": request.url.query.decode("utf-8"),
+                "auth": request.headers.get("authorization"),
+                "body": body,
+            }
+        )
+        path = request.url.path
+        method = request.method
+        if method == "GET" and path in LIST_PATHS:
+            return json_response([])
+        if path == "/v1/phone-numbers/available":
+            return json_response([])
+        if path == "/v1/credits/balance":
+            return json_response(
+                {"balanceUsd": 7, "currency": "USD", "updatedAt": "2026-05-15T00:00:00.000Z"}
+            )
+        if path == "/v1/credits/ledger":
+            return json_response({"entries": [], "nextCursor": None})
+        if path == "/v1/usage":
+            return json_response({"totalSessions": 0, "breakdown": []})
+        if path == "/v1/sessions":
+            if method == "GET":
+                return json_response({"entries": [], "nextCursor": None})
+            return json_response(
+                {
+                    "sessionId": "sess_1",
+                    "transportToken": "tok",
+                    "transportUrl": "wss://transport.example",
+                    "conversationToken": "tok",
+                    "livekitUrl": "wss://transport.example",
+                }
+            )
+        if path == "/v1/agents/agent_1/calls":
+            return json_response({"calls": [], "entries": []})
+        if path == "/v1/agents/agent_1/evals":
+            if method == "GET":
+                return json_response({"evals": [], "entries": []})
+            return json_response({"id": "eval_1", **body})
+        if path == "/v1/share/build/build_1/card.png":
+            return json_response({"png_url": "https://api.speko.dev/v1/share/build/token.png"})
+        return json_response(default_payload(path, method, body))
+
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="test-token")
+    )
+    http_client._TEST_TRANSPORT = httpx.MockTransport(handler)
+    try:
+        yield calls
+    finally:
+        http_client._TEST_TRANSPORT = None
+
+
+LIST_PATHS = {
+    "/v1/agents",
+    "/v1/agents/agent_1/tools",
+    "/v1/agents/agent_1/versions",
+    "/v1/phone-numbers",
+    "/v1/knowledge-bases",
+    "/v1/knowledge-bases/kb_1/documents",
+}
+
+
+async def test_action_tools_cover_expected_api_paths(
+    speko_api_mock: list[dict[str, object]],
+    tmp_path,
+) -> None:
+    mcp = create_server()
+    await mcp.call_tool("organization.get", {})
+    await mcp.call_tool("credits.balance.get", {})
+    await mcp.call_tool("credits.ledger.list", {"limit": 25, "kind": "grant,debit"})
+    await mcp.call_tool("usage.summary.get", {"from_": "2026-05-01T00:00:00.000Z"})
+    await mcp.call_tool("agents.list", {})
+    await mcp.call_tool("agents.create", {"body": agent_body()})
+    await mcp.call_tool("agents.get", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.update", {"agent_id": "agent_1", "body": {"name": "Demo v2"}})
+    await mcp.call_tool("agents.delete", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.tools.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.tools.create", {"agent_id": "agent_1", "body": tool_body()})
+    await mcp.call_tool("agents.tools.get", {"agent_id": "agent_1", "tool_id": "tool_1"})
+    await mcp.call_tool(
+        "agents.tools.update",
+        {"agent_id": "agent_1", "tool_id": "tool_1", "body": {"description": "Updated"}},
+    )
+    await mcp.call_tool("agents.tools.delete", {"agent_id": "agent_1", "tool_id": "tool_1"})
+    await mcp.call_tool(
+        "agents.deploy",
+        {"agent_id": "agent_1", "session_config": session_config(), "source": "test"},
+    )
+    await mcp.call_tool("agents.rollback", {"agent_id": "agent_1", "target_version_number": 1})
+    await mcp.call_tool("agents.versions.list", {"agent_id": "agent_1"})
+    await mcp.call_tool(
+        "agents.test_call",
+        {"agent_id": "agent_1", "objective": "Ask the hours and book a table for 2."},
+    )
+    await mcp.call_tool(
+        "sessions.create", {"body": {"mode": "cascade", "intent": {"language": "en"}}}
+    )
+    await mcp.call_tool(
+        "sessions.phone.create",
+        {"body": {"to": "+12015550123", "intent": {"language": "en"}}},
+    )
+    await mcp.call_tool("sessions.list", {"limit": 10, "agent": "agent_1"})
+    await mcp.call_tool("sessions.get", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.transcript.get", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.recording.get", {"session_id": "sess_1"})
+    await mcp.call_tool(
+        "agents.calls.list", {"agent_id": "agent_1", "since": "2026-05-01T00:00:00.000Z"}
+    )
+    await mcp.call_tool("calls.get", {"call_id": "call_1"})
+    await mcp.call_tool("calls.recording.get", {"call_id": "call_1"})
+    await mcp.call_tool("phone_numbers.list", {})
+    await mcp.call_tool("phone_numbers.available.search", {"area_code": "415", "limit": 2})
+    await mcp.call_tool("phone_numbers.create", {"body": {"e164": "+12015550123"}})
+    await mcp.call_tool("phone_numbers.get", {"phone_number_id": "pn_1"})
+    await mcp.call_tool(
+        "phone_numbers.update", {"phone_number_id": "pn_1", "body": {"label": "Main"}}
+    )
+    await mcp.call_tool("phone_numbers.delete", {"phone_number_id": "pn_1"})
+    await mcp.call_tool(
+        "knowledge_bases.create", {"body": {"agentId": "agent_1", "name": "Default"}}
+    )
+    await mcp.call_tool("knowledge_bases.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("knowledge_bases.get", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool("knowledge_bases.delete", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool("knowledge_bases.documents.list", {"knowledge_base_id": "kb_1"})
+    await mcp.call_tool(
+        "knowledge_bases.documents.create",
+        {
+            "knowledge_base_id": "kb_1",
+            "body": {"filename": "faq.md", "contentType": "text/markdown", "sizeBytes": 12},
+        },
+    )
+    await mcp.call_tool(
+        "knowledge_bases.documents.get",
+        {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
+    )
+    await mcp.call_tool(
+        "knowledge_bases.documents.delete",
+        {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
+    )
+    await mcp.call_tool(
+        "knowledge_bases.documents.finalize",
+        {"knowledge_base_id": "kb_1", "document_id": "doc_1"},
+    )
+    await mcp.call_tool("agents.evals.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("agents.evals.create", {"agent_id": "agent_1", "body": eval_body()})
+    await mcp.call_tool("agents.evals.run", {"agent_id": "agent_1", "eval_id": "eval_1"})
+    await mcp.call_tool("evals.get", {"eval_id": "eval_1"})
+    await mcp.call_tool(
+        "migration.workspace.inspect", {"workspace_root": str(tmp_path), "deep": False}
+    )
+    await mcp.call_tool("migration.session_config.build", {"body": {"prose": "A support agent"}})
+    await mcp.call_tool(
+        "migration.external_config.parse", {"format": "vapi", "raw": '{"name":"Demo"}'}
+    )
+    await mcp.call_tool("migration.briefing.render", {"agent_id": "agent_1"})
+    share_result = await mcp.call_tool("share_cards.create", {"build_id": "build_1"})
+
+    paths = {(call["method"], call["path"]) for call in speko_api_mock}
+    assert paths == EXPECTED_METHOD_PATHS
+    assert {call["auth"] for call in speko_api_mock} == {"Bearer test-token"}
+    assert share_result.structured_content["png_url"].endswith(".png")
+    ledger = next(call for call in speko_api_mock if call["path"] == "/v1/credits/ledger")
+    assert ledger["query"] == "limit=25&kind=grant%2Cdebit"
+    available = next(
+        call for call in speko_api_mock if call["path"] == "/v1/phone-numbers/available"
+    )
+    assert available["query"] == "areaCode=415&limit=2"
+
+
+async def test_server_lists_exact_action_tools() -> None:
+    names = [tool.name for tool in await create_server().list_tools()]
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+
+
+async def test_create_agent_rejects_string_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool(
+            "agents.create",
+            {
+                "body": {
+                    "name": "Temp Migration Probe",
+                    "systemPrompt": "You are a test agent.",
+                    "intent": "customer_support",
+                }
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_requires_agent_or_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="either agentId or intent is required"):
+        await create_server().call_tool("sessions.create", {"body": {"mode": "cascade"}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_rejects_string_intent_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool("sessions.create", {"body": {"intent": "customer_support"}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_pinned_provider_model_needs_no_agent_or_intent(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    # Mirrors createS2sSession in apps/server/src/routes/sessions.ts: an
+    # explicit provider+model pin requires neither agentId nor intent.
+    await create_server().call_tool(
+        "sessions.create",
+        {"body": {"mode": "s2s", "s2s": {"provider": "openai", "model": "gpt-realtime"}}},
+    )
+
+    assert [(call["method"], call["path"]) for call in speko_api_mock] == [("POST", "/v1/sessions")]
+
+
+async def test_create_session_s2s_without_pin_requires_agent_or_intent(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="either agentId or intent is required"):
+        await create_server().call_tool("sessions.create", {"body": {"mode": "s2s"}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_rejects_provider_without_model_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="must be supplied together"):
+        await create_server().call_tool(
+            "sessions.create",
+            {"body": {"mode": "s2s", "s2s": {"provider": "openai"}}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_session_s2s_pinned_still_validates_intent_shape(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="body.intent must be an object"):
+        await create_server().call_tool(
+            "sessions.create",
+            {
+                "body": {
+                    "mode": "s2s",
+                    "s2s": {"provider": "openai", "model": "gpt-realtime"},
+                    "intent": "customer_support",
+                }
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_phone_session_rejects_non_e164_to_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="E.164"):
+        await create_server().call_tool(
+            "sessions.phone.create",
+            {"body": {"to": "(201) 555-0123", "agentId": "agent_1"}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_update_agent_rejects_empty_body_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="at least one field"):
+        await create_server().call_tool("agents.update", {"agent_id": "agent_1", "body": {}})
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_rejects_missing_fields_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="missing required field"):
+        await create_server().call_tool(
+            "agents.tools.create",
+            {"agent_id": "agent_1", "body": {"name": "lookup"}},
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_rejects_unknown_source_kind_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="source.kind must be one of"):
+        await create_server().call_tool(
+            "agents.tools.create",
+            {
+                "agent_id": "agent_1",
+                "body": {
+                    "name": "lookup",
+                    "description": "Look up data.",
+                    "parameters": {"type": "object"},
+                    "source": {"kind": "lambda"},
+                },
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+async def test_create_agent_tool_webhook_requires_url_and_secret_before_api(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="webhook source requires url and"):
+        await create_server().call_tool(
+            "agents.tools.create",
+            {
+                "agent_id": "agent_1",
+                "body": {
+                    "name": "lookup",
+                    "description": "Look up data.",
+                    "parameters": {"type": "object"},
+                    "source": {"kind": "webhook", "url": "https://example.com/hook"},
+                },
+            },
+        )
+
+    assert speko_api_mock == []
+
+
+def test_error_details_include_validation_issues() -> None:
+    response = httpx.Response(
+        400,
+        json={
+            "error": "Invalid request",
+            "code": "VALIDATION_ERROR",
+            "issues": [
+                {"path": "intent", "message": "Expected object, received string"},
+                {"path": "systemPrompt", "message": "Required"},
+            ],
+        },
+        headers={"x-request-id": "req_123"},
+    )
+
+    message, trace_id = http_client._error_details(response)
+
+    assert trace_id == "req_123"
+    assert message == (
+        "Invalid request: intent: Expected object, received string; systemPrompt: Required"
+    )
+
+
+EXPECTED_METHOD_PATHS = {
+    ("GET", "/v1/organization"),
+    ("GET", "/v1/credits/balance"),
+    ("GET", "/v1/credits/ledger"),
+    ("GET", "/v1/usage"),
+    ("GET", "/v1/agents"),
+    ("POST", "/v1/agents"),
+    ("GET", "/v1/agents/agent_1"),
+    ("PATCH", "/v1/agents/agent_1"),
+    ("DELETE", "/v1/agents/agent_1"),
+    ("GET", "/v1/agents/agent_1/tools"),
+    ("POST", "/v1/agents/agent_1/tools"),
+    ("GET", "/v1/agents/agent_1/tools/tool_1"),
+    ("PATCH", "/v1/agents/agent_1/tools/tool_1"),
+    ("DELETE", "/v1/agents/agent_1/tools/tool_1"),
+    ("POST", "/v1/agents/agent_1/deploy"),
+    ("POST", "/v1/agents/agent_1/rollback"),
+    ("GET", "/v1/agents/agent_1/versions"),
+    ("POST", "/v1/agents/agent_1/test-call"),
+    ("POST", "/v1/sessions"),
+    ("POST", "/v1/sessions/phone"),
+    ("GET", "/v1/sessions"),
+    ("GET", "/v1/sessions/sess_1"),
+    ("GET", "/v1/sessions/sess_1/transcript"),
+    ("GET", "/v1/sessions/sess_1/recording"),
+    ("GET", "/v1/agents/agent_1/calls"),
+    ("GET", "/v1/calls/call_1"),
+    ("GET", "/v1/calls/call_1/recording"),
+    ("GET", "/v1/phone-numbers"),
+    ("GET", "/v1/phone-numbers/available"),
+    ("POST", "/v1/phone-numbers"),
+    ("GET", "/v1/phone-numbers/pn_1"),
+    ("PATCH", "/v1/phone-numbers/pn_1"),
+    ("DELETE", "/v1/phone-numbers/pn_1"),
+    ("POST", "/v1/knowledge-bases"),
+    ("GET", "/v1/knowledge-bases"),
+    ("GET", "/v1/knowledge-bases/kb_1"),
+    ("DELETE", "/v1/knowledge-bases/kb_1"),
+    ("GET", "/v1/knowledge-bases/kb_1/documents"),
+    ("POST", "/v1/knowledge-bases/kb_1/documents"),
+    ("GET", "/v1/knowledge-bases/kb_1/documents/doc_1"),
+    ("DELETE", "/v1/knowledge-bases/kb_1/documents/doc_1"),
+    ("POST", "/v1/knowledge-bases/kb_1/documents/doc_1/finalize"),
+    ("GET", "/v1/agents/agent_1/evals"),
+    ("POST", "/v1/agents/agent_1/evals"),
+    ("POST", "/v1/agents/agent_1/evals/eval_1/run"),
+    ("GET", "/v1/evals/eval_1"),
+    ("POST", "/v1/inference/inspect"),
+    ("POST", "/v1/inference/sessionconfig"),
+    ("POST", "/v1/inference/parse-config"),
+    ("POST", "/v1/inference/briefing"),
+    ("POST", "/v1/share/build/build_1/card.png"),
+}
+
+
+def json_response(payload: Any, status_code: int = 200) -> httpx.Response:
+    return httpx.Response(status_code, json=payload)
+
+
+def default_payload(path: str, method: str, body: dict[str, Any]) -> dict[str, Any]:
+    return {"ok": True, "path": path, "method": method, "body": body}
+
+
+def agent_body() -> dict[str, object]:
+    return {"name": "Demo", "systemPrompt": "Be helpful.", "intent": {"language": "en"}}
+
+
+def tool_body() -> dict[str, object]:
+    return {
+        "name": "lookup",
+        "description": "Look up data.",
+        "parameters": {"type": "object"},
+        "source": {"kind": "builtin", "name": "noop"},
+    }
+
+
+def session_config() -> dict[str, object]:
+    return {"name": "Demo", "systemPrompt": "Be helpful.", "intent": {"language": "en"}}
+
+
+def eval_body() -> dict[str, object]:
+    return {"name": "Regression", "expected_behavior": "Say hello."}
