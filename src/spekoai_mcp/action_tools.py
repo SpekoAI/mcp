@@ -659,8 +659,8 @@ async def update_agent(
                 "volume?: 0-1}}|null), speechNormalization "
                 "({pronunciationDictionary?: {term: spoken}, "
                 "textReplacements?: {from: to}}|null), webhooks "
-                "({preCall?|postCall?|status?: {url: string, headers?: "
-                "object, timeoutMs?: 100-8000}|null}|null)."
+                "({preCall?|postCall?|status?|analysis?|recording?: {url: "
+                "string, headers?: object, timeoutMs?: 100-8000}|null}|null)."
             )
         ),
     ],
