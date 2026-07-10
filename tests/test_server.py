@@ -53,13 +53,12 @@ async def test_tools_expose_quality_metadata() -> None:
     assert by_name["docs.search"].output_schema["properties"]["result"]["type"] == "array"
 
 
-async def test_docs_resources_advertised_but_prompts_stay_disabled() -> None:
+async def test_docs_resources_are_advertised() -> None:
     mcp = create_server()
     resources = await mcp.list_resources()
     assert any(str(r.uri) == "spekoai://docs/index" for r in resources)
     templates = await mcp.list_resource_templates()
     assert any(t.uri_template == "spekoai://docs/{slug}" for t in templates)
-    assert await mcp.list_prompts() == []
 
 
 async def test_get_credit_balance_forwards_auth_and_payload(

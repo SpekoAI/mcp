@@ -1494,7 +1494,11 @@ async def parse_external_config(
     format: Annotated[ExternalPlatform, Field(description="External config format.")],
     raw: Annotated[str, Field(description="Raw external configuration text or JSON.")],
 ) -> ToolResult:
-    """Parse an external voice-agent config into a Speko SessionConfig draft."""
+    """Parse an external voice-agent config into a Speko SessionConfig draft.
+
+    Output is a scaffold: verify it against the raw config and check `warnings`
+    and `unmappable_tools` before creating anything.
+    """
     return await call(
         "POST",
         "/v1/inference/parse-config",

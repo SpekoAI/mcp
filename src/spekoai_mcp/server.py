@@ -13,7 +13,7 @@ from fastmcp.server.http import RequestContextMiddleware
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 
 from spekoai_mcp.action_tools import register_action_tools
@@ -21,6 +21,7 @@ from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.profiles import ToolProfileMiddleware
+from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 
 MCP_PATH = DEFAULT_MCP_PATH
@@ -81,13 +82,14 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_action_tools(mcp)
     register_docs_tools(mcp)
     register_resources(mcp)
+    register_prompts(mcp)
     register_builder_tools(mcp)
     mcp.add_middleware(ToolProfileMiddleware())
     return mcp
 
 
 def create_app(auth: AuthProvider | None = None) -> Starlette:
-    """Create the hosted ASGI app with `/health` and protected `/mcp`."""
+    """Create the hosted ASGI app with public routes and protected `/mcp`."""
     if auth is None:
         auth = build_auth(mcp_path=MCP_PATH)
     mcp = create_server(auth=auth)
@@ -95,6 +97,9 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
 
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
+
+    async def docs_redirect(_: Request) -> RedirectResponse:
+        return RedirectResponse("https://docs.speko.dev/quickstart/mcp", status_code=307)
 
     async def glama_manifest(_: Request) -> Response:
         return Response(_glama_manifest(), media_type="application/json")
@@ -107,6 +112,7 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
 
     app = Starlette(
         routes=[
+            Route("/", endpoint=docs_redirect, methods=["GET"]),
             Route("/health", endpoint=health_check, methods=["GET"]),
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
             Mount("/", app=mcp_app),

@@ -13,8 +13,8 @@ Use this guide when converting a Retell voice agent to Speko.
 1. Inspect Retell agent JSON, prompt, voice, LLM, webhook, function, and call settings.
 2. Inspect local docs or package READMEs in the repository; the hosted MCP does not expose docs resources.
 3. If the Retell MCP is connected, call its agent/LLM listing tools and use the JSON payload as migration input.
-4. For each prompt-based Retell agent selected for migration, call `parse_external_config(format="retell", raw=<Retell JSON>)`.
-5. For a local Retell config file, read it and call `parse_external_config(format="retell", raw=<file contents>)`.
+4. For each prompt-based Retell agent selected for migration, call `migration.external_config.parse(format="retell", raw=<Retell JSON>)`.
+5. For a local Retell config file, read it and call `migration.external_config.parse(format="retell", raw=<file contents>)`.
 6. Map every Retell function/tool explicitly to Speko webhook tools, builtins, or SDK-side handlers.
 7. Replace Retell API calls with Speko SDK/platform session, deploy, call, log, and eval APIs.
 8. Call `create_session`, then inspect calls with `list_agent_calls` and `get_call`.

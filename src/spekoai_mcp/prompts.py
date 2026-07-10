@@ -520,14 +520,14 @@ def register_prompts(mcp: FastMCP) -> None:
     ) -> list[Message]:
         guide_uri = f"spekoai://docs/migration-{from_platform}"
         config_step = (
-            f'Read `{config_path}`, call `parse_external_config(format="{from_platform}", '
-            "raw=<file contents>)`, and inspect "
+            f"Read `{config_path}`, call `migration.external_config.parse("
+            f'format="{from_platform}", raw=<file contents>)`, and inspect '
             "`unmappable_tools`."
             if config_path
             else (
                 "No config_path was provided. First inspect the codebase and "
                 "ask the user for the source config path if one exists; do "
-                "not call `parse_external_config` with a guessed path."
+                "not call `migration.external_config.parse` with a guessed path."
             )
         )
         adapter_warning = ""
@@ -551,9 +551,10 @@ def register_prompts(mcp: FastMCP) -> None:
                 f"Workspace root: `{workspace_root}`\n"
                 f"Runtime target: `{runtime}`\n"
                 f"Migration guide: `{guide_uri}`\n\n"
-                "Before editing code, read the local guide/source docs if "
-                "they are present in the repository. Hosted MCP docs "
-                "resources are disabled in this pass."
+                f"Before editing code, read the bundled guide via the "
+                f"`{guide_uri}` resource or "
+                f'`docs.search("{from_platform} migration")`. Read local '
+                "guide/source docs too if they are present in the repository."
                 f"{adapter_warning}"
             ),
             Message(
@@ -563,7 +564,7 @@ def register_prompts(mcp: FastMCP) -> None:
                 "session creation, transport, tool/function callbacks, and "
                 "deployment path.\n"
                 "2. If authenticated Speko MCP tools are available, call "
-                f'`inspect_workspace(workspace_root="{workspace_root}", '
+                f'`migration.workspace.inspect(workspace_root="{workspace_root}", '
                 "deep=false)` to get platform-side recommendations.\n"
                 f"3. Read `{guide_uri}` again before deciding code changes."
             ),

@@ -40,7 +40,7 @@ def test_migration_guides_are_bundled() -> None:
         assert slug in slugs
         body = read_doc(slug)
         assert platform in body.lower()
-        assert "parse_external_config" in body
+        assert "migration.external_config.parse" in body
 
 
 def test_llms_resources_are_bundled() -> None:

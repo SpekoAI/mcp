@@ -13,7 +13,7 @@ Use this guide when converting a LiveKit Agents worker to Speko.
 
 1. Inspect the codebase for `@livekit/agents`, room connection code, VAD setup, STT/LLM/TTS plugins, and tool definitions.
 2. Inspect local docs or package READMEs in the repository; the hosted MCP does not expose docs resources.
-3. If a config file exists, read it and call `parse_external_config(format="livekit", raw=<file contents>)`.
+3. If a config file exists, read it and call `migration.external_config.parse(format="livekit", raw=<file contents>)`.
 4. Map every unmappable tool to one of:
    - a Speko webhook tool,
    - a Speko builtin tool,
