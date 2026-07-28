@@ -146,6 +146,23 @@ plus the SDKs, which is exactly what `code_snippets.get` returns.
 - `migration.briefing.render`
 - `share_cards.create`
 
+### Router keys
+
+Keys for the OpenAI-compatible router at `https://api.speko.ai/v1`. A router
+key carries its own routing policy — language, use case, objective, max
+price, and an ordered chain per stage whose element 0 is the pin and whose
+remaining elements are the failover order — so a caller who configured it
+sends no routing headers.
+
+- `router.keys.list`
+- `router.keys.create`
+- `router.keys.update`
+- `router.keys.revoke`
+
+These four require OAuth. A Speko API key is refused, and is never sent to
+the control plane: a machine credential must not be able to mint further
+credentials.
+
 ### Docs
 
 - `docs.search` - full-text search over the bundled Speko docs (SDK/adapter
@@ -162,3 +179,8 @@ minted by the platform or a Speko API key supplied by the MCP client as
 If OAuth env vars are configured, `/mcp` accepts OAuth or Speko API keys. If
 OAuth env vars are absent, `/mcp` still requires a valid Speko API key. Partial
 OAuth configuration fails closed at startup.
+
+The one exception is `router.keys.*`, which requires OAuth. Router key tools
+talk to the router control plane (`SPEKOAI_ROUTER_CONTROL_URL`, default
+`https://control.speko.ai`) rather than the Speko API, and that plane
+authenticates a signed-in user, never a machine principal.

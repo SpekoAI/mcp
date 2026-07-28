@@ -11,6 +11,7 @@ from fastmcp.exceptions import ToolError
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
+from spekoai_mcp.router_tools import ROUTER_TOOL_NAMES
 from spekoai_mcp.server import create_server
 
 
@@ -195,7 +196,7 @@ async def test_action_tools_cover_expected_api_paths(
 
 async def test_server_lists_exact_action_tools() -> None:
     names = [tool.name for tool in await create_server().list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + ROUTER_TOOL_NAMES
 
 
 async def test_create_agent_rejects_string_intent_before_api(

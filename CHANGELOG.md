@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Router key provisioning over MCP: `router.keys.list` / `create` / `update` /
+  `revoke` relay to the router control plane (`SPEKOAI_ROUTER_CONTROL_URL`,
+  default `https://control.speko.ai`), so an agent can create a key with its
+  full routing policy — language, use case, objective, max price, and the
+  ordered per-stage chain — instead of the console being the only way in.
+  Two rules the tools enforce before the wire: a Speko API key is refused
+  (only a signed-in OAuth user may mint keys, mirroring `requireUserPrincipal`
+  on the Agents side), and a PARTIAL policy is filled to the full seven-field
+  shape the control plane's `parseKeyPolicy` demands. Same hosted endpoint,
+  same OAuth audience, no new server.
+
 ## 0.1.15
 
 - Bring back silent token refresh (SPE-142), opt-in by env so deploying the image without infra prep changes nothing. `SPEKOAI_OAUTH_JWT_SIGNING_KEY` gives the proxy a fixed signing key for its own JWTs; `SPEKOAI_OAUTH_REDIS_URL` moves ALL OAuth state (DCR clients, transactions, auth codes, JTI mappings, upstream tokens, refresh-token metadata) from the per-instance disk store to a shared, Fernet-encrypted, `spekoai-mcp-oauth`-prefixed Redis so it survives restarts and is shared across Cloud Run instances; `SPEKOAI_OAUTH_ADVERTISE_OFFLINE_ACCESS=true` re-applies the 0.1.9–0.1.11 scope work (advertised `offline_access` + `default_scopes` + scope-normalizing `get_client`, now also covering CIMD clients like current Claude Code) so clients receive refresh tokens. Advertising fails closed unless the signing key and Redis are configured — the 0.1.9 "Authorization session mismatch" config can't be redeployed by accident. All three unset → behavior identical to 0.1.12/0.1.13.

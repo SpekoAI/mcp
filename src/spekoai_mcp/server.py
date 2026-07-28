@@ -23,6 +23,7 @@ from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.profiles import ToolProfileMiddleware
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
+from spekoai_mcp.router_tools import register_router_tools
 
 MCP_PATH = DEFAULT_MCP_PATH
 
@@ -51,6 +52,14 @@ INSTRUCTIONS = "\n\n".join(
         API key supplied as Authorization: Bearer sk_*. Tool names use
         domain.action dot notation, for example agents.list, sessions.create,
         docs.search, and knowledge_bases.documents.create.
+        """,
+        """
+        One exception: router.keys.list / create / update / revoke provision
+        keys for the OpenAI-compatible router at api.speko.ai, and require
+        OAuth. A Speko API key cannot mint router keys. A router key carries
+        its routing policy (language, use case, objective, max price, and an
+        ordered chain per stage whose element 0 is the pin), so a caller who
+        configured it sends no routing headers.
         """,
     ]
 )
@@ -83,6 +92,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_docs_tools(mcp)
     register_resources(mcp)
     register_prompts(mcp)
+    register_router_tools(mcp)
     register_builder_tools(mcp)
     mcp.add_middleware(ToolProfileMiddleware())
     return mcp

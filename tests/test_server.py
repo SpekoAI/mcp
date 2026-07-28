@@ -12,6 +12,7 @@ import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.auth import build_auth
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
+from spekoai_mcp.router_tools import ROUTER_TOOL_NAMES
 from spekoai_mcp.server import MCP_PATH, create_app, create_server
 
 
@@ -25,7 +26,7 @@ def _set_valid_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_server_lists_operational_and_docs_tools() -> None:
     mcp = create_server()
     names = [tool.name for tool in await mcp.list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + ROUTER_TOOL_NAMES
     assert all(not name.startswith("speko_") for name in names)
     assert "docs.search" in names
     assert "search_docs" not in names
