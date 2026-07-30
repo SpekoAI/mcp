@@ -29,7 +29,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 Status = Literal["stable", "alpha", "scaffold", "internal", "platform"]
 Kind = Literal["readme", "llms", "roadmap", "platform", "quickstart", "guide"]
@@ -251,7 +251,15 @@ def _read_source(root: Path, doc: SourceDoc) -> tuple[str, str]:
     """
     if _is_remote_source(doc.source):
         try:
-            with urlopen(doc.source, timeout=15, context=_ssl_context()) as response:
+            # An explicit User-Agent is load-bearing: docs.speko.dev sits behind
+            # bot protection that 403s urllib's default `Python-urllib/3.x` while
+            # serving 200 to curl and to browsers. Without this the fetch fails,
+            # sync_docs raises, and the pre-push hook blocks EVERY push in the
+            # repo — not just changes to this package. Verified 2026-07-30:
+            #   curl -H 'User-Agent: Python-urllib/3.13' -> 403
+            #   curl -H 'User-Agent: curl/8.7.1'         -> 200
+            request = Request(doc.source, headers={"User-Agent": "spekoai-sync-docs/1.0"})
+            with urlopen(request, timeout=15, context=_ssl_context()) as response:
                 content_type = response.headers.get("content-type", "")
                 if "text/" not in content_type and "markdown" not in content_type:
                     raise RuntimeError(
