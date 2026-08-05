@@ -37,7 +37,7 @@ The parser output is never authoritative. Verify every mapped value and omission
 | `variableValues` | Session variables; `{{var}}` syntax is unchanged. |
 | `startSpeakingPlan`, `stopSpeakingPlan` | `turnHandling` endpointing and interruption settings |
 | `analysisPlan` | `webhooks.postCall.extractionFields` |
-| `backgroundSound` | `backgroundAudio.ambient`; only three built-in clips are available. |
+| `backgroundSound` | `backgroundAudio.ambient`; only the six built-in clips are available. `volume` is a linear gain where 1 is the clip's own level — `office-ambience` needs roughly 5-10 to be audible under speech. |
 
 ## No Speko Equivalent
 
