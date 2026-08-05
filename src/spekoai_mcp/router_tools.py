@@ -139,7 +139,7 @@ def next_step_for_router_error(exc: Exception) -> str:
     code = exc.message.strip()
     if code == "key_limit":
         return (
-            "Ten active router keys is the per-user limit. Call router.keys.revoke "
+            "Ten active router keys is the limit. Call router.keys.revoke "
             "on a key you no longer need, then retry."
         )
     if code == "unroutable_model":
