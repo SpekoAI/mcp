@@ -271,6 +271,16 @@ def _batch_transcribe_messages(language: Language, runtime: Runtime) -> list[Mes
                 "to stay under your rate limit. `SpekoRateLimitError.retry_after` "
                 "tells you seconds to sleep."
             ),
+            Message(
+                "For formatted transcripts, set workload='transcription' in "
+                "the `X-Speko-Stt-Options` header on `POST /v1/transcribe` - "
+                "it applies each provider's declared transcription defaults. "
+                "`diarization: true` and "
+                "per-provider `providerOptions` ride the same header. The "
+                "typed SDK options do not expose these fields yet, so use a "
+                "raw HTTP call when you need them; details via "
+                "`docs.search('provider params')`."
+            ),
         ]
     install = _install_cmd(runtime, ["@spekoai/sdk"])
     return [
@@ -302,6 +312,16 @@ def _batch_transcribe_messages(language: Language, runtime: Runtime) -> list[Mes
             "For large jobs, parallelise with `Promise.all` bounded by a "
             "small concurrency limit, and pass an `AbortSignal` to "
             "`transcribe()` if you need to cancel a batch mid-run."
+        ),
+        Message(
+            "For formatted transcripts, set workload='transcription' in "
+            "the `X-Speko-Stt-Options` header on `POST /v1/transcribe` - "
+            "it applies each provider's declared transcription defaults. "
+            "`diarization: true` and "
+            "per-provider `providerOptions` ride the same header. The "
+            "typed SDK options do not expose these fields yet, so use a "
+            "raw HTTP call when you need them; details via "
+            "`docs.search('provider params')`."
         ),
     ]
 

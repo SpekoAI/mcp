@@ -8,7 +8,12 @@ fallback, and the supported-flag mapping to the runtime SUPPORTED set.
 
 from __future__ import annotations
 
-from spekoai_mcp.selector import SUPPORTED, select_ranked
+import json
+from importlib.resources import files
+
+import pytest
+
+from spekoai_mcp.selector import SUPPORTED, OptimizeFor, select_ranked
 
 
 def test_select_latency_returns_top_3_stt() -> None:
@@ -23,6 +28,44 @@ def test_select_latency_returns_top_3_stt() -> None:
         )
 
 
+@pytest.mark.parametrize("optimize_for", ["latency", "accuracy", "cost"])
+def test_elevenlabs_mode_specific_scores_are_recommended(
+    optimize_for: OptimizeFor,
+) -> None:
+    batch = select_ranked(language="en", region="global", optimize_for=optimize_for, limit=20)
+    batch_ids = {candidate.provider_id for candidate in batch.stt}
+    assert "elevenlabs-scribe-v2" not in batch_ids
+    assert "elevenlabs-scribe-v1" in batch_ids
+
+    streaming = select_ranked(language="en", region="us-east4", optimize_for=optimize_for, limit=20)
+    streaming_ids = {candidate.provider_id for candidate in streaming.stt}
+    assert "elevenlabs-scribe-v2" in streaming_ids
+    assert "elevenlabs-scribe-v1" not in streaming_ids
+
+
+def test_elevenlabs_fixture_keeps_realtime_and_batch_evidence_separate() -> None:
+    raw = (files("spekoai_mcp._data") / "stt-routing-v0.json").read_text(encoding="utf-8")
+    fixture = json.loads(raw)
+    providers = {provider["id"]: provider for provider in fixture["providers"]}
+
+    realtime = providers["elevenlabs-scribe-v2"]
+    assert realtime["modes_supported"] == ["streaming"]
+    assert "batch" not in realtime["protocols"]
+    assert "batch" not in realtime["endpoints"]
+    assert "batch_latency_p50_ms" not in realtime["english"]
+    assert "batch" not in realtime["scores"]
+
+    batch_v1 = providers["elevenlabs-scribe-v1"]
+    assert batch_v1["english"]["wer_pct"] == 5.4
+    assert batch_v1["english"]["batch_latency_p50_ms"] == 1019
+    assert batch_v1["noise_robustness_avg_delta_pp"] == 1.5
+    assert batch_v1["scores"]["batch"]["passed_filter"] is True
+
+    ranked_ids = {row["id"] for row in fixture["rankings"]["batch"]["ranked"]}
+    assert "elevenlabs-scribe-v2" not in ranked_ids
+    assert "elevenlabs-scribe-v1" in ranked_ids
+
+
 def test_warned_providers_excluded() -> None:
     sel = select_ranked(language="en", region="us-east4", optimize_for="latency", limit=10)
     for picks in (sel.stt, sel.tts, sel.s2s, sel.llm):
@@ -33,12 +76,8 @@ def test_warned_providers_excluded() -> None:
 
 
 def test_optimize_for_latency_reranks_vs_accuracy() -> None:
-    accuracy = select_ranked(
-        language="en", region="us-east4", optimize_for="accuracy", limit=5
-    )
-    latency = select_ranked(
-        language="en", region="us-east4", optimize_for="latency", limit=5
-    )
+    accuracy = select_ranked(language="en", region="us-east4", optimize_for="accuracy", limit=5)
+    latency = select_ranked(language="en", region="us-east4", optimize_for="latency", limit=5)
     assert accuracy.stt and latency.stt
     acc_top = accuracy.stt[0]
     lat_top = latency.stt[0]
@@ -111,9 +150,7 @@ def test_llm_picks_present_for_english() -> None:
 
 
 def test_cost_optimize_prefers_cheaper_llm() -> None:
-    cost_sel = select_ranked(
-        language="en", region="us-east4", optimize_for="cost", limit=3
-    )
+    cost_sel = select_ranked(language="en", region="us-east4", optimize_for="cost", limit=3)
     assert cost_sel.llm
     # The cost preset weights price-per-minute at 0.7. The top pick
     # should be at the cheap end of the curated LLM set. We don't

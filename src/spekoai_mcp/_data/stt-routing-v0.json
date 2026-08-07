@@ -76,7 +76,7 @@
         "streaming.us-east4":      { "composite": 0.256, "wer_norm": 0.083, "ttfp_norm": 0.713, "cost_norm": 0.000, "passed_filter": true },
         "streaming.europe-west3":  { "composite": 0.242, "wer_norm": 0.083, "ttfp_norm": 0.666, "cost_norm": 0.000, "passed_filter": true },
         "streaming.asia-southeast1": { "composite": 0.283, "wer_norm": 0.083, "ttfp_norm": 0.804, "cost_norm": 0.000, "passed_filter": true },
-        "batch": { "composite": 0.611, "wer_norm": 0.290, "latency_norm": 1.000, "cost_norm": 0.828, "passed_filter": true }
+        "batch": { "composite": 0.613, "wer_norm": 0.295, "latency_norm": 1.000, "cost_norm": 0.828, "passed_filter": true }
       }
     },
     {
@@ -84,14 +84,12 @@
       "name": "ElevenLabs",
       "model": "Scribe v2 Realtime",
       "status": "production",
-      "modes_supported": ["batch", "streaming"],
+      "modes_supported": ["streaming"],
       "protocols": {
-        "streaming": "websocket-json-base64",
-        "batch": "https"
+        "streaming": "websocket-json-base64"
       },
       "endpoints": {
-        "streaming": "wss://api.elevenlabs.io/v1/speech-to-text/realtime",
-        "batch": "https://api.elevenlabs.io/v1/speech-to-text"
+        "streaming": "wss://api.elevenlabs.io/v1/speech-to-text/realtime"
       },
       "languages_count": 99,
       "billing_model": "per-second",
@@ -100,12 +98,11 @@
         "tier10k": 0.0065,
         "tier100k": null,
         "mode_priced": "streaming",
-        "note": "Realtime endpoint priced at Business tier ($0.39/hr). Batch Scribe v1 is $0.0037/min."
+        "note": "Realtime endpoint priced at Business tier ($0.39/hr)."
       },
       "english": {
         "wer_pct": 3.4,
         "wer_dataset": "FLEURS-calibrated long-form clean",
-        "batch_latency_p50_ms": 1071,
         "streaming_ttfp_p50_ms_short": {
           "us-east4": 2048,
           "europe-west3": 2119,
@@ -122,8 +119,7 @@
       "scores": {
         "streaming.us-east4":      { "composite": 0.554, "wer_norm": 1.000, "ttfp_norm": 0.074, "cost_norm": 0.160, "passed_filter": true },
         "streaming.europe-west3":  { "composite": 0.532, "wer_norm": 1.000, "ttfp_norm": 0.000, "cost_norm": 0.160, "passed_filter": true },
-        "streaming.asia-southeast1": { "composite": 0.551, "wer_norm": 1.000, "ttfp_norm": 0.000, "cost_norm": 0.255, "passed_filter": true },
-        "batch": { "composite": 0.894, "wer_norm": 1.000, "latency_norm": 0.830, "cost_norm": 0.727, "passed_filter": true }
+        "streaming.asia-southeast1": { "composite": 0.551, "wer_norm": 1.000, "ttfp_norm": 0.000, "cost_norm": 0.255, "passed_filter": true }
       }
     },
     {
@@ -155,7 +151,7 @@
       "noise_robustness_avg_delta_pp": 1.5,
       "warning": null,
       "scores": {
-        "batch": { "composite": 0.763, "wer_norm": 0.677, "latency_norm": 0.843, "cost_norm": 0.853, "passed_filter": true }
+        "batch": { "composite": 0.768, "wer_norm": 0.689, "latency_norm": 0.843, "cost_norm": 0.853, "passed_filter": true }
       }
     },
     {
@@ -202,7 +198,7 @@
         "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6535 exceeds 3000ms streaming cutoff" },
         "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6567 exceeds 3000ms streaming cutoff" },
         "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6326 exceeds 3000ms streaming cutoff" },
-        "batch": { "composite": 0.929, "wer_norm": 0.984, "latency_norm": 0.842, "cost_norm": 0.920, "passed_filter": true }
+        "batch": { "composite": 0.937, "wer_norm": 1.000, "latency_norm": 0.842, "cost_norm": 0.920, "passed_filter": true }
       }
     },
     {
@@ -295,7 +291,7 @@
         "streaming.us-east4":      { "composite": 0.425, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 0.627, "passed_filter": true },
         "streaming.europe-west3":  { "composite": 0.425, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 0.627, "passed_filter": true },
         "streaming.asia-southeast1": { "composite": 0.500, "wer_norm": 0.000, "ttfp_norm": 1.000, "cost_norm": 1.000, "passed_filter": true },
-        "batch": { "composite": 0.550, "wer_norm": 0.226, "latency_norm": 0.868, "cost_norm": 0.882, "passed_filter": true }
+        "batch": { "composite": 0.552, "wer_norm": 0.230, "latency_norm": 0.868, "cost_norm": 0.882, "passed_filter": true }
       }
     },
     {
@@ -420,7 +416,7 @@
         "streaming.us-east4":      { "composite": 0.351, "wer_norm": 0.413, "ttfp_norm": 0.347, "cost_norm": 0.200, "passed_filter": true },
         "streaming.europe-west3":  { "composite": 0.324, "wer_norm": 0.413, "ttfp_norm": 0.257, "cost_norm": 0.200, "passed_filter": true },
         "streaming.asia-southeast1": { "composite": 0.345, "wer_norm": 0.413, "ttfp_norm": 0.245, "cost_norm": 0.319, "passed_filter": true },
-        "batch": { "composite": 0.482, "wer_norm": 0.545, "latency_norm": 0.198, "cost_norm": 0.748, "passed_filter": true }
+        "batch": { "composite": 0.486, "wer_norm": 0.554, "latency_norm": 0.198, "cost_norm": 0.748, "passed_filter": true }
       }
     },
     {
@@ -452,7 +448,7 @@
       "noise_robustness_avg_delta_pp": -0.04,
       "warning": null,
       "scores": {
-        "batch": { "composite": 0.537, "wer_norm": 0.732, "latency_norm": 0.083, "cost_norm": 0.727, "passed_filter": true }
+        "batch": { "composite": 0.543, "wer_norm": 0.744, "latency_norm": 0.083, "cost_norm": 0.727, "passed_filter": true }
       }
     },
     {
@@ -500,7 +496,7 @@
         "streaming.us-east4":      { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 6981 exceeds 3000ms streaming cutoff (upload-then-stream architecture)" },
         "streaming.europe-west3":  { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 7441 exceeds 3000ms streaming cutoff" },
         "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 7995 exceeds 3000ms streaming cutoff" },
-        "batch": { "composite": 0.341, "wer_norm": 0.682, "latency_norm": 0.000, "cost_norm": 0.000, "passed_filter": true }
+        "batch": { "composite": 0.347, "wer_norm": 0.693, "latency_norm": 0.000, "cost_norm": 0.000, "passed_filter": true }
       }
     },
     {
@@ -547,7 +543,7 @@
         "streaming.us-east4":      { "composite": 0.426, "wer_norm": 0.452, "ttfp_norm": 0.000, "cost_norm": 1.000, "passed_filter": true },
         "streaming.europe-west3":  { "composite": 0.445, "wer_norm": 0.452, "ttfp_norm": 0.062, "cost_norm": 1.000, "passed_filter": true },
         "streaming.asia-southeast1": { "composite": null, "passed_filter": false, "filter_reason": "ttfp_p50_ms 3461 exceeds 3000ms streaming cutoff (APAC)" },
-        "batch": { "composite": 0.633, "wer_norm": 0.576, "latency_norm": 0.484, "cost_norm": 1.000, "passed_filter": true }
+        "batch": { "composite": 0.638, "wer_norm": 0.585, "latency_norm": 0.484, "cost_norm": 1.000, "passed_filter": true }
       }
     }
   ],
@@ -592,19 +588,18 @@
     },
     "batch": {
       "primary": "alibaba-qwen3-asr-flash",
-      "fallback_1": "elevenlabs-scribe-v2",
-      "fallback_2": "elevenlabs-scribe-v1",
+      "fallback_1": "elevenlabs-scribe-v1",
+      "fallback_2": "gemini-25-flash-stt",
       "ranked": [
-        { "id": "alibaba-qwen3-asr-flash",        "composite": 0.929 },
-        { "id": "elevenlabs-scribe-v2",           "composite": 0.894 },
-        { "id": "elevenlabs-scribe-v1",           "composite": 0.763 },
-        { "id": "gemini-25-flash-stt",            "composite": 0.633 },
-        { "id": "deepgram-nova3",                 "composite": 0.611 },
-        { "id": "openai-gpt-4o-mini-transcribe",  "composite": 0.550 },
-        { "id": "assemblyai-universal-3-pro",     "composite": 0.537 },
-        { "id": "assemblyai-universal-2",         "composite": 0.482 },
+        { "id": "alibaba-qwen3-asr-flash",        "composite": 0.937 },
+        { "id": "elevenlabs-scribe-v1",           "composite": 0.768 },
+        { "id": "gemini-25-flash-stt",            "composite": 0.638 },
+        { "id": "deepgram-nova3",                 "composite": 0.613 },
+        { "id": "openai-gpt-4o-mini-transcribe",  "composite": 0.552 },
+        { "id": "assemblyai-universal-3-pro",     "composite": 0.543 },
+        { "id": "assemblyai-universal-2",         "composite": 0.486 },
         { "id": "openai-whisper-1",               "composite": 0.391 },
-        { "id": "google-chirp-2",                 "composite": 0.341 }
+        { "id": "google-chirp-2",                 "composite": 0.347 }
       ],
       "_note": "Batch rankings are region-agnostic — single-request latency in the bench was measured from one US dev box. Add per-region batch latency to make this region-aware."
     }
@@ -625,7 +620,8 @@
     ],
     "batch": [
       { "id": "openai-gpt-4o-transcribe", "reason": "warned: 14.6% silent truncation" },
-      { "id": "xai-grok-stt",             "reason": "warned: aggressive VAD silent failure" }
+      { "id": "xai-grok-stt",             "reason": "warned: aggressive VAD silent failure" },
+      { "id": "elevenlabs-scribe-v2",     "reason": "realtime-only model; no batch score" }
     ]
   }
 }
