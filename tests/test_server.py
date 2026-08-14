@@ -192,6 +192,15 @@ def test_asgi_serves_glama_manifest() -> None:
     assert body["maintainers"][0]["email"] == "abat@speko.ai"
 
 
+def test_asgi_serves_favicon() -> None:
+    with TestClient(create_app()) as client:
+        for path in ("/favicon.ico", "/favicon.png"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "image/png"
+            assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
 def test_asgi_oauth_metadata_advertises_mcp_resource(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_oauth_env(monkeypatch)
     auth = build_auth(mcp_path=MCP_PATH)

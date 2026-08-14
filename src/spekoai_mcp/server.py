@@ -74,6 +74,14 @@ def _glama_manifest() -> str:
     return (files("spekoai_mcp") / "_well_known" / "glama.json").read_text(encoding="utf-8")
 
 
+@lru_cache(maxsize=1)
+def _favicon() -> bytes:
+    """The Speko icon (512px square PNG), bundled in the wheel and served at
+    `/favicon.ico` and `/favicon.png`. The Claude Connectors Directory uses
+    the MCP server's favicon as the connector's listing icon."""
+    return (files("spekoai_mcp") / "_static" / "favicon.png").read_bytes()
+
+
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
     docs self-serve surface (docs.search + spekoai://docs/* resources).
@@ -114,6 +122,9 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     async def glama_manifest(_: Request) -> Response:
         return Response(_glama_manifest(), media_type="application/json")
 
+    async def favicon(_: Request) -> Response:
+        return Response(_favicon(), media_type="image/png")
+
     @asynccontextmanager
     async def lifespan(_: Starlette) -> AsyncGenerator[None, None]:
         async with AsyncExitStack() as stack:
@@ -124,6 +135,8 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
         routes=[
             Route("/", endpoint=docs_redirect, methods=["GET"]),
             Route("/health", endpoint=health_check, methods=["GET"]),
+            Route("/favicon.ico", endpoint=favicon, methods=["GET"]),
+            Route("/favicon.png", endpoint=favicon, methods=["GET"]),
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
             Mount("/", app=mcp_app),
         ],
