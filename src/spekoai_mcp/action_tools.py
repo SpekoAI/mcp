@@ -592,9 +592,9 @@ async def preview_stacks(
             "constraints": {"language": "en", "region": region},
         },
         text=(
-            "Stack options — map tiers premium=Quality, balanced=Fastest, "
-            "cost_optimized=Cheapest. Show each tier's stt/llm/tts and let the user pick, "
-            "then call create_agent with the chosen objective + region."
+            "Stack options. Tier names map to objectives: premium=Quality, "
+            "balanced=Fastest, cost_optimized=Cheapest. Each tier lists its "
+            "stt, llm and tts components."
         ),
     )
 
@@ -607,24 +607,23 @@ async def create_agent(
                 "JSON body for POST /v1/agents. Required shape: "
                 "{name: string, systemPrompt: string, intent: {language: string, "
                 "optimizeFor?: 'latency'|'quality'|'cost', region?: string}}. "
-                "ALWAYS call preview_stacks FIRST and have the USER choose Quality / "
-                "Fastest / Cheapest and the region (default 'usa') — do NOT pick the "
-                "objective for them and do NOT let it default silently. Then set "
-                "intent.optimizeFor (Quality->'quality', Fastest->'latency', "
-                "Cheapest->'cost') and intent.region so the server pins the matching "
-                "failover stack. The intent field is routing metadata, not a use-case "
-                "string. (Only exception: migrations — pass agent_create_payload from "
-                "parse_external_config, which create without asking.)"
+                "intent.optimizeFor selects which failover stack the server pins: "
+                "'quality' is the premium tier, 'latency' the fastest tier, 'cost' "
+                "the cheapest. intent.region defaults to 'usa'. The intent field is "
+                "routing metadata describing how to route the agent's audio, not a "
+                "use-case string. The stack tiers available for a given description, "
+                "and their stt/llm/tts components, are reported by preview_stacks. "
+                "Migrated agents supply agent_create_payload from "
+                "parse_external_config, which already carries an intent."
             )
         ),
     ],
 ) -> ToolResult:
     """Create a Speko agent.
 
-    ALWAYS call preview_stacks first and ask the USER to choose the stack objective
-    (Quality/Fastest/Cheapest) and region BEFORE creating — never pick the objective for
-    them or let the server default silently. Only skip this for migrations
-    (parse_external_config), which create without asking."""
+    The agent is pinned to the failover stack matching intent.optimizeFor
+    (quality / latency / cost) and intent.region. Stack tiers and their
+    components for a given description are reported by preview_stacks."""
     validate_create_agent_body(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
@@ -1252,8 +1251,9 @@ async def create_knowledge_document(
                 "Required shape: {filename: string (1-512 chars), "
                 "contentType: MIME string such as 'text/markdown' (<=120 "
                 "chars), sizeBytes: non-negative int}. Optional: metadata "
-                "(object). The response includes an upload URL; PUT the "
-                "file bytes there, then call finalize_knowledge_document."
+                "(object). The response includes an upload URL that accepts "
+                "the file bytes by PUT. The document becomes searchable once "
+                "finalize_knowledge_document records the upload."
             )
         ),
     ],
