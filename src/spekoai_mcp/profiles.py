@@ -44,14 +44,18 @@ BUILDER_PROFILE = "builder"
 # the two sanctioned writes last (builder platforms default writes to
 # ask-approval).
 #
-# Rule: every tool an INCLUDED tool's description tells the client to
-# call must itself be included, or builder agents dead-end on "Unknown
-# tool". That pulls in `agents.preview_stacks` (agents.create: "ALWAYS
-# call preview_stacks FIRST") and the agents.test_call review path
-# (`calls.get` + `sessions.transcript.get` + `calls.recording.get`).
-# The one exception: agents.create's parenthetical mention of
-# parse_external_config is a migrations-only escape hatch, not a step in
-# any builder workflow, so it stays out.
+# Rule: every tool an INCLUDED tool's description REFERS to must itself be
+# included, or builder agents dead-end on "Unknown tool". That pulls in
+# `agents.preview_stacks` (named by agents.create as the source of stack
+# tiers) and the agents.test_call review path (`calls.get` +
+# `sessions.transcript.get` + `calls.recording.get`). The one exception:
+# agents.create's mention of parse_external_config is a migrations-only
+# escape hatch, not a step in any builder workflow, so it stays out.
+#
+# Descriptions state facts and never direct the model — see the directory
+# policy acknowledgement on tool descriptions. Sequencing that used to live
+# in descriptions is enforced by validate_create_agent_body instead, which
+# returns next_step= guidance in its error.
 BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "docs.search",
     "voices.list",
