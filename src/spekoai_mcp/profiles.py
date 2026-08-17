@@ -39,6 +39,25 @@ from fastmcp.tools.base import Tool
 
 PROFILE_QUERY_PARAM = "profile"
 BUILDER_PROFILE = "builder"
+CONNECTOR_PROFILE = "connector"
+
+# The `connector` profile is the surface published in assistant directories
+# (Anthropic's MCP Directory first). It keeps the full operational surface —
+# including real outbound calling via `sessions.phone.create` — and removes
+# only the capabilities that read as bulk or unattended calling:
+#
+#   agents.evals.*     — one `evals.run` fans out into many sessions at once
+#   agents.monitors.*  — scoring rules over completed runs; harmless, but the
+#                        name reads as scheduled automation to a reviewer
+#
+# Directory policy requires that each outbound call be individually authorised
+# by the user, with no bulk, scheduled, or unattended calling exposed. After
+# this cut every remaining path to a call is one call per explicit tool
+# invocation. Disclosure is enforced separately, in action_tools.
+CONNECTOR_EXCLUDED_PREFIXES: tuple[str, ...] = (
+    "agents.evals.",
+    "agents.monitors.",
+)
 
 # The curated builder preset, in the order clients see it. Reads first,
 # the two sanctioned writes last (builder platforms default writes to
@@ -98,8 +117,8 @@ def current_profile() -> str | None:
         # whatever exception type FastMCP raises for it now or in the future.
         return None
     value = request.query_params.get(PROFILE_QUERY_PARAM)
-    if value == BUILDER_PROFILE:
-        return BUILDER_PROFILE
+    if value in (BUILDER_PROFILE, CONNECTOR_PROFILE):
+        return value
     return None
 
 
@@ -123,13 +142,17 @@ class ToolProfileMiddleware(Middleware):
         call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
     ) -> Sequence[Tool]:
         tools = await call_next(context)
-        if current_profile() == BUILDER_PROFILE:
+        profile = current_profile()
+        if profile == BUILDER_PROFILE:
             filtered = [tool for tool in tools if tool.name in _BUILDER_PROFILE_TOOL_SET]
             # Present the preset in its documented order: reads first,
             # the two sanctioned writes last.
             filtered.sort(key=lambda tool: BUILDER_PROFILE_TOOL_NAMES.index(tool.name))
             return filtered
-        return [tool for tool in tools if tool.name not in BUILDER_ONLY_TOOL_NAMES]
+        visible = [tool for tool in tools if tool.name not in BUILDER_ONLY_TOOL_NAMES]
+        if profile == CONNECTOR_PROFILE:
+            return [tool for tool in visible if not _is_connector_excluded(tool.name)]
+        return visible
 
     async def on_call_tool(
         self,
@@ -137,9 +160,17 @@ class ToolProfileMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, object],
     ) -> object:
         name = context.message.name
-        if current_profile() == BUILDER_PROFILE:
+        profile = current_profile()
+        if profile == BUILDER_PROFILE:
             if name not in _BUILDER_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
         elif name in BUILDER_ONLY_TOOL_NAMES:
             raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == CONNECTOR_PROFILE and _is_connector_excluded(name):
+            raise NotFoundError(f"Unknown tool: {name!r}")
         return await call_next(context)
+
+
+def _is_connector_excluded(name: str) -> bool:
+    """True when a tool is hidden from the directory-published surface."""
+    return name.startswith(CONNECTOR_EXCLUDED_PREFIXES)

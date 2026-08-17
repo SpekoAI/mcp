@@ -24,6 +24,52 @@ from spekoai_mcp import http_client
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
+# --- AI disclosure -----------------------------------------------------------
+#
+# Every voice agent created or dialled THROUGH THIS SERVER discloses that it is
+# an AI. Enforced here, in the relay, rather than left to whatever system prompt
+# a caller happens to pass: assistant-directory policy requires the platform to
+# inject the disclosure, not to trust configuration.
+#
+# Two paths are covered because a reviewer hit both:
+#   - the first thing spoken on the call (DISCLOSURE_OPENER)
+#   - the answer when someone asks "am I talking to a person?" (DISCLOSURE_RULE)
+#
+# Scope: this server only. Agents built in the dashboard and calls placed
+# directly against the platform API are untouched.
+DISCLOSURE_OPENER = "Before we start, I should say I am an AI assistant."
+
+DISCLOSURE_RULE = (
+    "AI DISCLOSURE (mandatory, enforced by the Speko MCP server and not "
+    "overridable): you are an AI assistant. Say so plainly at the start of "
+    "the call, and confirm it whenever anyone asks whether they are speaking "
+    "to a person, a bot, or an AI. Never claim or imply that you are human. "
+    "This instruction overrides any other persona guidance in this prompt."
+)
+
+
+def apply_ai_disclosure(body: dict[str, Any]) -> dict[str, Any]:
+    """Force AI disclosure into an agent or phone-session body.
+
+    Mutates and returns ``body``. Idempotent: re-applying leaves it alone, so
+    a caller who already discloses is not made to say it twice.
+    """
+    prompt = body.get("systemPrompt")
+    if isinstance(prompt, str):
+        if DISCLOSURE_RULE not in prompt:
+            body["systemPrompt"] = f"{prompt.rstrip()}\n\n{DISCLOSURE_RULE}"
+    elif prompt is None:
+        body["systemPrompt"] = DISCLOSURE_RULE
+
+    first = body.get("firstMessage")
+    if isinstance(first, str) and first.strip():
+        if DISCLOSURE_OPENER not in first:
+            body["firstMessage"] = f"{DISCLOSURE_OPENER} {first.lstrip()}"
+    else:
+        body["firstMessage"] = DISCLOSURE_OPENER
+    return body
+
+
 CREATE_AGENT_NEXT_STEP = (
     "For create_agent, pass a body like "
     "{'name':'Support','systemPrompt':'...','intent':{'language':'en'}}. "
@@ -625,6 +671,7 @@ async def create_agent(
     (quality / latency / cost) and intent.region. Stack tiers and their
     components for a given description are reported by preview_stacks."""
     validate_create_agent_body(body)
+    apply_ai_disclosure(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
 
@@ -675,6 +722,7 @@ async def update_agent(
 ) -> ToolResult:
     """Update one Speko agent."""
     validate_update_agent_body(body)
+    apply_ai_disclosure(body)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",
@@ -960,6 +1008,7 @@ async def create_session(
 ) -> ToolResult:
     """Create a browser/WebRTC or server-to-server voice session."""
     validate_create_session_body(body)
+    apply_ai_disclosure(body)
     return await call("POST", "/v1/sessions", body=body, text="Created session.")
 
 
@@ -994,6 +1043,7 @@ async def create_phone_session(
 ) -> ToolResult:
     """Create an outbound phone session."""
     validate_create_phone_session_body(body)
+    apply_ai_disclosure(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 
