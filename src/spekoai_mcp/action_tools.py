@@ -21,22 +21,27 @@ from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import http_client
+from spekoai_mcp.profiles import CONNECTOR_PROFILE, current_profile
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
 # --- AI disclosure -----------------------------------------------------------
 #
-# Every voice agent created or dialled THROUGH THIS SERVER discloses that it is
-# an AI. Enforced here, in the relay, rather than left to whatever system prompt
-# a caller happens to pass: assistant-directory policy requires the platform to
-# inject the disclosure, not to trust configuration.
+# Agents created or dialled through the PUBLISHED DIRECTORY SURFACE
+# (`?profile=connector`) disclose that they are an AI. Enforced here, in the
+# relay, rather than left to whatever system prompt a caller happens to pass:
+# assistant-directory policy requires the platform to inject the disclosure,
+# not to trust configuration.
 #
 # Two paths are covered because a reviewer hit both:
 #   - the first thing spoken on the call (DISCLOSURE_OPENER)
 #   - the answer when someone asks "am I talking to a person?" (DISCLOSURE_RULE)
 #
-# Scope: this server only. Agents built in the dashboard and calls placed
-# directly against the platform API are untouched.
+# Scope: the connector profile ONLY. Direct MCP clients (Claude Code, Codex,
+# Cursor) keep their existing behaviour on the default `/mcp` surface, as do
+# the dashboard and the platform API. Codex is the largest identified direct
+# client by request volume, so widening this would change behaviour for users
+# who never saw the directory listing.
 DISCLOSURE_OPENER = "Before we start, I should say I am an AI assistant."
 
 DISCLOSURE_RULE = (
@@ -67,6 +72,17 @@ def apply_ai_disclosure(body: dict[str, Any]) -> dict[str, Any]:
             body["firstMessage"] = f"{DISCLOSURE_OPENER} {first.lstrip()}"
     else:
         body["firstMessage"] = DISCLOSURE_OPENER
+    return body
+
+
+def apply_connector_disclosure(body: dict[str, Any]) -> dict[str, Any]:
+    """Apply AI disclosure only on the published directory surface.
+
+    Outside an HTTP request ``current_profile()`` returns ``None``, so stdio
+    and in-process callers are never rewritten.
+    """
+    if current_profile() == CONNECTOR_PROFILE:
+        apply_ai_disclosure(body)
     return body
 
 
@@ -671,7 +687,7 @@ async def create_agent(
     (quality / latency / cost) and intent.region. Stack tiers and their
     components for a given description are reported by preview_stacks."""
     validate_create_agent_body(body)
-    apply_ai_disclosure(body)
+    apply_connector_disclosure(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
 
@@ -722,7 +738,7 @@ async def update_agent(
 ) -> ToolResult:
     """Update one Speko agent."""
     validate_update_agent_body(body)
-    apply_ai_disclosure(body)
+    apply_connector_disclosure(body)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",
@@ -1008,7 +1024,7 @@ async def create_session(
 ) -> ToolResult:
     """Create a browser/WebRTC or server-to-server voice session."""
     validate_create_session_body(body)
-    apply_ai_disclosure(body)
+    apply_connector_disclosure(body)
     return await call("POST", "/v1/sessions", body=body, text="Created session.")
 
 
@@ -1043,7 +1059,7 @@ async def create_phone_session(
 ) -> ToolResult:
     """Create an outbound phone session."""
     validate_create_phone_session_body(body)
-    apply_ai_disclosure(body)
+    apply_connector_disclosure(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 

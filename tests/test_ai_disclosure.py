@@ -1,5 +1,6 @@
 """AI disclosure is enforced by the relay, not by caller configuration."""
 
+from spekoai_mcp import action_tools
 from spekoai_mcp.action_tools import (
     DISCLOSURE_OPENER,
     DISCLOSURE_RULE,
@@ -7,6 +8,7 @@ from spekoai_mcp.action_tools import (
 )
 from spekoai_mcp.profiles import (
     CONNECTOR_EXCLUDED_PREFIXES,
+    CONNECTOR_PROFILE,
     _is_connector_excluded,
 )
 
@@ -63,3 +65,25 @@ def test_connector_profile_keeps_outbound_calling() -> None:
 
 def test_excluded_prefixes_are_call_free() -> None:
     assert CONNECTOR_EXCLUDED_PREFIXES == ("agents.evals.", "agents.monitors.")
+
+
+def test_gate_applies_on_connector_profile(monkeypatch) -> None:
+    """The published directory surface always discloses."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CONNECTOR_PROFILE)
+    body = action_tools.apply_connector_disclosure({"firstMessage": "Hi, this is Ava."})
+    assert body["firstMessage"].startswith(DISCLOSURE_OPENER)
+    assert DISCLOSURE_RULE in body["systemPrompt"]
+
+
+def test_gate_leaves_direct_mcp_clients_alone(monkeypatch) -> None:
+    """Claude Code, Codex and Cursor keep their existing behaviour."""
+    for profile in (None, "builder"):
+        monkeypatch.setattr(action_tools, "current_profile", lambda p=profile: p)
+        body = action_tools.apply_connector_disclosure({"firstMessage": "Hi, this is Ava."})
+        assert body == {"firstMessage": "Hi, this is Ava."}, profile
+
+
+def test_gate_is_inert_without_an_http_request() -> None:
+    """stdio and in-process callers resolve to no profile, so nothing is rewritten."""
+    body = action_tools.apply_connector_disclosure({"firstMessage": "Hi."})
+    assert body == {"firstMessage": "Hi."}
