@@ -59,6 +59,19 @@ CONNECTOR_EXCLUDED_PREFIXES: tuple[str, ...] = (
     "agents.monitors.",
 )
 
+# Tools withheld from the published directory surface for policy rather than
+# capability reasons. Anthropic's Software Directory Policy prohibits
+# "software that uses AI models to generate images, video, or audio content",
+# so `audio.synthesize` — which returns generated speech to the client — is
+# not offered there.
+#
+# `audio.transcribe` deliberately stays: speech-to-text generates no audio and
+# returns only text, so it is outside that prohibition.
+#
+# Direct MCP clients (Claude Code, Codex, Cursor) keep the full surface on the
+# default `/mcp` path.
+CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset({"audio.synthesize"})
+
 # The curated builder preset, in the order clients see it. Reads first,
 # the two sanctioned writes last (builder platforms default writes to
 # ask-approval).
@@ -173,4 +186,4 @@ class ToolProfileMiddleware(Middleware):
 
 def _is_connector_excluded(name: str) -> bool:
     """True when a tool is hidden from the directory-published surface."""
-    return name.startswith(CONNECTOR_EXCLUDED_PREFIXES)
+    return name in CONNECTOR_EXCLUDED_TOOL_NAMES or name.startswith(CONNECTOR_EXCLUDED_PREFIXES)

@@ -220,6 +220,45 @@ async def call_speko_api_raw(
     return await _call_speko_api_raw(method, path, body)
 
 
+async def post_speko_api_bytes(
+    path: str,
+    payload: bytes,
+    *,
+    content_type: str,
+    extra_headers: dict[str, str] | None = None,
+) -> SpekoRawResponse:
+    """POST a raw body (audio) and return the raw response.
+
+    `/v1/transcribe` takes the audio in the request body rather than JSON, and
+    carries its routing intent in an `X-Speko-Intent` header, so neither
+    `_call_speko_api` (JSON in, JSON out) nor `_call_speko_api_raw` (JSON in,
+    bytes out) fits.
+    """
+    api_base = get_api_base()
+    url = f"{api_base}/{path.lstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {_bearer_token()}",
+        "Content-Type": content_type,
+        **(extra_headers or {}),
+    }
+    try:
+        async with httpx.AsyncClient(
+            timeout=120.0,
+            follow_redirects=True,
+            transport=_TEST_TRANSPORT,
+        ) as client:
+            resp = await client.post(url, headers=headers, content=payload)
+    except httpx.HTTPError as exc:
+        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+    if resp.status_code >= 400:
+        message, trace_id = _error_details(resp)
+        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+    return SpekoRawResponse(
+        content=resp.content,
+        content_type=resp.headers.get("content-type", "application/octet-stream"),
+    )
+
+
 def tool_error_message(exc: Exception, *, next_step: str) -> str:
     trace_id = getattr(exc, "trace_id", None) or "unavailable"
     return f"{exc}; trace_id={trace_id}; next_step={next_step}"

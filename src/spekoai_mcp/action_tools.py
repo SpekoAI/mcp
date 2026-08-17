@@ -9,11 +9,16 @@ schemas change; an LLM client only sees these descriptions.
 
 from __future__ import annotations
 
+import base64
+import ipaddress
 import json
 import re
+import socket
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
+import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.tools.tool import ToolResult
@@ -179,6 +184,8 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "parse_external_config": "migration.external_config.parse",
     "render_briefing": "migration.briefing.render",
     "create_share_card": "share_cards.create",
+    "synthesize_speech": "audio.synthesize",
+    "transcribe_audio": "audio.transcribe",
 }
 
 ACTION_TOOL_NAMES = list(ACTION_TOOL_NAME_BY_FUNCTION.values())
@@ -237,6 +244,245 @@ DESTRUCTIVE_ACTION_TOOL_NAMES = {
     "delete_knowledge_document",
     "delete_monitor",
 }
+
+
+async def synthesize_speech(
+    body: Annotated[
+        dict[str, Any],
+        Field(
+            description=(
+                "JSON body for POST /v1/synthesize. Required: text (1-50000 "
+                "chars, must contain a speakable character) and intent "
+                "({language: BCP-47 tag, region?: string, optimizeFor?: "
+                "'balanced'|'accuracy'|'latency'|'cost'}). Optional: voice "
+                "(string), model (upstream model such as "
+                "'eleven_multilingual_v2' or 'sonic-2'), speed (0.5-2), "
+                "instructions (speaking-style text, applied only when the "
+                "resolved model is instruction-capable), spokenForm (bool; "
+                "normalizes markdown, URLs and numbers before synthesis), "
+                "sampleRate (16000|24000|44100|48000), constraints "
+                "({allowedProviders?: {tts?: string[]}})."
+            )
+        ),
+    ],
+) -> ToolResult:
+    """Synthesize speech from text, returning base64 audio.
+
+    Routed across TTS providers by the intent. The audio is returned as base64
+    with its content type and sample rate so a client can save or play it.
+    """
+    raw = await http_client.call_speko_api_raw("POST", "/v1/synthesize", body=body)
+    if not raw.content:
+        raise ToolError("Speko synthesize returned an empty body.")
+    return result(
+        {
+            "audio_base64": base64.b64encode(raw.content).decode("ascii"),
+            "content_type": raw.content_type,
+            "size_bytes": len(raw.content),
+            "sample_rate": body.get("sampleRate"),
+        },
+        text=f"Synthesized {len(raw.content)} bytes of {raw.content_type}.",
+    )
+
+
+async def transcribe_audio(
+    audio_url: Annotated[
+        str,
+        Field(
+            description=(
+                "HTTPS URL of the audio to transcribe. Signed recording URLs "
+                "from sessions.recording.get and calls.recording.get work "
+                "directly. The server fetches the bytes and forwards them."
+            )
+        ),
+    ],
+    language: Annotated[
+        str,
+        Field(description="BCP-47 language tag such as 'en' or 'es-MX'."),
+    ] = "en",
+    keywords: Annotated[
+        list[str] | None,
+        Field(description="Domain terms to bias recognition, up to 200."),
+    ] = None,
+) -> ToolResult:
+    """Transcribe audio to text.
+
+    Speech to text only: no audio is generated and none is returned.
+    """
+    audio, content_type = await _fetch_audio(audio_url)
+
+    intent: dict[str, Any] = {"language": language}
+    headers = {"X-Speko-Intent": json.dumps(intent)}
+    if keywords:
+        headers["X-Speko-Stt-Options"] = json.dumps({"keywords": keywords[:200]})
+
+    raw = await http_client.post_speko_api_bytes(
+        "/v1/transcribe",
+        audio,
+        content_type=content_type,
+        extra_headers=headers,
+    )
+    text = _transcript_from_sse(raw.content.decode("utf-8", errors="replace"))
+    return result({"text": text, "language": language}, text=text or "No speech detected.")
+
+
+# The caller chooses this URL, and the fetch runs from inside our network, so
+# an unrestricted GET is a server-side request forgery primitive: a redirect to
+# 169.254.169.254 would hand back the Cloud Run service account's token. Every
+# hop is validated, and the body is capped so one large URL cannot exhaust
+# memory in a process that serves every other tool.
+_MAX_AUDIO_BYTES = 25 * 1024 * 1024
+_MAX_REDIRECTS = 3
+
+
+def _assert_public_address(address: str, *, source: str) -> None:
+    """Refuse an address that is not globally routable."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:  # not an address we can judge; treat as untrusted
+        raise ToolError(
+            f"{source} is not an IP address that can be validated: {address!r}"
+        ) from None
+    if not parsed.is_global or parsed.is_multicast:
+        raise ToolError(
+            f"{source} is the non-public address {parsed}. "
+            "Pass a publicly reachable URL, such as a signed recording URL."
+        )
+
+
+def _assert_fetchable(url: str) -> None:
+    """Reject anything that is not a public https endpoint."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise ToolError(f"audio_url must be an https:// URL, got {parsed.scheme or 'no'} scheme.")
+    host = parsed.hostname
+    if not host:
+        raise ToolError("audio_url has no host.")
+    try:
+        resolved = socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except OSError as exc:
+        raise ToolError(f"Unable to resolve {host}: {exc}") from exc
+    for info in resolved:
+        _assert_public_address(info[4][0], source="audio_url")
+
+
+def _assert_connected_peer_is_public(response: httpx.Response) -> None:
+    """Check the address actually connected to, not the one we resolved.
+
+    `_assert_fetchable` resolves the hostname, then httpx resolves it again when
+    it opens the connection. A short-TTL name can answer publicly for the first
+    lookup and privately for the second, so validating only the first is
+    check-then-use: the connection would land on the metadata service anyway.
+
+    This runs before any of the body is read, so a rebound connection is refused
+    rather than buffered and forwarded to the transcription API.
+    """
+    stream = response.extensions.get("network_stream")
+    if stream is None:  # no live socket to inspect (mocked or already closed)
+        return
+    peer = stream.get_extra_info("server_addr")
+    if not peer:
+        return
+    _assert_public_address(str(peer[0]), source="the address audio_url connected to")
+
+
+async def _fetch_audio(url: str) -> tuple[bytes, str]:
+    """Fetch audio over https, validating every redirect hop and capping size."""
+    current = url
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
+        for _ in range(_MAX_REDIRECTS + 1):
+            _assert_fetchable(current)
+            try:
+                async with client.stream("GET", current) as response:
+                    _assert_connected_peer_is_public(response)
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ToolError(f"{current} redirected without a Location header.")
+                        # Re-validated at the top of the next iteration.
+                        current = str(httpx.URL(current).join(location))
+                        continue
+                    response.raise_for_status()
+                    chunks: list[bytes] = []
+                    size = 0
+                    async for chunk in response.aiter_bytes():
+                        size += len(chunk)
+                        if size > _MAX_AUDIO_BYTES:
+                            raise ToolError(
+                                f"Audio at {current} exceeds the "
+                                f"{_MAX_AUDIO_BYTES // (1024 * 1024)} MB limit."
+                            )
+                        chunks.append(chunk)
+                    if not size:
+                        raise ToolError(f"Audio at {current} is empty.")
+                    return (
+                        b"".join(chunks),
+                        response.headers.get("content-type") or "application/octet-stream",
+                    )
+            except httpx.HTTPError as exc:
+                raise ToolError(f"Unable to fetch audio from {current}: {exc}") from exc
+    raise ToolError(f"audio_url exceeded {_MAX_REDIRECTS} redirects.")
+
+
+def _transcript_from_sse(stream: str) -> str:
+    """Read the transcript out of the `/v1/transcribe` event stream.
+
+    The route emits named frames: `meta` (routing decision), `transcript`
+    (incremental, `isFinal` marking the ones that count), `done` (carrying the
+    authoritative assembled `text`), and `error`.
+
+    So `done.text` wins when present — accumulating the `transcript` finals AND
+    then appending `done.text` would return the transcript twice. The finals are
+    only a fallback for a stream that ends without a `done` frame. An `error`
+    frame arrives with HTTP 200, so it has to be raised from here or a failed
+    transcription reads as silence.
+    """
+    finals: list[str] = []
+    for name, payload in _parse_sse(stream):
+        if name == "error":
+            detail = payload.get("error") or payload.get("code") or "unknown error"
+            raise ToolError(f"Transcription failed: {detail}")
+        if name == "done":
+            text = payload.get("text")
+            if isinstance(text, str):
+                return text.strip()
+        elif name == "transcript" and payload.get("isFinal") is True:
+            piece = payload.get("text")
+            if isinstance(piece, str) and piece.strip():
+                finals.append(piece.strip())
+    return " ".join(finals).strip()
+
+
+def _parse_sse(stream: str) -> list[tuple[str, dict[str, Any]]]:
+    """Split an SSE body into (event name, JSON payload) pairs.
+
+    Frames are separated by a blank line. An unnamed frame is `message` per the
+    spec. Frames whose data is absent, unparseable, or not an object are
+    skipped rather than raised on: a partial flush must not fail the whole read.
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    for frame in re.split(r"\n\s*\n", stream):
+        if not frame.strip():
+            continue
+        name = "message"
+        data_lines: list[str] = []
+        for line in frame.splitlines():
+            if line.startswith("event:"):
+                name = line[len("event:") :].strip()
+            elif line.startswith("data:"):
+                data_lines.append(line[len("data:") :].strip())
+        if not data_lines:
+            continue
+        body = "\n".join(data_lines)
+        if not body or body == "[DONE]":
+            continue
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            continue
+        if isinstance(payload, dict):
+            events.append((name, payload))
+    return events
 
 
 def register_action_tools(mcp: FastMCP) -> None:
@@ -299,6 +545,8 @@ def register_action_tools(mcp: FastMCP) -> None:
         parse_external_config,
         render_briefing,
         create_share_card,
+        synthesize_speech,
+        transcribe_audio,
     ]:
         name = tool.__name__
         public_name = ACTION_TOOL_NAME_BY_FUNCTION[name]
