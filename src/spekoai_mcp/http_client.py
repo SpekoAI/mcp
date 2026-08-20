@@ -11,6 +11,8 @@ from urllib.parse import quote, urlencode
 import httpx
 from fastmcp.server.dependencies import get_access_token
 
+from spekoai_mcp.delegation import DelegationError, platform_bearer_token
+
 DEFAULT_API_BASE = "https://api.speko.dev"
 
 _TEST_TRANSPORT: httpx.AsyncBaseTransport | None = None
@@ -61,10 +63,10 @@ def _bearer_token() -> str:
             "This tool requires the authenticated SpekoAI MCP endpoint. "
             "Connect /mcp with OAuth or Authorization: Bearer <Speko API key>."
         )
-    token = getattr(access_token, "token", access_token)
-    if not isinstance(token, str) or not token:
-        raise SpekoAuthError("Authenticated MCP token is missing or invalid.")
-    return token
+    try:
+        return platform_bearer_token(access_token)
+    except DelegationError as exc:
+        raise SpekoAuthError(str(exc)) from exc
 
 
 def _error_details(resp: httpx.Response) -> tuple[str, str | None]:

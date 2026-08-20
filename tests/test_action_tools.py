@@ -11,7 +11,7 @@ from fastmcp.exceptions import ToolError
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.router_tools import ROUTER_TOOL_NAMES
+from spekoai_mcp.gateway_tools import GATEWAY_TOOL_NAMES
 from spekoai_mcp.server import create_server
 
 
@@ -67,7 +67,7 @@ def speko_api_mock(monkeypatch: pytest.MonkeyPatch):
         return json_response(default_payload(path, method, body))
 
     monkeypatch.setattr(
-        http_client, "get_access_token", lambda: SimpleNamespace(token="test-token")
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test-token")
     )
     http_client._TEST_TRANSPORT = httpx.MockTransport(handler)
     try:
@@ -184,7 +184,7 @@ async def test_action_tools_cover_expected_api_paths(
 
     paths = {(call["method"], call["path"]) for call in speko_api_mock}
     assert paths == EXPECTED_METHOD_PATHS
-    assert {call["auth"] for call in speko_api_mock} == {"Bearer test-token"}
+    assert {call["auth"] for call in speko_api_mock} == {"Bearer sk_test-token"}
     assert share_result.structured_content["png_url"].endswith(".png")
     ledger = next(call for call in speko_api_mock if call["path"] == "/v1/credits/ledger")
     assert ledger["query"] == "limit=25&kind=grant%2Cdebit"
@@ -196,7 +196,7 @@ async def test_action_tools_cover_expected_api_paths(
 
 async def test_server_lists_exact_action_tools() -> None:
     names = [tool.name for tool in await create_server().list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + ROUTER_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + GATEWAY_TOOL_NAMES
 
 
 async def test_create_agent_rejects_string_intent_before_api(

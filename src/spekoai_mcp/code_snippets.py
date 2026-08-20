@@ -41,8 +41,8 @@ _SHARED_NOTES: list[str] = [
     "this code: SPEKO_API_KEY in the server environment plus "
     "@spekoai/client in the browser.",
     "To reuse an agent created with agents.create, replace the intent/"
-    "systemPrompt fields in the /v1/sessions body with {\"agentId\": "
-    "\"<agent id>\"}.",
+    'systemPrompt fields in the /v1/sessions body with {"agentId": '
+    '"<agent id>"}.',
     "Get an API key at https://platform.speko.dev/api-keys. The API base "
     "URL is https://api.speko.dev.",
     "Full /v1/sessions body schema and @spekoai/client callback surface: "
@@ -257,7 +257,7 @@ app.listen(3001, () => {
 """
 
 _PYTHON_TITLE = "Python (FastAPI): server-side session mint endpoint"
-_PYTHON_CODE = '''\
+_PYTHON_CODE = """\
 # main.py - pip install fastapi uvicorn httpx
 # Env: SPEKO_API_KEY=sk_...
 # Run: uvicorn main:app --port 3001
@@ -302,7 +302,7 @@ async def create_session() -> dict[str, str]:
         "transportToken": data["transportToken"],
         "transportUrl": data["transportUrl"],
     }
-'''
+"""
 
 _CURL_TITLE = "curl: mint a voice session from the command line"
 _CURL_CODE = """\

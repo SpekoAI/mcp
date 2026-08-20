@@ -15,16 +15,13 @@ Design constraints (see platform issue #1169):
   tools are registered on the same server but hidden from the default
   view by :class:`ToolProfileMiddleware`, and the default tool ordering
   is untouched because builder-only tools are registered last.
-- A separate path (e.g. ``/builder/mcp``) is deliberately NOT used: the
-  OAuth resource indicator/audience is bound to ``/mcp`` (see
-  ``auth.py``), and RFC 9728 protected-resource discovery is path-based,
-  so a second path would need upstream Better Auth changes. A query
-  param keeps one auth surface and zero auth changes.
+- A separate path (e.g. ``/builder/mcp``) is deliberately NOT used. A query
+  parameter keeps one API-key authentication surface.
 
 The profile is resolved from the live HTTP request on every MCP request
 (FastMCP's ``RequestContextMiddleware`` is installed in ``create_app``),
-so one deployment serves both surfaces. Outside an HTTP request (stdio,
-in-process tests) the default profile applies.
+    so one deployment serves both surfaces. Outside an HTTP request the
+    default profile applies.
 """
 
 from __future__ import annotations

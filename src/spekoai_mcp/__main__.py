@@ -1,8 +1,7 @@
 """CLI entrypoint for the hosted HTTP MCP server.
 
-The server exposes one protected MCP endpoint at `/mcp`. It accepts OAuth
-bearer tokens when OAuth env vars are configured, and always accepts Speko API
-keys as `Authorization: Bearer sk_*`.
+The server exposes one protected, stateless MCP endpoint at `/mcp`. It accepts
+Better Auth OAuth access tokens and Speko API keys as bearer credentials.
 """
 
 from __future__ import annotations
@@ -30,10 +29,7 @@ def main() -> None:
     )
 
     auth = build_auth(mcp_path=MCP_PATH)
-    if auth.server is None:
-        logger.info("spekoai-mcp: running API-key protected MCP at %s.", MCP_PATH)
-    else:
-        logger.info("spekoai-mcp: running OAuth/API-key protected MCP at %s.", MCP_PATH)
+    logger.info("spekoai-mcp: running OAuth/API-key protected stateless MCP at %s.", MCP_PATH)
 
     app = create_app(auth=auth)
     # Trust X-Forwarded-* from the Cloud Run / load-balancer fronting

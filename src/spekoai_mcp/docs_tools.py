@@ -74,10 +74,10 @@ def register_docs_tools(mcp: FastMCP) -> None:
             output_schema=SEARCH_DOCS_OUTPUT_SCHEMA,
             annotations=ToolAnnotations(
                 title="Search Speko Docs",
-                readOnlyHint=True,
-                destructiveHint=False,
-                idempotentHint=True,
-                openWorldHint=False,
+                read_only_hint=True,
+                destructive_hint=False,
+                idempotent_hint=True,
+                open_world_hint=False,
             ),
         )
 

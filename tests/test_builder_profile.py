@@ -24,14 +24,14 @@ from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.builder_tools import BUILDER_TOOL_NAMES
 from spekoai_mcp.code_snippets import SNIPPET_FRAMEWORKS
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
+from spekoai_mcp.gateway_tools import GATEWAY_TOOL_NAMES
 from spekoai_mcp.profiles import (
     BUILDER_ONLY_TOOL_NAMES,
     BUILDER_PROFILE_TOOL_NAMES,
 )
-from spekoai_mcp.router_tools import ROUTER_TOOL_NAMES
 from spekoai_mcp.server import create_server
 
-DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + ROUTER_TOOL_NAMES
+DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + GATEWAY_TOOL_NAMES
 
 
 def _force_http_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
@@ -107,10 +107,10 @@ async def test_builder_profile_tools_expose_quality_metadata(
     assert all(tool.annotations is not None for tool in tools)
 
     by_name = {tool.name: tool for tool in tools}
-    assert by_name["code_snippets.get"].annotations.readOnlyHint is True
-    assert by_name["voices.list"].annotations.readOnlyHint is True
-    assert by_name["models.list"].annotations.readOnlyHint is True
-    assert by_name["agents.create"].annotations.readOnlyHint is False
+    assert by_name["code_snippets.get"].annotations.read_only_hint is True
+    assert by_name["voices.list"].annotations.read_only_hint is True
+    assert by_name["models.list"].annotations.read_only_hint is True
+    assert by_name["agents.create"].annotations.read_only_hint is False
 
 
 async def test_builder_profile_blocks_tools_outside_the_preset(
@@ -196,7 +196,7 @@ def _capture_speko_api(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(
         http_client,
         "get_access_token",
-        lambda: SimpleNamespace(token="upstream-oauth-token"),
+        lambda: SimpleNamespace(token="sk_platform_test"),
     )
     captured: dict[str, object] = {}
 
@@ -244,7 +244,7 @@ async def test_list_voices_relays_to_voices_endpoint(
     result = await create_server().call_tool("voices.list", {"provider": "cartesia"})
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.speko.dev/v1/voices?provider=cartesia"
-    assert captured["headers"] == {"Authorization": "Bearer upstream-oauth-token"}
+    assert captured["headers"] == {"Authorization": "Bearer sk_platform_test"}
     assert result.structured_content == {"ok": True}
 
 

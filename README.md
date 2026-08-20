@@ -1,186 +1,107 @@
 # spekoai-mcp
 
-[![smithery badge](https://smithery.ai/badge/abat/speko)](https://smithery.ai/servers/abat/speko)
+FastMCP v4 server for [SpekoAI](https://speko.ai). The hosted endpoint is:
 
-Model Context Protocol server for [SpekoAI](https://speko.ai). The hosted
-server exposes one authenticated endpoint:
-
-```txt
+```text
 https://mcp.speko.ai/mcp
 ```
 
-It supports OAuth for interactive MCP clients and Speko API keys for clients
-that can send custom request headers.
+It accepts authenticated `POST` requests using either OAuth or a Speko
+Platform API key:
 
-## Install in an MCP client
-
-OAuth-capable clients:
-
-```json
-{
-  "mcpServers": {
-    "spekoai": {
-      "url": "https://mcp.speko.ai/mcp"
-    }
-  }
-}
+```text
+Authorization: Bearer <OAuth access token or sk_live_xxx>
+MCP-Protocol-Version: 2026-07-28
+Content-Type: application/json
 ```
 
-API-key clients:
+The transport is stateless and JSON-only. There is no initialization request,
+session id, SSE response, local OAuth transaction store, or stdio transport.
+Better Auth owns authorization, consent, refresh tokens, and client
+registration; the MCP service only validates signed access tokens per request.
 
-```json
-{
-  "mcpServers": {
-    "spekoai": {
-      "url": "https://mcp.speko.ai/mcp",
-      "headers": {
-        "Authorization": "Bearer sk_live_xxx"
-      }
-    }
-  }
-}
+## Client setup
+
+Use the direct-HTTP installer and select OAuth (the default interactive choice):
+
+```bash
+npx @spekoai/mcp@latest init
 ```
 
-## Surfaces
+Or configure a modern OAuth-capable client directly. For example, Codex reads:
 
-The hosted server exposes the operational tools below plus a docs self-serve
-surface: the `docs.search` tool (full-text search over bundled Speko docs)
-and the `spekoai://docs/index` + `spekoai://docs/{slug}` resources. MCP
-prompts, components, and scaffolding tools are not advertised.
+```toml
+[mcp_servers.speko]
+url = "https://mcp.speko.ai/mcp"
+```
 
-Tool names use domain/action dot notation for client grouping.
+For automation, export a Platform API key and add the bearer setting:
+
+```toml
+[mcp_servers.speko]
+url = "https://mcp.speko.ai/mcp"
+bearer_token_env_var = "SPEKO_API_KEY"
+```
+
+## Tool surfaces
+
+The default profile exposes operational tools using domain/action names:
+
+- account: `organization.get`, `credits.balance.get`,
+  `credits.ledger.list`, `usage.summary.get`;
+- agents: `agents.list`, `agents.preview_stacks`, `agents.create`,
+  `agents.get`, `agents.update`, `agents.delete`, deployment/version/tool and
+  monitor operations;
+- sessions and calls: create, list, inspect, transcript, recording, and test
+  call operations;
+- phone numbers, knowledge bases, evals, migration helpers, audio helpers, and
+  `docs.search`;
+- Gateway keys: `gateway.keys.list`, `gateway.keys.create(name)`, and
+  `gateway.keys.revoke(key_id)`.
+
+Gateway key tools require the authenticating Platform API key to carry
+`gateway.keys.manage`. An organization owner or admin grants it by selecting
+**Manage Gateway API keys** during key creation. Gateway secrets are returned
+only once, and routing remains a per-request choice rather than key policy.
 
 ### Builder profile
 
-App builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) can add the
-server with a curated, right-sized preset instead of the full operational
-surface:
+App builders can request the curated profile at:
 
-```txt
+```text
 https://mcp.speko.ai/mcp?profile=builder
 ```
 
-Auth is identical to `/mcp` (same OAuth flow, same API-key header). The
-builder profile advertises exactly these tools:
+It contains docs search, catalogs, agent reads, stack preview, integration code
+snippets, the test-call review path, and the limited `agents.create` and
+`agents.test_call` writes. Generated applications use Speko SDKs at runtime;
+they do not call MCP tools.
 
-- `docs.search` — bundled Speko docs search
-- `voices.list` — TTS voice + provider catalog
-- `models.list` — STT/LLM/TTS/S2S provider+model catalog (`allowedProviders` ids)
-- `agents.list` / `agents.get` — read agent configs
-- `agents.preview_stacks` — the stack preview `agents.create` requires first
-- `calls.get` / `sessions.transcript.get` / `calls.recording.get` — the
-  `agents.test_call` review path (poll the call, read transcript/recording)
-- `code_snippets.get` — ready-to-paste integration code (web voice call +
-  server-side session mint) for `nextjs`, `react`, `node`, `python`, or `curl`
-- `agents.create` / `agents.test_call` — the only writes
+## Authentication and downstream calls
 
-`voices.list`, `models.list`, and `code_snippets.get` exist only in the
-builder profile. Any other `profile` value (or none) serves the default
-surface below, unchanged. Note that MCP tools only inform the builder's
-agent during code generation — the generated app cannot call MCP tools at
-runtime. Runtime integration is a `SPEKO_API_KEY` environment variable
-plus the SDKs, which is exactly what `code_snippets.get` returns.
+OAuth clients discover Better Auth from the MCP protected-resource metadata.
+Better Auth issues JWT access tokens bound to the exact MCP resource URL. The
+MCP server verifies their signature, issuer, audience, expiry, and scopes on
+every request without retaining OAuth or protocol state.
 
-### Account
+Platform API keys are independently verified with
+`GET /v1/auth/api-key-context` on every request. Speko API tools forward API
+keys unchanged. For OAuth callers, the MCP service mints a separate 60-second
+JWT bound to the Platform API; it never forwards the client-presented MCP token.
+Gateway key tools still require a Platform API key carrying
+`gateway.keys.manage`, and Runtime verifies that scope again.
 
-- `organization.get`
-- `credits.balance.get`
-- `credits.ledger.list`
-- `usage.summary.get`
+Configuration:
 
-### Agents and Tools
+- `SPEKOAI_API_URL` — Platform API origin, default `https://api.speko.dev`;
+- `SPEKOAI_GATEWAY_URL` — Runtime Gateway origin, default
+  `https://gateway.speko.dev`;
+- `SPEKOAI_OAUTH_ISSUER` — Better Auth issuer, for example
+  `https://platform.speko.ai/api/auth`;
+- `SPEKOAI_MCP_BASE_URL` — public MCP origin used to derive the exact resource
+  audience;
+- `SPEKOAI_MCP_DELEGATION_SECRET` — 32+ character secret shared only with
+  Platform for stateless API delegation.
 
-- `agents.list`
-- `agents.create`
-- `agents.get`
-- `agents.update`
-- `agents.delete`
-- `agents.tools.list`
-- `agents.tools.create`
-- `agents.tools.get`
-- `agents.tools.update`
-- `agents.tools.delete`
-
-### Versions, Sessions, and Calls
-
-- `agents.deploy`
-- `agents.rollback`
-- `agents.versions.list`
-- `sessions.create`
-- `sessions.phone.create`
-- `sessions.list`
-- `sessions.get`
-- `sessions.transcript.get`
-- `sessions.recording.get`
-- `agents.calls.list`
-- `calls.get`
-- `calls.recording.get`
-
-### Phone Numbers, Knowledge Bases, and Evals
-
-- `phone_numbers.list`
-- `phone_numbers.available.search`
-- `phone_numbers.create`
-- `phone_numbers.get`
-- `phone_numbers.update`
-- `phone_numbers.delete`
-- `knowledge_bases.create`
-- `knowledge_bases.list`
-- `knowledge_bases.get`
-- `knowledge_bases.delete`
-- `knowledge_bases.documents.list`
-- `knowledge_bases.documents.create`
-- `knowledge_bases.documents.get`
-- `knowledge_bases.documents.delete`
-- `knowledge_bases.documents.finalize`
-- `agents.evals.list`
-- `agents.evals.create`
-- `agents.evals.run`
-- `evals.get`
-
-### Build and Migration Helpers
-
-- `migration.workspace.inspect`
-- `migration.session_config.build`
-- `migration.external_config.parse`
-- `migration.briefing.render`
-- `share_cards.create`
-
-### Router keys
-
-Keys for the OpenAI-compatible router at `https://api.speko.ai/v1`. A router
-key carries its own routing policy — language, use case, objective, max
-price, and an ordered chain per stage whose element 0 is the pin and whose
-remaining elements are the failover order — so a caller who configured it
-sends no routing headers.
-
-- `router.keys.list`
-- `router.keys.create`
-- `router.keys.update`
-- `router.keys.revoke`
-
-These four require OAuth. A Speko API key is refused, and is never sent to
-the control plane: a machine credential must not be able to mint further
-credentials.
-
-### Docs
-
-- `docs.search` - full-text search over the bundled Speko docs (SDK/adapter
-  READMEs, hosted llms.txt exports, migration guides). Hits link to
-  `spekoai://docs/{slug}` resources; `spekoai://docs/index` lists every doc.
-
-## Auth model
-
-The server has no long-lived SpekoAI credential of its own. Tools forward the
-caller credential to the Speko API. The credential can be an OAuth access token
-minted by the platform or a Speko API key supplied by the MCP client as
-`Authorization: Bearer ...`.
-
-If OAuth env vars are configured, `/mcp` accepts OAuth or Speko API keys. If
-OAuth env vars are absent, `/mcp` still requires a valid Speko API key. Partial
-OAuth configuration fails closed at startup.
-
-The one exception is `router.keys.*`, which requires OAuth. Router key tools
-talk to the router control plane (`SPEKOAI_ROUTER_CONTROL_URL`, default
-`https://control.speko.ai`) rather than the Speko API, and that plane
-authenticates a signed-in user, never a machine principal.
+See [docs/fastmcp-v4.md](docs/fastmcp-v4.md) for deployment order, smoke tests,
+and failure diagnosis.

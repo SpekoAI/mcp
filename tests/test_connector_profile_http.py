@@ -115,7 +115,7 @@ async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> 
 
     async def fake_call(method, path, *, body=None, text=None, **kwargs):  # noqa: ANN001
         captured.append({"path": path, "body": body})
-        from fastmcp.tools.tool import ToolResult
+        from fastmcp.tools import ToolResult
 
         return ToolResult(structured_content={"stubbed": True})
 

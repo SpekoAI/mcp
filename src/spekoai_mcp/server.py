@@ -1,8 +1,8 @@
-"""FastMCP v3 server exposing authenticated Speko API tools."""
+"""FastMCP v4 server exposing OAuth/API-key authenticated stateless tools."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import lru_cache
 from importlib.resources import files
@@ -13,19 +13,24 @@ from fastmcp.server.http import RequestContextMiddleware
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
+from starlette.types import Message as ASGIMessage
+from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
+from spekoai_mcp.gateway_tools import register_gateway_tools
 from spekoai_mcp.profiles import ToolProfileMiddleware
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
-from spekoai_mcp.router_tools import register_router_tools
 
 MCP_PATH = DEFAULT_MCP_PATH
+MCP_PROTOCOL_VERSION = "2026-07-28"
+HEADER_MISMATCH = -32020
+UNSUPPORTED_PROTOCOL_VERSION = -32022
 
 INSTRUCTIONS = "\n\n".join(
     " ".join(paragraph.split())
@@ -48,18 +53,18 @@ INSTRUCTIONS = "\n\n".join(
         a body, search the failing field name before retrying.
         """,
         """
-        All tools require the hosted MCP endpoint at /mcp with OAuth or a Speko
-        API key supplied as Authorization: Bearer sk_*. Tool names use
+        All tools require the hosted MCP endpoint at /mcp. Interactive clients
+        may use OAuth; automation may supply a Speko API key as Authorization:
+        Bearer sk_*. Tool names use
         domain.action dot notation, for example agents.list, sessions.create,
         docs.search, and knowledge_bases.documents.create.
         """,
         """
-        One exception: router.keys.list / create / update / revoke provision
-        keys for the OpenAI-compatible router at api.speko.ai, and require
-        OAuth. A Speko API key cannot mint router keys. A router key carries
-        its routing policy (language, use case, objective, max price, and an
-        ordered chain per stage whose element 0 is the pin), so a caller who
-        configured it sends no routing headers.
+        gateway.keys.list / create / revoke manage organization-owned Runtime
+        Gateway keys. They currently require gateway.keys.manage on an
+        authenticating Platform API key; OAuth principals can use the remaining
+        tools. Gateway routing choices remain per request; keys do not carry
+        routing policy.
         """,
     ]
 )
@@ -92,7 +97,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_docs_tools(mcp)
     register_resources(mcp)
     register_prompts(mcp)
-    register_router_tools(mcp)
+    register_gateway_tools(mcp)
     register_builder_tools(mcp)
     mcp.add_middleware(ToolProfileMiddleware())
     return mcp
@@ -103,7 +108,11 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     if auth is None:
         auth = build_auth(mcp_path=MCP_PATH)
     mcp = create_server(auth=auth)
-    mcp_app = mcp.http_app(path=MCP_PATH)
+    mcp_app = mcp.http_app(
+        path=MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+    )
 
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
@@ -125,7 +134,7 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
             Route("/", endpoint=docs_redirect, methods=["GET"]),
             Route("/health", endpoint=health_check, methods=["GET"]),
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
-            Mount("/", app=mcp_app),
+            Mount("/", app=MCPProtocolGuard(mcp_app)),
         ],
         middleware=[Middleware(RequestContextMiddleware)],  # type: ignore[arg-type]
         lifespan=lifespan,
@@ -135,3 +144,110 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     app.state.fastmcp_server = mcp
     app.state.auth_mcp_server = mcp
     return app
+
+
+ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
+
+
+class MCPProtocolGuard:
+    """Reject every legacy/session transport shape before FastMCP auth runs."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") != MCP_PATH:
+            await self.app(scope, receive, send)
+            return
+
+        if scope.get("method") != "POST":
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "POST required"},
+                },
+                status_code=405,
+                headers={"Allow": "POST"},
+            )
+            await response(scope, receive, send)
+            return
+
+        headers = scope.get("headers", [])
+        versions = [
+            value.decode("latin-1")
+            for name, value in headers
+            if name.lower() == b"mcp-protocol-version"
+        ]
+        has_session = any(name.lower() == b"mcp-session-id" for name, _ in headers)
+        if len(versions) != 1 or has_session:
+            if has_session:
+                message = "Mcp-Session-Id is not supported"
+            elif not versions:
+                message = "MCP-Protocol-Version header is required"
+            else:
+                message = "MCP-Protocol-Version header appears more than once"
+            await self._jsonrpc_error(scope, receive, send, HEADER_MISMATCH, message)
+            return
+        if versions[0] != MCP_PROTOCOL_VERSION:
+            await self._jsonrpc_error(
+                scope,
+                receive,
+                send,
+                UNSUPPORTED_PROTOCOL_VERSION,
+                "Unsupported protocol version",
+                data={"supported": [MCP_PROTOCOL_VERSION], "requested": versions[0]},
+            )
+            return
+        await self._call_json_app(scope, receive, send)
+
+    async def _call_json_app(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Keep transport-level authentication failures JSON-only too."""
+        messages: list[ASGIMessage] = []
+
+        async def capture(message: ASGIMessage) -> None:
+            messages.append(message)
+
+        await self.app(scope, receive, capture)
+        start = next(
+            (message for message in messages if message["type"] == "http.response.start"),
+            None,
+        )
+        if start is not None and start["status"] in {401, 403}:
+            headers = {
+                name.decode("latin-1"): value.decode("latin-1")
+                for name, value in start.get("headers", [])
+                if name.lower() not in {b"content-length", b"content-type"}
+            }
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32001, "message": "Authentication required"},
+                },
+                status_code=start["status"],
+                headers=headers,
+            )
+            await response(scope, receive, send)
+            return
+        for message in messages:
+            await send(message)
+
+    @staticmethod
+    async def _jsonrpc_error(
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        code: int,
+        message: str,
+        *,
+        data: dict[str, object] | None = None,
+    ) -> None:
+        error: dict[str, object] = {"code": code, "message": message}
+        if data is not None:
+            error["data"] = data
+        response = JSONResponse(
+            {"jsonrpc": "2.0", "id": None, "error": error},
+            status_code=400,
+        )
+        await response(scope, receive, send)

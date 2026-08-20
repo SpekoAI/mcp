@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
@@ -558,10 +558,10 @@ def register_action_tools(mcp: FastMCP) -> None:
             output_schema=SPEKO_API_OUTPUT_SCHEMA,
             annotations=ToolAnnotations(
                 title=title,
-                readOnlyHint=name in READ_ONLY_ACTION_TOOL_NAMES,
-                destructiveHint=name in DESTRUCTIVE_ACTION_TOOL_NAMES,
-                idempotentHint=name in READ_ONLY_ACTION_TOOL_NAMES,
-                openWorldHint=True,
+                read_only_hint=name in READ_ONLY_ACTION_TOOL_NAMES,
+                destructive_hint=name in DESTRUCTIVE_ACTION_TOOL_NAMES,
+                idempotent_hint=name in READ_ONLY_ACTION_TOOL_NAMES,
+                open_world_hint=True,
             ),
         )
 

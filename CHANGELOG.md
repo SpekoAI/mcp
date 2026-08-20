@@ -1,17 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
-- Router key provisioning over MCP: `router.keys.list` / `create` / `update` /
-  `revoke` relay to the router control plane (`SPEKOAI_ROUTER_CONTROL_URL`,
-  default `https://control.speko.ai`), so an agent can create a key with its
-  full routing policy — language, use case, objective, max price, and the
-  ordered per-stage chain — instead of the console being the only way in.
-  Two rules the tools enforce before the wire: a Speko API key is refused
-  (only a signed-in OAuth user may mint keys, mirroring `requireUserPrincipal`
-  on the Agents side), and a PARTIAL policy is filled to the full seven-field
-  shape the control plane's `parseKeyPolicy` demands. Same hosted endpoint,
-  same OAuth audience, no new server.
+- Cut over to FastMCP `4.0.0b3` and MCP `2026-07-28` with POST-only,
+  JSON-only, stateless requests and no initialization or session identifiers.
+- Keep OAuth without MCP-side OAuth state: Better Auth is the external
+  authorization server, FastMCP validates MCP-audience JWTs independently on
+  every request, and API-key verification remains available for automation.
+- Replace OAuth token passthrough with 60-second, API-audience delegation JWTs
+  for Platform calls. Remove the old OAuthProxy, Redis, and local credential
+  directory.
+- Replace Router key tools with scoped `gateway.keys.list`,
+  `gateway.keys.create(name)`, and `gateway.keys.revoke(key_id)` Runtime tools.
+- Remove legacy protocol handling and the stdio OAuth bridge; modern clients
+  use direct HTTP OAuth discovery.
 
 ## 0.1.15
 

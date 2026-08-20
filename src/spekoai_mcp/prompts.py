@@ -15,7 +15,7 @@ from typing import Literal
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import PromptError
-from fastmcp.prompts.prompt import Message
+from fastmcp.prompts import Message
 
 Scenario = Literal[
     "voice_conversation",

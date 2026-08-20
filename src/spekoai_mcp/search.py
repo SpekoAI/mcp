@@ -30,9 +30,7 @@ class DocHit(BaseModel):
     package_name: str
     kind: str
     score: float = Field(description="Higher = better match.")
-    snippet: str = Field(
-        description="~240 char excerpt around the first match, with ellipses."
-    )
+    snippet: str = Field(description="~240 char excerpt around the first match, with ellipses.")
 
 
 @dataclass
@@ -88,11 +86,13 @@ def search(query: str, limit: int = 5) -> list[DocHit]:
 
         score = 2.0 * substring_hits + 1.0 * overlap + 3.0 * title_bonus
         if score > 0:
-            scored.append(_Scored(
-                slug=slug,
-                score=score,
-                first_hit=first_sub_hit if first_sub_hit >= 0 else None,
-            ))
+            scored.append(
+                _Scored(
+                    slug=slug,
+                    score=score,
+                    first_hit=first_sub_hit if first_sub_hit >= 0 else None,
+                )
+            )
 
     scored.sort(key=lambda s: s.score, reverse=True)
     top = scored[:limit]
@@ -106,12 +106,14 @@ def search(query: str, limit: int = 5) -> list[DocHit]:
             # No substring hit but token overlap matched — show the
             # first non-blank paragraph so the result is still useful.
             snippet = _snippet_around(body, 0)
-        hits.append(DocHit(
-            slug=s.slug,
-            title=entry["title"],
-            package_name=entry["package_name"],
-            kind=entry["kind"],
-            score=round(s.score, 3),
-            snippet=snippet,
-        ))
+        hits.append(
+            DocHit(
+                slug=s.slug,
+                title=entry["title"],
+                package_name=entry["package_name"],
+                kind=entry["kind"],
+                score=round(s.score, 3),
+                snippet=snippet,
+            )
+        )
     return hits

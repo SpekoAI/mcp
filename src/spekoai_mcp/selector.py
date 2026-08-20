@@ -55,27 +55,27 @@ RequestType = Literal["stt", "llm", "tts", "s2s"]
 # ---------------------------------------------------------------------------
 
 _STT_PRESETS: dict[OptimizeFor, dict[str, float]] = {
-    "latency":  {"wer": 0.2,  "ttfp": 0.7,  "cost": 0.1},
-    "accuracy": {"wer": 0.8,  "ttfp": 0.15, "cost": 0.05},
-    "cost":     {"wer": 0.15, "ttfp": 0.15, "cost": 0.7},
+    "latency": {"wer": 0.2, "ttfp": 0.7, "cost": 0.1},
+    "accuracy": {"wer": 0.8, "ttfp": 0.15, "cost": 0.05},
+    "cost": {"wer": 0.15, "ttfp": 0.15, "cost": 0.7},
 }
 
 _TTS_PRESETS: dict[OptimizeFor, dict[str, float]] = {
-    "latency":  {"cer": 0.2,  "ttfb": 0.7,  "cost": 0.1},
-    "accuracy": {"cer": 0.8,  "ttfb": 0.15, "cost": 0.05},
-    "cost":     {"cer": 0.15, "ttfb": 0.15, "cost": 0.7},
+    "latency": {"cer": 0.2, "ttfb": 0.7, "cost": 0.1},
+    "accuracy": {"cer": 0.8, "ttfb": 0.15, "cost": 0.05},
+    "cost": {"cer": 0.15, "ttfb": 0.15, "cost": 0.7},
 }
 
 _S2S_PRESETS: dict[OptimizeFor, dict[str, float]] = {
-    "latency":  {"tool_call_p50": 0.7,  "task_success": 0.2,  "cost": 0.1},
-    "accuracy": {"tool_call_p50": 0.15, "task_success": 0.8,  "cost": 0.05},
-    "cost":     {"tool_call_p50": 0.15, "task_success": 0.15, "cost": 0.7},
+    "latency": {"tool_call_p50": 0.7, "task_success": 0.2, "cost": 0.1},
+    "accuracy": {"tool_call_p50": 0.15, "task_success": 0.8, "cost": 0.05},
+    "cost": {"tool_call_p50": 0.15, "task_success": 0.15, "cost": 0.7},
 }
 
 _LLM_PRESETS: dict[OptimizeFor, dict[str, float]] = {
-    "latency":  {"quality": 0.2,  "ttft": 0.7,  "cost": 0.1},
-    "accuracy": {"quality": 0.8,  "ttft": 0.15, "cost": 0.05},
-    "cost":     {"quality": 0.15, "ttft": 0.15, "cost": 0.7},
+    "latency": {"quality": 0.2, "ttft": 0.7, "cost": 0.1},
+    "accuracy": {"quality": 0.8, "ttft": 0.15, "cost": 0.05},
+    "cost": {"quality": 0.15, "ttft": 0.15, "cost": 0.7},
 }
 
 
@@ -107,18 +107,14 @@ _FIXTURES: dict[str, str] = {
 class RankedCandidate(BaseModel):
     """One ranked provider pick the MCP tool surfaces to its caller."""
 
-    provider_id: str = Field(
-        description="Unique fixture row id, e.g. 'deepgram-nova3'."
-    )
+    provider_id: str = Field(description="Unique fixture row id, e.g. 'deepgram-nova3'.")
     canonical_id: str = Field(
         description=(
             "Provider family id derived from the fixture's id prefix "
             "(split on first '-'). Drives the runtime supported flag."
         ),
     )
-    display_name: str = Field(
-        description="Human label, e.g. 'Deepgram Nova-3'."
-    )
+    display_name: str = Field(description="Human label, e.g. 'Deepgram Nova-3'.")
     model_id: str = Field(description="Model name, e.g. 'Nova-3'.")
     score: float = Field(
         description=(
@@ -145,9 +141,7 @@ class RankedCandidate(BaseModel):
             "is unpublished (e.g. xAI realtime today)."
         ),
     )
-    status: str = Field(
-        description="Fixture status: 'production' | 'provisional' | 'warned'."
-    )
+    status: str = Field(description="Fixture status: 'production' | 'provisional' | 'warned'.")
     supported: bool = Field(
         description=(
             "True when the SpekoAI runtime can dispatch to this "
@@ -195,9 +189,7 @@ class SelectionResult(BaseModel):
 @cache
 def _load_fixture(name: str) -> dict[str, Any]:
     """Load a bundled v0 fixture from ``spekoai_mcp/_data/``."""
-    raw = (files("spekoai_mcp._data") / _FIXTURES[name]).read_text(
-        encoding="utf-8"
-    )
+    raw = (files("spekoai_mcp._data") / _FIXTURES[name]).read_text(encoding="utf-8")
     return json.loads(raw)
 
 
@@ -497,10 +489,7 @@ def _rank_llm(language: str, optimize_for: OptimizeFor) -> list[RankedCandidate]
         span = hi - lo
         if span == 0:
             return [1.0 for _ in vals]
-        return [
-            ((hi - v) / span) if direction == "lower" else ((v - lo) / span)
-            for v in vals
-        ]
+        return [((hi - v) / span) if direction == "lower" else ((v - lo) / span) for v in vals]
 
     quality_norm = axis_values(lambda r: r.get("quality_score"), "higher")
     ttft_norm = axis_values(lambda r: r.get("ttft_p50_ms"), "lower")
@@ -547,9 +536,7 @@ def _rank_llm(language: str, optimize_for: OptimizeFor) -> list[RankedCandidate]
 # ---------------------------------------------------------------------------
 
 
-def _dedupe_and_cap(
-    candidates: list[RankedCandidate], limit: int
-) -> list[RankedCandidate]:
+def _dedupe_and_cap(candidates: list[RankedCandidate], limit: int) -> list[RankedCandidate]:
     """Collapse same (canonical_id, model_id) duplicates, keep best score, cap."""
     seen: dict[tuple[str, str], RankedCandidate] = {}
     for c in candidates:

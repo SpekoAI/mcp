@@ -1,4 +1,4 @@
-"""SpekoAI MCP server — FastMCP v3 wrapper around the spekoai SDK."""
+"""SpekoAI MCP server — stateless FastMCP v4 operational tools."""
 
 from spekoai_mcp.server import create_server
 

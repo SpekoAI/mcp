@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastmcp import FastMCP
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
@@ -93,10 +93,10 @@ def register_builder_tools(mcp: FastMCP) -> None:
             ),
             annotations=ToolAnnotations(
                 title=title,
-                readOnlyHint=True,
-                destructiveHint=False,
-                idempotentHint=True,
-                openWorldHint=name != "get_code_snippet",
+                read_only_hint=True,
+                destructive_hint=False,
+                idempotent_hint=True,
+                open_world_hint=name != "get_code_snippet",
             ),
         )
 

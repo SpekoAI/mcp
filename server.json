@@ -7,7 +7,7 @@
     "url": "https://github.com/SpekoAI/mcp",
     "source": "github"
   },
-  "version": "1.0.12",
+  "version": "2.0.0",
   "websiteUrl": "https://speko.ai",
   "remotes": [
     {
@@ -16,7 +16,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Optional Speko API key for clients that do not use OAuth. Use Bearer sk_...",
+          "description": "Optional Speko Platform API key for clients not using OAuth. Use Bearer sk_...",
           "format": "string",
           "isRequired": false,
           "isSecret": true,
