@@ -103,9 +103,18 @@ CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset({"audio.synthesize"})
 # mention of parse_external_config is a migrations-only escape hatch, not a
 # step in any ChatGPT workflow.
 #
+# Two builder-only tools are borrowed. `audio.synthesize` routes by intent and
+# will pick a voice on its own, so the profile is not dead-ended without them —
+# but a plugin that can speak in hundreds of voices and a hundred-odd languages
+# and cannot tell you which ones exist is answering half the question. Speaking
+# is the differentiator here (ChatGPT cannot produce these voices itself), so
+# `voices.list` and `models.list` come with it. They are pure reads.
+#
 # Reads first, writes last, in the order clients see them.
 CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "docs.search",
+    "voices.list",
+    "models.list",
     "agents.list",
     "agents.get",
     "agents.preview_stacks",

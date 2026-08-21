@@ -62,11 +62,15 @@ def test_chatgpt_preset_has_no_duplicates() -> None:
     assert len(CHATGPT_PROFILE_TOOL_NAMES) == len(set(CHATGPT_PROFILE_TOOL_NAMES))
 
 
-def test_chatgpt_preset_borrows_no_builder_only_tool() -> None:
-    """Builder-only tools are registered last and hidden everywhere else;
-    pulling one in here would need the same explicit opt-in the builder
-    preset has, and the ChatGPT surface does not want code snippets."""
-    assert not set(CHATGPT_PROFILE_TOOL_NAMES) & set(BUILDER_TOOL_NAMES)
+def test_chatgpt_preset_borrows_only_the_two_catalogue_reads() -> None:
+    """Builder-only tools are hidden everywhere else, so borrowing one is an
+    explicit opt-in. Exactly two are borrowed — the voice and model catalogues,
+    because a plugin that can speak in hundreds of voices should be able to say
+    which ones exist. `code_snippets.get` is not: nobody pastes integration code
+    in ChatGPT."""
+    borrowed = set(CHATGPT_PROFILE_TOOL_NAMES) & set(BUILDER_TOOL_NAMES)
+    assert borrowed == {"voices.list", "models.list"}
+    assert "code_snippets.get" not in CHATGPT_PROFILE_TOOL_NAMES
 
 
 def test_chatgpt_preset_keeps_the_calling_wedge() -> None:
@@ -214,6 +218,8 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
     by_name = {tool.name: tool for tool in tools}
     for read_only in (
         "docs.search",
+        "voices.list",
+        "models.list",
         "agents.list",
         "agents.get",
         "agents.preview_stacks",

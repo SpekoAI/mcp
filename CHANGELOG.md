@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.2
+
+- Add the `chatgpt` tool profile (`/mcp?profile=chatgpt`), the 18-tool surface
+  published to OpenAI's Plugin Directory. It is a separate preset from
+  `connector`, not a reuse of it: `connector` is shaped by Anthropic's
+  directory policy, which bans AI-generated audio and so drops
+  `audio.synthesize`, while OpenAI bans selling digital goods and any checkout
+  path, which removes `phone_numbers.create`, `phone_numbers.available.search`
+  and every `credits.*` and `usage.*` read. It borrows two builder-only tools,
+  `voices.list` and `models.list`, so a plugin that can speak in hundreds of
+  voices can also say which ones exist; `code_snippets.get` stays out.
+- Rename `apply_connector_disclosure` to `apply_directory_disclosure`; it now
+  fires for every profile in `DIRECTORY_PROFILES`, so outbound calls created
+  through either published directory surface disclose that the caller is an AI.
+  Direct MCP clients on the default path are still never rewritten.
+- Unify Platform and Gateway API key management (#2195).
+
 ## 0.2.1
 
 - Fix v4 package metadata and make MCP Nx checks fail closed
