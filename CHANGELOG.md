@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Fix v4 package metadata and make MCP Nx checks fail closed
+
 ## 0.2.0
 
 - Cut over to FastMCP `4.0.0b3` and MCP `2026-07-28` with POST-only,
