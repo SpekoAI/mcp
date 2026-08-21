@@ -58,7 +58,6 @@ SPEKOAI_MCP_DELEGATION_SECRET=<32+ character shared secret>
 SPEKOAI_MCP_DELEGATION_ISSUER=https://mcp.speko.ai # optional default
 SPEKOAI_API_AUDIENCE=https://api.speko.dev         # optional default
 SPEKOAI_API_URL=https://api.speko.dev              # optional default
-SPEKOAI_GATEWAY_URL=https://gateway.speko.dev      # optional default
 ```
 
 Platform service:
@@ -130,9 +129,6 @@ curl -sS "$MCP_URL" \
   --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"io.modelcontextprotocol/clientInfo":{"name":"smoke","version":"1"},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}'
 ```
 
-Gateway key tools currently require a newly created Platform API key carrying
-`gateway.keys.manage`; OAuth principals can use the remaining tools.
-
 ## Failure diagnosis
 
 | Symptom | Check |
@@ -142,7 +138,6 @@ Gateway key tools currently require a newly created Platform API key carrying
 | Tool authenticates but Platform returns 401 | The same delegation secret/issuer/API audience is configured on MCP and Platform. |
 | Browser sign-in fails at registration | Pre-register the client or enable Better Auth's DCR compatibility endpoint; CIMD needs the future Better Auth extension rollout. |
 | API-key bearer returns 401 | Key starts with `sk_`, is not revoked, and Platform context returns 200. |
-| Gateway tool returns 403 | Use an API key carrying `gateway.keys.manage`; OAuth does not grant this machine scope. |
 | Protocol 400 / -32020 | Send exactly one version header and no session id. |
 | Protocol 400 / -32022 | Upgrade the client to MCP `2026-07-28`. |
 | Different replicas disagree | Verify no old OAuthProxy image remains and no request depends on local state. |

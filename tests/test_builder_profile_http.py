@@ -24,7 +24,6 @@ from fastmcp.server.auth import AccessToken, MultiAuth, TokenVerifier
 
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.gateway_tools import GATEWAY_TOOL_NAMES
 from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES
 from spekoai_mcp.server import create_app
 
@@ -76,7 +75,7 @@ def http_base_url() -> Iterator[str]:
 async def test_default_mcp_tool_list_is_unchanged_over_http(http_base_url: str) -> None:
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = [tool.name for tool in await client.list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + GATEWAY_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 async def test_unknown_profile_value_is_default_over_http(http_base_url: str) -> None:
@@ -84,7 +83,7 @@ async def test_unknown_profile_value_is_default_over_http(http_base_url: str) ->
         StreamableHttpTransport(f"{http_base_url}/mcp?profile=ops", headers=HEADERS)
     ) as client:
         names = [tool.name for tool in await client.list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + GATEWAY_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 async def test_builder_profile_over_http(http_base_url: str) -> None:

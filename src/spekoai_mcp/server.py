@@ -22,7 +22,6 @@ from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
-from spekoai_mcp.gateway_tools import register_gateway_tools
 from spekoai_mcp.profiles import ToolProfileMiddleware
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
@@ -59,13 +58,6 @@ INSTRUCTIONS = "\n\n".join(
         domain.action dot notation, for example agents.list, sessions.create,
         docs.search, and knowledge_bases.documents.create.
         """,
-        """
-        gateway.keys.list / create / revoke manage organization-owned Runtime
-        Gateway keys. They currently require gateway.keys.manage on an
-        authenticating Platform API key; OAuth principals can use the remaining
-        tools. Gateway routing choices remain per request; keys do not carry
-        routing policy.
-        """,
     ]
 )
 
@@ -97,7 +89,6 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_docs_tools(mcp)
     register_resources(mcp)
     register_prompts(mcp)
-    register_gateway_tools(mcp)
     register_builder_tools(mcp)
     mcp.add_middleware(ToolProfileMiddleware())
     return mcp

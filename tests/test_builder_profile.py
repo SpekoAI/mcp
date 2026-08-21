@@ -24,14 +24,13 @@ from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.builder_tools import BUILDER_TOOL_NAMES
 from spekoai_mcp.code_snippets import SNIPPET_FRAMEWORKS
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.gateway_tools import GATEWAY_TOOL_NAMES
 from spekoai_mcp.profiles import (
     BUILDER_ONLY_TOOL_NAMES,
     BUILDER_PROFILE_TOOL_NAMES,
 )
 from spekoai_mcp.server import create_server
 
-DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES + GATEWAY_TOOL_NAMES
+DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 def _force_http_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:

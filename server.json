@@ -16,7 +16,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Optional Speko Platform API key for clients not using OAuth. Use Bearer sk_...",
+          "description": "Optional product-wide Speko Platform API key for clients not using OAuth. Use Bearer sk_live_...",
           "format": "string",
           "isRequired": false,
           "isSecret": true,

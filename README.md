@@ -55,14 +55,7 @@ The default profile exposes operational tools using domain/action names:
 - sessions and calls: create, list, inspect, transcript, recording, and test
   call operations;
 - phone numbers, knowledge bases, evals, migration helpers, audio helpers, and
-  `docs.search`;
-- Gateway keys: `gateway.keys.list`, `gateway.keys.create(name)`, and
-  `gateway.keys.revoke(key_id)`.
-
-Gateway key tools require the authenticating Platform API key to carry
-`gateway.keys.manage`. An organization owner or admin grants it by selecting
-**Manage Gateway API keys** during key creation. Gateway secrets are returned
-only once, and routing remains a per-request choice rather than key policy.
+  `docs.search`.
 
 ### Builder profile
 
@@ -84,18 +77,14 @@ Better Auth issues JWT access tokens bound to the exact MCP resource URL. The
 MCP server verifies their signature, issuer, audience, expiry, and scopes on
 every request without retaining OAuth or protocol state.
 
-Platform API keys are independently verified with
+Product-wide Platform API keys are independently verified with
 `GET /v1/auth/api-key-context` on every request. Speko API tools forward API
 keys unchanged. For OAuth callers, the MCP service mints a separate 60-second
 JWT bound to the Platform API; it never forwards the client-presented MCP token.
-Gateway key tools still require a Platform API key carrying
-`gateway.keys.manage`, and Runtime verifies that scope again.
 
 Configuration:
 
 - `SPEKOAI_API_URL` — Platform API origin, default `https://api.speko.dev`;
-- `SPEKOAI_GATEWAY_URL` — Runtime Gateway origin, default
-  `https://gateway.speko.dev`;
 - `SPEKOAI_OAUTH_ISSUER` — Better Auth issuer, for example
   `https://platform.speko.ai/api/auth`;
 - `SPEKOAI_MCP_BASE_URL` — public MCP origin used to derive the exact resource
