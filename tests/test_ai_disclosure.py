@@ -70,7 +70,7 @@ def test_excluded_prefixes_are_call_free() -> None:
 def test_gate_applies_on_connector_profile(monkeypatch) -> None:
     """The published directory surface always discloses."""
     monkeypatch.setattr(action_tools, "current_profile", lambda: CONNECTOR_PROFILE)
-    body = action_tools.apply_connector_disclosure({"firstMessage": "Hi, this is Ava."})
+    body = action_tools.apply_directory_disclosure({"firstMessage": "Hi, this is Ava."})
     assert body["firstMessage"].startswith(DISCLOSURE_OPENER)
     assert DISCLOSURE_RULE in body["systemPrompt"]
 
@@ -79,11 +79,11 @@ def test_gate_leaves_direct_mcp_clients_alone(monkeypatch) -> None:
     """Claude Code, Codex and Cursor keep their existing behaviour."""
     for profile in (None, "builder"):
         monkeypatch.setattr(action_tools, "current_profile", lambda p=profile: p)
-        body = action_tools.apply_connector_disclosure({"firstMessage": "Hi, this is Ava."})
+        body = action_tools.apply_directory_disclosure({"firstMessage": "Hi, this is Ava."})
         assert body == {"firstMessage": "Hi, this is Ava."}, profile
 
 
 def test_gate_is_inert_without_an_http_request() -> None:
     """stdio and in-process callers resolve to no profile, so nothing is rewritten."""
-    body = action_tools.apply_connector_disclosure({"firstMessage": "Hi."})
+    body = action_tools.apply_directory_disclosure({"firstMessage": "Hi."})
     assert body == {"firstMessage": "Hi."}

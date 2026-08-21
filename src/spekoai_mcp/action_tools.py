@@ -26,7 +26,7 @@ from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import http_client
-from spekoai_mcp.profiles import CONNECTOR_PROFILE, current_profile
+from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
@@ -80,13 +80,16 @@ def apply_ai_disclosure(body: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def apply_connector_disclosure(body: dict[str, Any]) -> dict[str, Any]:
-    """Apply AI disclosure only on the published directory surface.
+def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
+    """Apply AI disclosure on every published directory surface.
 
-    Outside an HTTP request ``current_profile()`` returns ``None``, so stdio
-    and in-process callers are never rewritten.
+    Fires for any profile in ``DIRECTORY_PROFILES`` — Anthropic's MCP
+    Directory (`connector`) and OpenAI's Plugin Directory (`chatgpt`) both
+    require that a person picking up the phone is told they are speaking to
+    an AI. Outside an HTTP request ``current_profile()`` returns ``None``,
+    so stdio and in-process callers are never rewritten.
     """
-    if current_profile() == CONNECTOR_PROFILE:
+    if current_profile() in DIRECTORY_PROFILES:
         apply_ai_disclosure(body)
     return body
 
@@ -935,7 +938,7 @@ async def create_agent(
     (quality / latency / cost) and intent.region. Stack tiers and their
     components for a given description are reported by preview_stacks."""
     validate_create_agent_body(body)
-    apply_connector_disclosure(body)
+    apply_directory_disclosure(body)
     return await call("POST", "/v1/agents", body=body, text="Created agent.")
 
 
@@ -986,7 +989,7 @@ async def update_agent(
 ) -> ToolResult:
     """Update one Speko agent."""
     validate_update_agent_body(body)
-    apply_connector_disclosure(body)
+    apply_directory_disclosure(body)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",
@@ -1272,7 +1275,7 @@ async def create_session(
 ) -> ToolResult:
     """Create a browser/WebRTC or server-to-server voice session."""
     validate_create_session_body(body)
-    apply_connector_disclosure(body)
+    apply_directory_disclosure(body)
     return await call("POST", "/v1/sessions", body=body, text="Created session.")
 
 
@@ -1307,7 +1310,7 @@ async def create_phone_session(
 ) -> ToolResult:
     """Create an outbound phone session."""
     validate_create_phone_session_body(body)
-    apply_connector_disclosure(body)
+    apply_directory_disclosure(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 
