@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3
+
+- Restore Cursor and other MCP `2025-11-25` clients on the existing `/mcp`
+  endpoint through FastMCP's stateless legacy handshake while retaining native
+  MCP `2026-07-28`, POST-only transport, OAuth/API-key auth, and no session IDs.
+- Record sanitized legacy-protocol acceptance telemetry for a future
+  ecosystem-driven deprecation.
+
 ## 0.2.2
 
 - Add the `chatgpt` tool profile (`/mcp?profile=chatgpt`), the 18-tool surface

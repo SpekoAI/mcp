@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import lru_cache
@@ -29,7 +30,9 @@ from spekoai_mcp.resources import register_resources
 MCP_PATH = DEFAULT_MCP_PATH
 MCP_PROTOCOL_VERSION = "2026-07-28"
 HEADER_MISMATCH = -32020
-UNSUPPORTED_PROTOCOL_VERSION = -32022
+LEGACY_USER_AGENT_MAX_LENGTH = 128
+
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = "\n\n".join(
     " ".join(paragraph.split())
@@ -141,7 +144,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
 class MCPProtocolGuard:
-    """Reject every legacy/session transport shape before FastMCP auth runs."""
+    """Keep the hosted endpoint POST-only and sessionless across both MCP eras."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -171,28 +174,28 @@ class MCPProtocolGuard:
             if name.lower() == b"mcp-protocol-version"
         ]
         has_session = any(name.lower() == b"mcp-session-id" for name, _ in headers)
-        if len(versions) != 1 or has_session:
+        if len(versions) > 1 or has_session:
             if has_session:
                 message = "Mcp-Session-Id is not supported"
-            elif not versions:
-                message = "MCP-Protocol-Version header is required"
             else:
                 message = "MCP-Protocol-Version header appears more than once"
             await self._jsonrpc_error(scope, receive, send, HEADER_MISMATCH, message)
             return
-        if versions[0] != MCP_PROTOCOL_VERSION:
-            await self._jsonrpc_error(
-                scope,
-                receive,
-                send,
-                UNSUPPORTED_PROTOCOL_VERSION,
-                "Unsupported protocol version",
-                data={"supported": [MCP_PROTOCOL_VERSION], "requested": versions[0]},
-            )
-            return
-        await self._call_json_app(scope, receive, send)
+        await self._call_json_app(
+            scope,
+            receive,
+            send,
+            legacy_candidate=not versions,
+        )
 
-    async def _call_json_app(self, scope: Scope, receive: Receive, send: Send) -> None:
+    async def _call_json_app(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        *,
+        legacy_candidate: bool,
+    ) -> None:
         """Keep transport-level authentication failures JSON-only too."""
         messages: list[ASGIMessage] = []
 
@@ -204,6 +207,18 @@ class MCPProtocolGuard:
             (message for message in messages if message["type"] == "http.response.start"),
             None,
         )
+        if start is not None and 200 <= start["status"] < 300 and legacy_candidate:
+            user_agent = self._sanitized_user_agent(scope)
+            logger.info(
+                "mcp_legacy_protocol_request_accepted "
+                "protocol_era=legacy user_agent=%r",
+                user_agent,
+                extra={
+                    "event": "mcp_legacy_protocol_request_accepted",
+                    "protocol_era": "legacy",
+                    "user_agent": user_agent,
+                },
+            )
         if start is not None and start["status"] in {401, 403}:
             headers = {
                 name.decode("latin-1"): value.decode("latin-1")
@@ -223,6 +238,19 @@ class MCPProtocolGuard:
             return
         for message in messages:
             await send(message)
+
+    @staticmethod
+    def _sanitized_user_agent(scope: Scope) -> str:
+        raw = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"user-agent"
+            ),
+            "",
+        )
+        printable = "".join(character if character.isprintable() else "?" for character in raw)
+        return printable[:LEGACY_USER_AGENT_MAX_LENGTH]
 
     @staticmethod
     async def _jsonrpc_error(

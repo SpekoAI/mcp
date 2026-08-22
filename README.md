@@ -7,17 +7,19 @@ https://mcp.speko.ai/mcp
 ```
 
 It accepts authenticated `POST` requests using either OAuth or a Speko
-Platform API key:
+Platform API key. Configure the URL and let the client negotiate the protocol;
+do not add protocol headers by hand:
 
 ```text
 Authorization: Bearer <OAuth access token or sk_live_xxx>
-MCP-Protocol-Version: 2026-07-28
 Content-Type: application/json
 ```
 
-The transport is stateless and JSON-only. There is no initialization request,
-session id, SSE response, local OAuth transaction store, or stdio transport.
-Better Auth owns authorization, consent, refresh tokens, and client
+The transport is stateless and JSON-only. Modern clients use MCP `2026-07-28`
+directly; handshake-era clients such as Cursor negotiate MCP `2025-11-25`
+through `initialize`. Both paths remain sessionless: there is no
+`Mcp-Session-Id`, SSE response, local OAuth transaction store, or stdio
+transport. Better Auth owns authorization, consent, refresh tokens, and client
 registration; the MCP service only validates signed access tokens per request.
 
 ## Client setup
@@ -28,7 +30,7 @@ Use the direct-HTTP installer and select OAuth (the default interactive choice):
 npx @spekoai/mcp@latest init
 ```
 
-Or configure a modern OAuth-capable client directly. For example, Codex reads:
+Or configure an OAuth-capable client directly. For example, Codex reads:
 
 ```toml
 [mcp_servers.speko]

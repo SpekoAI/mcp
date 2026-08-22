@@ -1,6 +1,7 @@
 # FastMCP v4 stateless deployment
 
-This is the internal operator guide for MCP `2026-07-28`. It is intentionally
+This is the internal operator guide for the MCP `2026-07-28` stateless path
+and the sessionless `2025-11-25` compatibility path. It is intentionally
 outside the public document manifest assembled by `scripts/sync_docs.py`.
 
 ## Architecture
@@ -86,9 +87,16 @@ FASTMCP_HOME
 ## Protocol contract
 
 - `/mcp` accepts authenticated JSON `POST` requests only.
-- Every request carries exactly one `MCP-Protocol-Version: 2026-07-28` header.
-- `initialize`, legacy protocol versions, `Mcp-Session-Id`, GET/DELETE
-  transport requests, SSE, and stdio are unsupported.
+- Modern requests carry MCP `2026-07-28` in both their
+  `MCP-Protocol-Version` header and per-request `_meta` envelope; they require
+  no initialization.
+- Handshake-era clients may send a headerless `initialize` request and
+  negotiate MCP `2025-11-25`. Subsequent requests carry the negotiated legacy
+  version header.
+- Both eras are stateless. `Mcp-Session-Id`, GET/DELETE transport requests,
+  SSE, and stdio remain unsupported.
+- Clients configure only the endpoint and authentication. They must negotiate
+  their own protocol era rather than receiving hand-written protocol headers.
 - OAuth discovery routes are public GETs outside `/mcp`.
 - FastMCP serves `/.well-known/oauth-protected-resource/mcp`; authorization,
   token, refresh, and registration routes remain on Better Auth.
@@ -115,9 +123,9 @@ curl -sS https://platform.speko.ai/.well-known/oauth-authorization-server/api/au
 
 The protected-resource document must identify
 `https://mcp.speko.ai/mcp`, list the Better Auth issuer, and omit
-`offline_access`. Complete a browser OAuth connection in a modern MCP client,
-then call `server/discover` and `organization.get` twice with requests routed to
-different replicas. Responses must contain no `Mcp-Session-Id`.
+`offline_access`. Complete browser OAuth connections in one modern client and
+Cursor, then call `organization.get` twice with requests routed to different
+replicas. Responses in both eras must contain no `Mcp-Session-Id`.
 
 For API-key coverage, set `MCP_URL` and `SPEKO_API_KEY`:
 
@@ -125,9 +133,22 @@ For API-key coverage, set `MCP_URL` and `SPEKO_API_KEY`:
 curl -sS "$MCP_URL" \
   -H "Authorization: Bearer $SPEKO_API_KEY" \
   -H "MCP-Protocol-Version: 2026-07-28" \
+  -H "Mcp-Method: server/discover" \
   -H "Content-Type: application/json" \
-  --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"io.modelcontextprotocol/clientInfo":{"name":"smoke","version":"1"},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}'
+  --data '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientInfo":{"name":"smoke","version":"1"},"io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}'
 ```
+
+Verify the Cursor-compatible handshake without manually adding a version
+header:
+
+```bash
+curl -i -sS "$MCP_URL" \
+  -H "Authorization: Bearer $SPEKO_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"cursor-smoke","version":"1"}}}'
+```
+
+The response must negotiate `2025-11-25` and omit `Mcp-Session-Id`.
 
 ## Failure diagnosis
 
@@ -138,6 +159,12 @@ curl -sS "$MCP_URL" \
 | Tool authenticates but Platform returns 401 | The same delegation secret/issuer/API audience is configured on MCP and Platform. |
 | Browser sign-in fails at registration | Pre-register the client or enable Better Auth's DCR compatibility endpoint; CIMD needs the future Better Auth extension rollout. |
 | API-key bearer returns 401 | Key starts with `sk_`, is not revoked, and Platform context returns 200. |
-| Protocol 400 / -32020 | Send exactly one version header and no session id. |
-| Protocol 400 / -32022 | Upgrade the client to MCP `2026-07-28`. |
+| Protocol 400 / -32020 | Do not set protocol headers manually. For modern requests, verify the version and method headers match the `_meta` envelope and body; for every era, remove duplicate headers and session IDs. |
+| Protocol 400 / -32022 | Let the client negotiate a supported era. Current hosted paths are modern `2026-07-28` and sessionless handshake compatibility through `2025-11-25`. |
 | Different replicas disagree | Verify no old OAuthProxy image remains and no request depends on local state. |
+
+Successful headerless compatibility requests emit
+`mcp_legacy_protocol_request_accepted` with a sanitized User-Agent. Keep the
+legacy path until supported clients, including Cursor stable, adopt the modern
+era; remove it only after a documented deprecation and 30 consecutive days
+without supported-client legacy traffic.

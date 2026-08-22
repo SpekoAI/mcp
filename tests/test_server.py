@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +13,16 @@ from starlette.testclient import TestClient
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.server import MCP_PATH, MCP_PROTOCOL_VERSION, create_app, create_server
+from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES
+from spekoai_mcp.server import (
+    MCP_PATH,
+    MCP_PROTOCOL_VERSION,
+    MCPProtocolGuard,
+    create_app,
+    create_server,
+)
+
+LEGACY_MCP_PROTOCOL_VERSION = "2025-11-25"
 
 
 class StubVerifier(TokenVerifier):
@@ -27,10 +37,22 @@ class StubVerifier(TokenVerifier):
         )
 
 
+class StubOAuthVerifier(TokenVerifier):
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if token != "oauth_valid":
+            return None
+        return AccessToken(
+            token=token,
+            client_id="cursor-test-client",
+            scopes=["openid", "profile", "email"],
+            claims={"sub": "user_1", "auth_method": "oauth"},
+        )
+
+
 def remote_oauth_auth() -> MultiAuth:
     return MultiAuth(
         server=RemoteAuthProvider(
-            token_verifier=StubVerifier(),
+            token_verifier=StubOAuthVerifier(),
             authorization_servers=["https://platform.example/api/auth"],
             base_url="https://mcp.example",
             scopes_supported=["openid", "profile", "email"],
@@ -59,6 +81,34 @@ def modern_headers(method: str, *, token: str = "sk_valid") -> dict[str, str]:
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+
+
+def legacy_initialize_request() -> dict[str, object]:
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": LEGACY_MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": {"name": "cursor", "version": "3.17.8"},
+        },
+    }
+
+
+def legacy_headers(*, token: str = "sk_valid") -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "MCP-Protocol-Version": LEGACY_MCP_PROTOCOL_VERSION,
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
+
+
+def legacy_initialize_headers(*, token: str = "sk_valid") -> dict[str, str]:
+    headers = legacy_headers(token=token)
+    headers.pop("MCP-Protocol-Version")
+    return headers
 
 
 async def test_server_lists_operational_and_docs_tools() -> None:
@@ -276,6 +326,26 @@ def test_oauth_challenge_points_clients_to_protected_resource_metadata() -> None
     assert 'scope="openid profile email"' in challenge
 
 
+def test_legacy_oauth_initialize_gets_json_challenge() -> None:
+    headers = legacy_initialize_headers()
+    headers.pop("Authorization")
+    with TestClient(create_app(auth=remote_oauth_auth())) as client:
+        response = client.post(
+            MCP_PATH,
+            headers=headers,
+            json=legacy_initialize_request(),
+        )
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["error"]["code"] == -32001
+    challenge = response.headers["www-authenticate"]
+    assert (
+        'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource/mcp"'
+        in challenge
+    )
+    assert 'scope="openid profile email"' in challenge
+
+
 def test_modern_discover_is_json_only_and_sessionless() -> None:
     with TestClient(create_app(auth=StubVerifier())) as client:
         response = client.post(
@@ -320,6 +390,122 @@ def test_modern_tool_call_needs_no_initialize() -> None:
     assert "mcp-session-id" not in response.headers
 
 
+@pytest.mark.parametrize(
+    ("auth", "token"),
+    [
+        (StubVerifier(), "sk_valid"),
+        (remote_oauth_auth(), "oauth_valid"),
+    ],
+)
+def test_legacy_cursor_sequence_is_authenticated_and_sessionless(
+    auth: TokenVerifier | MultiAuth,
+    token: str,
+) -> None:
+    initialize_headers = legacy_initialize_headers(token=token)
+    initialize_headers["User-Agent"] = "Cursor/3.17.8"
+    with TestClient(create_app(auth=auth)) as client:
+        initialize = client.post(
+            MCP_PATH,
+            headers=initialize_headers,
+            json=legacy_initialize_request(),
+        )
+        initialized = client.post(
+            MCP_PATH,
+            headers=legacy_headers(token=token),
+            json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        tools_list = client.post(
+            MCP_PATH,
+            headers=legacy_headers(token=token),
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        )
+        tool_call = client.post(
+            MCP_PATH,
+            headers=legacy_headers(token=token),
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "docs.search", "arguments": {"query": "voice agent"}},
+            },
+        )
+
+    assert initialize.status_code == 200
+    assert initialize.json()["result"]["protocolVersion"] == LEGACY_MCP_PROTOCOL_VERSION
+    assert initialized.status_code == 202
+    assert tools_list.status_code == 200
+    assert any(tool["name"] == "organization.get" for tool in tools_list.json()["result"]["tools"])
+    assert tool_call.status_code == 200
+    assert "result" in tool_call.json()
+    assert all(
+        "mcp-session-id" not in response.headers
+        for response in (initialize, initialized, tools_list, tool_call)
+    )
+
+
+def test_legacy_success_emits_sanitized_compatibility_event(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user_agent = "Cursor/3.17.8 " + "x" * 200
+    headers = legacy_initialize_headers()
+    headers["User-Agent"] = user_agent
+    with caplog.at_level(logging.INFO, logger="spekoai_mcp.server"):
+        with TestClient(create_app(auth=StubVerifier())) as client:
+            response = client.post(
+                MCP_PATH,
+                headers=headers,
+                json=legacy_initialize_request(),
+            )
+
+    assert response.status_code == 200
+    events = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "mcp_legacy_protocol_request_accepted"
+    ]
+    assert len(events) == 1
+    assert events[0].protocol_era == "legacy"
+    assert events[0].user_agent == user_agent[:128]
+
+
+def test_legacy_telemetry_replaces_user_agent_control_characters() -> None:
+    scope = {"headers": [(b"user-agent", b"Cursor/3.17.8\x00private\nvalue")]}
+    assert MCPProtocolGuard._sanitized_user_agent(scope) == "Cursor/3.17.8?private?value"
+
+
+@pytest.mark.parametrize(
+    ("path", "expected_names"),
+    [
+        (MCP_PATH, None),
+        (f"{MCP_PATH}?profile=builder", BUILDER_PROFILE_TOOL_NAMES),
+    ],
+)
+def test_tool_profiles_match_in_both_protocol_eras(
+    path: str,
+    expected_names: list[str] | None,
+) -> None:
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        modern = client.post(
+            path,
+            headers=modern_headers("tools/list"),
+            json=modern_request("tools/list"),
+        )
+        legacy = client.post(
+            path,
+            headers=legacy_headers(),
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        )
+
+    assert modern.status_code == legacy.status_code == 200
+    modern_names = [tool["name"] for tool in modern.json()["result"]["tools"]]
+    legacy_names = [tool["name"] for tool in legacy.json()["result"]["tools"]]
+    assert legacy_names == modern_names
+    if expected_names is not None:
+        assert legacy_names == expected_names
+    assert "mcp-session-id" not in modern.headers
+    assert "mcp-session-id" not in legacy.headers
+
+
 def test_requests_are_independent_across_app_instances() -> None:
     responses = []
     for _ in range(2):
@@ -335,37 +521,62 @@ def test_requests_are_independent_across_app_instances() -> None:
     assert all("mcp-session-id" not in response.headers for response in responses)
 
 
-@pytest.mark.parametrize(
-    ("headers", "expected_code"),
-    [
-        ({}, -32020),
-        ({"MCP-Protocol-Version": "2025-11-25"}, -32022),
-        ({"MCP-Protocol-Version": "2099-01-01"}, -32022),
-        (
-            {
-                "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
-                "Mcp-Session-Id": "legacy-session",
-            },
-            -32020,
-        ),
-    ],
-)
-def test_protocol_guard_rejects_legacy_shapes(
-    headers: dict[str, str],
-    expected_code: int,
-) -> None:
-    request_headers = modern_headers("server/discover")
-    request_headers.pop("MCP-Protocol-Version")
-    request_headers.update(headers)
+def test_malformed_modern_envelope_is_rejected() -> None:
+    request = modern_request("server/discover")
+    request["params"] = {"_meta": {}}
     with TestClient(create_app(auth=StubVerifier())) as client:
         response = client.post(
-            MCP_PATH, headers=request_headers, json=modern_request("server/discover")
+            MCP_PATH,
+            headers=modern_headers("server/discover"),
+            json=request,
         )
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("application/json")
-    assert response.json()["error"]["code"] == expected_code
-    if expected_code == -32022:
-        assert response.json()["error"]["data"]["supported"] == [MCP_PROTOCOL_VERSION]
+    assert response.json()["error"]["code"] == -32602
+
+
+def test_modern_header_envelope_version_mismatch_is_rejected() -> None:
+    request = modern_request("server/discover")
+    request["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = (
+        LEGACY_MCP_PROTOCOL_VERSION
+    )
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        response = client.post(
+            MCP_PATH,
+            headers=modern_headers("server/discover"),
+            json=request,
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32020
+
+
+def test_unsupported_modern_version_is_rejected() -> None:
+    requested = "2099-01-01"
+    request = modern_request("server/discover")
+    request["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"] = requested
+    headers = modern_headers("server/discover")
+    headers["MCP-Protocol-Version"] = requested
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        response = client.post(MCP_PATH, headers=headers, json=request)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32022
+    assert response.json()["error"]["data"] == {
+        "supported": [MCP_PROTOCOL_VERSION],
+        "requested": requested,
+    }
+
+
+def test_protocol_guard_rejects_session_id() -> None:
+    headers = legacy_headers()
+    headers["Mcp-Session-Id"] = "legacy-session"
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        response = client.post(
+            MCP_PATH,
+            headers=headers,
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == -32020
 
 
 def test_protocol_guard_rejects_duplicate_version_header() -> None:
