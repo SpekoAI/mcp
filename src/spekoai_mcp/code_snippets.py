@@ -43,7 +43,7 @@ _SHARED_NOTES: list[str] = [
     "To reuse an agent created with agents.create, replace the intent/"
     'systemPrompt fields in the /v1/sessions body with {"agentId": '
     '"<agent id>"}.',
-    "Get an API key at https://platform.speko.dev/api-keys. The API base "
+    "Get an API key at https://platform.speko.dev/agents/keys. The API base "
     "URL is https://api.speko.dev.",
     "Full /v1/sessions body schema and @spekoai/client callback surface: "
     "read the spekoai://docs/llms-full and spekoai://docs/client-readme "

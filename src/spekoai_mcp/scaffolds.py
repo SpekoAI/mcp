@@ -297,7 +297,7 @@ export default function RootLayout({
 
 
 def _env_example() -> str:
-    return """# Get an API key at https://platform.speko.dev/api-keys
+    return """# Get an API key at https://platform.speko.dev/agents/keys
 SPEKO_API_KEY=
 
 # Optional — override if you're targeting a local/staging Speko server.
