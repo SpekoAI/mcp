@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+- Expose the read-only docs MCP at POST / for origin-normalizing discovery clients.
+
 ## 0.2.4
 
 - Expose an unauthenticated, read-only documentation MCP at /.well-known/mcp for agent discovery.
