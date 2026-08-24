@@ -17,8 +17,10 @@ from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES
 from spekoai_mcp.server import (
     MCP_PATH,
     MCP_PROTOCOL_VERSION,
+    PUBLIC_MCP_PATH,
     MCPProtocolGuard,
     create_app,
+    create_public_server,
     create_server,
 )
 
@@ -123,6 +125,15 @@ async def test_server_lists_operational_and_docs_tools() -> None:
     assert "private_mcp_setup" not in names
     assert "recommended_stack" not in names
     assert "scaffold_voice_app" not in names
+
+
+async def test_public_server_is_docs_only() -> None:
+    mcp = create_public_server()
+    names = [tool.name for tool in await mcp.list_tools()]
+    assert names == DOCS_TOOL_NAMES
+    assert all(tool.annotations.read_only_hint is True for tool in await mcp.list_tools())
+    resources = await mcp.list_resources()
+    assert [str(resource.uri) for resource in resources] == ["spekoai://docs/index"]
 
 
 async def test_tools_expose_quality_metadata() -> None:
@@ -263,6 +274,57 @@ def test_asgi_mcp_rejects_missing_bearer() -> None:
     assert response.headers["www-authenticate"].startswith("Bearer")
     assert response.headers["content-type"].startswith("application/json")
     assert response.json()["error"]["code"] == -32001
+
+
+def test_public_mcp_lists_and_reads_docs_without_authentication() -> None:
+    headers = legacy_headers()
+    headers.pop("Authorization")
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        initialize = client.post(
+            PUBLIC_MCP_PATH,
+            headers=headers,
+            json=legacy_initialize_request(),
+        )
+        resources = client.post(
+            PUBLIC_MCP_PATH,
+            headers=headers,
+            json={"jsonrpc": "2.0", "id": 2, "method": "resources/list", "params": {}},
+        )
+        read = client.post(
+            PUBLIC_MCP_PATH,
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "resources/read",
+                "params": {"uri": "spekoai://docs/index"},
+            },
+        )
+
+    assert initialize.status_code == 200
+    assert "resources" in initialize.json()["result"]["capabilities"]
+    assert resources.status_code == 200
+    listed = resources.json()["result"]["resources"]
+    assert len(listed) == 1
+    assert listed[0]["name"] == "docs_index"
+    assert listed[0]["title"] == "SpekoAI documentation index"
+    assert listed[0]["uri"] == "spekoai://docs/index"
+    assert listed[0]["mimeType"] == "text/markdown"
+    assert listed[0]["description"]
+    assert read.status_code == 200
+    content = read.json()["result"]["contents"][0]
+    assert content["uri"] == "spekoai://docs/index"
+    assert content["mimeType"] == "text/markdown"
+    assert content["text"].startswith("# SpekoAI documentation index")
+
+    # The same no-auth request must not gain access to operational tools.
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        protected = client.post(
+            MCP_PATH,
+            headers=headers,
+            json={"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {}},
+        )
+    assert protected.status_code == 401
 
 
 def test_asgi_mcp_auth_path_is_not_mounted() -> None:

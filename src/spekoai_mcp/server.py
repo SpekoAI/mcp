@@ -28,6 +28,7 @@ from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 
 MCP_PATH = DEFAULT_MCP_PATH
+PUBLIC_MCP_PATH = "/.well-known/mcp"
 MCP_PROTOCOL_VERSION = "2026-07-28"
 HEADER_MISMATCH = -32020
 LEGACY_USER_AGENT_MAX_LENGTH = 128
@@ -60,6 +61,27 @@ INSTRUCTIONS = "\n\n".join(
         Bearer sk_*. Tool names use
         domain.action dot notation, for example agents.list, sessions.create,
         docs.search, and knowledge_bases.documents.create.
+        """,
+    ]
+)
+
+PUBLIC_INSTRUCTIONS = "\n\n".join(
+    " ".join(paragraph.split())
+    for paragraph in [
+        """
+        Speko Docs MCP is the public, read-only discovery surface for Speko's
+        voice-AI API, SDKs, adapters, quickstarts, and migration guides.
+        """,
+        """
+        Read spekoai://docs/index first, then read the matching
+        spekoai://docs/{slug} resource. Use docs.search when you know the job
+        or field name but not the document slug.
+        """,
+        """
+        This endpoint never exposes account data or write tools and requires no
+        authentication. Use the authenticated operational MCP endpoint at
+        https://mcp.speko.ai/mcp for agents, calls, sessions, phone numbers,
+        knowledge bases, evals, and organization state.
         """,
     ]
 )
@@ -97,13 +119,30 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     return mcp
 
 
+def create_public_server() -> FastMCP:
+    """Build the unauthenticated, read-only documentation MCP surface."""
+    mcp: FastMCP = FastMCP(
+        name="spekoai-docs",
+        instructions=PUBLIC_INSTRUCTIONS,
+    )
+    register_docs_tools(mcp)
+    register_resources(mcp)
+    return mcp
+
+
 def create_app(auth: AuthProvider | None = None) -> Starlette:
-    """Create the hosted ASGI app with public routes and protected `/mcp`."""
+    """Create the hosted ASGI app with public docs and protected operations."""
     if auth is None:
         auth = build_auth(mcp_path=MCP_PATH)
     mcp = create_server(auth=auth)
     mcp_app = mcp.http_app(
         path=MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+    )
+    public_mcp = create_public_server()
+    public_mcp_app = public_mcp.http_app(
+        path=PUBLIC_MCP_PATH,
         stateless_http=True,
         json_response=True,
     )
@@ -121,14 +160,20 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     async def lifespan(_: Starlette) -> AsyncGenerator[None, None]:
         async with AsyncExitStack() as stack:
             await stack.enter_async_context(mcp_app.lifespan(mcp_app))
+            await stack.enter_async_context(public_mcp_app.lifespan(public_mcp_app))
             yield
+
+    protocol_app = MCPPathRouter(
+        protected=MCPProtocolGuard(mcp_app, path=MCP_PATH),
+        public=MCPProtocolGuard(public_mcp_app, path=PUBLIC_MCP_PATH),
+    )
 
     app = Starlette(
         routes=[
             Route("/", endpoint=docs_redirect, methods=["GET"]),
             Route("/health", endpoint=health_check, methods=["GET"]),
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
-            Mount("/", app=MCPProtocolGuard(mcp_app)),
+            Mount("/", app=protocol_app),
         ],
         middleware=[Middleware(RequestContextMiddleware)],  # type: ignore[arg-type]
         lifespan=lifespan,
@@ -137,6 +182,7 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     app.state.transport_type = mcp_app.state.transport_type
     app.state.fastmcp_server = mcp
     app.state.auth_mcp_server = mcp
+    app.state.public_mcp_server = public_mcp
     return app
 
 
@@ -146,11 +192,12 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 class MCPProtocolGuard:
     """Keep the hosted endpoint POST-only and sessionless across both MCP eras."""
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, *, path: str = MCP_PATH) -> None:
         self.app = app
+        self.path = path
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("path") != MCP_PATH:
+        if scope["type"] != "http" or scope.get("path") != self.path:
             await self.app(scope, receive, send)
             return
 
@@ -270,3 +317,15 @@ class MCPProtocolGuard:
             status_code=400,
         )
         await response(scope, receive, send)
+
+
+class MCPPathRouter:
+    """Route the public well-known MCP without weakening the product server."""
+
+    def __init__(self, *, protected: ASGIApp, public: ASGIApp) -> None:
+        self.protected = protected
+        self.public = public
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        app = self.public if scope.get("path") == PUBLIC_MCP_PATH else self.protected
+        await app(scope, receive, send)
