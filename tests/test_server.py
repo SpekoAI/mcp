@@ -327,6 +327,40 @@ def test_public_mcp_lists_and_reads_docs_without_authentication() -> None:
     assert protected.status_code == 401
 
 
+def test_public_mcp_root_post_alias_lists_docs_without_authentication() -> None:
+    headers = legacy_headers()
+    headers.pop("Authorization")
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        initialize = client.post(
+            "/",
+            headers=headers,
+            json=legacy_initialize_request(),
+        )
+        tools = client.post(
+            "/",
+            headers=headers,
+            json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        )
+        resources = client.post(
+            "/",
+            headers=headers,
+            json={"jsonrpc": "2.0", "id": 3, "method": "resources/list", "params": {}},
+        )
+
+    assert initialize.status_code == 200
+    assert initialize.json()["result"]["serverInfo"]["name"] == "spekoai-docs"
+    assert tools.status_code == 200
+    assert [tool["name"] for tool in tools.json()["result"]["tools"]] == DOCS_TOOL_NAMES
+    assert resources.status_code == 200
+    assert resources.json()["result"]["resources"][0]["uri"] == "spekoai://docs/index"
+
+    # GET / remains the human-facing documentation redirect.
+    with TestClient(create_app(auth=StubVerifier()), follow_redirects=False) as client:
+        redirect = client.get("/")
+    assert redirect.status_code == 307
+    assert redirect.headers["location"] == "https://docs.speko.dev/quickstart/mcp"
+
+
 def test_asgi_mcp_auth_path_is_not_mounted() -> None:
     with TestClient(create_app()) as client:
         response = client.get("/mcp-auth")

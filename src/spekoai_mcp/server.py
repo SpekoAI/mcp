@@ -327,5 +327,19 @@ class MCPPathRouter:
         self.public = public
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        app = self.public if scope.get("path") == PUBLIC_MCP_PATH else self.protected
-        await app(scope, receive, send)
+        path = scope.get("path")
+        if path == PUBLIC_MCP_PATH:
+            await self.public(scope, receive, send)
+            return
+        if path == "/":
+            # Some MCP discovery clients normalize a declared server URL to its
+            # origin before opening the transport. Keep GET / as the human docs
+            # redirect, but make POST / a path alias for the same public,
+            # read-only docs server. The authenticated product surface remains
+            # exclusively at /mcp.
+            alias_scope = dict(scope)
+            alias_scope["path"] = PUBLIC_MCP_PATH
+            alias_scope["raw_path"] = PUBLIC_MCP_PATH.encode("ascii")
+            await self.public(alias_scope, receive, send)
+            return
+        await self.protected(scope, receive, send)
