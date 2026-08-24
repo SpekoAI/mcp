@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4
+
+- Expose an unauthenticated, read-only documentation MCP at /.well-known/mcp for agent discovery.
+
 ## 0.2.3
 
 - Restore Cursor and other MCP `2025-11-25` clients on the existing `/mcp`
