@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -16,6 +17,7 @@ from spekoai_mcp.delegation import DelegationError, platform_bearer_token
 DEFAULT_API_BASE = "https://api.speko.dev"
 
 _TEST_TRANSPORT: httpx.AsyncBaseTransport | None = None
+_CURRENT_ACTION_ID: ContextVar[str | None] = ContextVar("speko_mcp_action_id", default=None)
 
 
 class SpekoAuthError(RuntimeError):
@@ -69,6 +71,39 @@ def _bearer_token() -> str:
         raise SpekoAuthError(str(exc)) from exc
 
 
+def set_current_action_id(action_id: str) -> Token[str | None]:
+    """Bind a handwritten MCP tool name to its downstream Platform calls."""
+    return _CURRENT_ACTION_ID.set(action_id)
+
+
+def reset_current_action_id(token: Token[str | None]) -> None:
+    _CURRENT_ACTION_ID.reset(token)
+
+
+def _platform_headers(
+    *,
+    action_id: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build the common provenance envelope for every Platform relay."""
+    from spekoai_mcp.profiles import current_profile
+
+    access_token = get_access_token()
+    client_id = getattr(access_token, "client_id", None)
+    resolved_action_id = action_id or _CURRENT_ACTION_ID.get()
+    headers = {
+        "Authorization": f"Bearer {_bearer_token()}",
+        "X-Speko-Source": "mcp",
+        "X-Speko-MCP-Profile": current_profile() or "default",
+        "X-Speko-Client": client_id if isinstance(client_id, str) else "unknown-mcp-client",
+    }
+    if resolved_action_id:
+        headers["X-Speko-Action-Id"] = resolved_action_id
+    if extra_headers:
+        headers.update(extra_headers)
+    return headers
+
+
 def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
     trace_id = resp.headers.get("x-request-id") or resp.headers.get("x-trace-id")
     try:
@@ -80,6 +115,15 @@ def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
         if isinstance(trace, str) and trace:
             trace_id = trace
         detail = payload.get("error") or payload.get("message") or payload.get("detail")
+        if isinstance(detail, dict):
+            request_id = detail.get("requestId")
+            if isinstance(request_id, str) and request_id:
+                trace_id = request_id
+            nested_message = detail.get("message")
+            nested_code = detail.get("code")
+            if isinstance(nested_message, str) and nested_message:
+                prefix = f"{nested_code}: " if isinstance(nested_code, str) else ""
+                return f"{prefix}{nested_message}"[:500], trace_id
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
             if issues:
@@ -125,7 +169,7 @@ async def _call_speko_api(
             resp = await client.request(
                 method.upper(),
                 url,
-                headers={"Authorization": f"Bearer {_bearer_token()}"},
+                headers=_platform_headers(),
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -152,6 +196,36 @@ async def call_speko_api(
     return await _call_speko_api(method, path, body)
 
 
+async def call_action(
+    action_id: str,
+    body: dict[str, Any],
+    *,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Invoke the generic Platform action endpoint with MCP provenance."""
+    headers = _platform_headers(action_id=action_id)
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
+    api_base = get_api_base()
+    url = f"{api_base}/v1/actions/{path_segment(action_id)}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=60.0,
+            follow_redirects=True,
+            transport=_TEST_TRANSPORT,
+        ) as client:
+            response = await client.request("POST", url, headers=headers, json=body)
+    except httpx.HTTPError as exc:
+        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+    if response.status_code >= 400:
+        message, trace_id = _error_details(response)
+        raise SpekoApiError(response.status_code, message, trace_id=trace_id)
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise SpekoApiError(response.status_code, "Speko action returned an unexpected response.")
+    return payload
+
+
 async def call_speko_api_any(
     method: str,
     path: str,
@@ -168,7 +242,7 @@ async def call_speko_api_any(
             resp = await client.request(
                 method.upper(),
                 url,
-                headers={"Authorization": f"Bearer {_bearer_token()}"},
+                headers=_platform_headers(),
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -200,7 +274,7 @@ async def _call_speko_api_raw(
             resp = await client.request(
                 method.upper(),
                 url,
-                headers={"Authorization": f"Bearer {_bearer_token()}"},
+                headers=_platform_headers(),
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -238,11 +312,9 @@ async def post_speko_api_bytes(
     """
     api_base = get_api_base()
     url = f"{api_base}/{path.lstrip('/')}"
-    headers = {
-        "Authorization": f"Bearer {_bearer_token()}",
-        "Content-Type": content_type,
-        **(extra_headers or {}),
-    }
+    headers = _platform_headers(
+        extra_headers={"Content-Type": content_type, **(extra_headers or {})}
+    )
     try:
         async with httpx.AsyncClient(
             timeout=120.0,

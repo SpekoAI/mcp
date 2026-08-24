@@ -180,9 +180,14 @@ async def test_get_credit_balance_forwards_auth_and_payload(
 
         def json(self) -> dict[str, object]:
             return {
-                "balanceUsd": 5,
-                "currency": "USD",
-                "updatedAt": "2026-05-14T16:00:00.000Z",
+                "kind": "result",
+                "data": {
+                    "balanceUsd": 5,
+                    "currency": "USD",
+                    "updatedAt": "2026-05-14T16:00:00.000Z",
+                },
+                "warnings": [],
+                "resourceLinks": [],
             }
 
     class FakeAsyncClient:
@@ -216,13 +221,25 @@ async def test_get_credit_balance_forwards_auth_and_payload(
     result = await create_server().call_tool("credits.balance.get", {})
     payload = result.structured_content or {}
 
-    assert captured["method"] == "GET"
-    assert captured["url"] == "https://api.speko.dev/v1/credits/balance"
-    assert captured["headers"] == {"Authorization": "Bearer sk_platform_test"}
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://api.speko.dev/v1/actions/credits.balance.get"
+    assert captured["headers"] == {
+        "Authorization": "Bearer sk_platform_test",
+        "X-Speko-Source": "mcp",
+        "X-Speko-MCP-Profile": "default",
+        "X-Speko-Client": "unknown-mcp-client",
+        "X-Speko-Action-Id": "credits.balance.get",
+    }
+    assert captured["json"] == {}
     assert payload == {
-        "balanceUsd": 5,
-        "currency": "USD",
-        "updatedAt": "2026-05-14T16:00:00.000Z",
+        "kind": "result",
+        "data": {
+            "balanceUsd": 5,
+            "currency": "USD",
+            "updatedAt": "2026-05-14T16:00:00.000Z",
+        },
+        "warnings": [],
+        "resourceLinks": [],
     }
 
 

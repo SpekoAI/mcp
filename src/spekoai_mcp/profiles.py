@@ -39,10 +39,20 @@ from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool
 
+from spekoai_mcp.action_manifest import action_entries, manifest_tool_names
+
 PROFILE_QUERY_PARAM = "profile"
 BUILDER_PROFILE = "builder"
 CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
+CUSTOMER_PROFILE = "customer"
+
+_MANIFEST_TOOL_NAMES = frozenset(entry["id"] for entry in action_entries())
+_DEFAULT_MANIFEST_TOOL_NAMES = manifest_tool_names("default")
+_CUSTOMER_MANIFEST_TOOL_NAMES = manifest_tool_names(CUSTOMER_PROFILE)
+_BUILDER_MANIFEST_TOOL_NAMES = manifest_tool_names(BUILDER_PROFILE)
+_CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
+_CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 
 # The `connector` profile is the surface published in assistant directories
 # (Anthropic's MCP Directory first). It keeps the full operational surface —
@@ -132,7 +142,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.phone.create",
 ]
 
-_CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES)
+_CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
 
 # Profiles published in a third-party assistant directory. Every outbound call
 # created through one of these MUST disclose that the caller is an AI (see
@@ -181,7 +191,7 @@ BUILDER_ONLY_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
-_BUILDER_PROFILE_TOOL_SET = frozenset(BUILDER_PROFILE_TOOL_NAMES)
+_BUILDER_PROFILE_TOOL_SET = frozenset(BUILDER_PROFILE_TOOL_NAMES) | _BUILDER_MANIFEST_TOOL_NAMES
 
 
 def current_profile() -> str | None:
@@ -219,7 +229,7 @@ def current_profile() -> str | None:
         # whatever exception type FastMCP raises for it now or in the future.
         return None
     value = request.query_params.get(PROFILE_QUERY_PARAM)
-    if value in (BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE):
+    if value in (BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE, CUSTOMER_PROFILE):
         return value
     return None
 
@@ -247,17 +257,46 @@ class ToolProfileMiddleware(Middleware):
     ) -> Sequence[Tool]:
         tools = await call_next(context)
         profile = current_profile()
+        if profile == CUSTOMER_PROFILE:
+            return [
+                tool
+                for tool in tools
+                if tool.name not in _MANIFEST_TOOL_NAMES
+                or tool.name in _CUSTOMER_MANIFEST_TOOL_NAMES
+            ]
         if profile == BUILDER_PROFILE:
             filtered = [tool for tool in tools if tool.name in _BUILDER_PROFILE_TOOL_SET]
             # Present the preset in its documented order: reads first,
             # the two sanctioned writes last.
-            filtered.sort(key=lambda tool: BUILDER_PROFILE_TOOL_NAMES.index(tool.name))
+            filtered.sort(
+                key=lambda tool: (
+                    0,
+                    BUILDER_PROFILE_TOOL_NAMES.index(tool.name),
+                )
+                if tool.name in BUILDER_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
             return filtered
         if profile == CHATGPT_PROFILE:
             filtered = [tool for tool in tools if tool.name in _CHATGPT_PROFILE_TOOL_SET]
-            filtered.sort(key=lambda tool: CHATGPT_PROFILE_TOOL_NAMES.index(tool.name))
+            filtered.sort(
+                key=lambda tool: (
+                    0,
+                    CHATGPT_PROFILE_TOOL_NAMES.index(tool.name),
+                )
+                if tool.name in CHATGPT_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
             return filtered
-        visible = [tool for tool in tools if tool.name not in BUILDER_ONLY_TOOL_NAMES]
+        visible = [
+            tool
+            for tool in tools
+            if tool.name not in BUILDER_ONLY_TOOL_NAMES
+            and (
+                tool.name not in _MANIFEST_TOOL_NAMES
+                or tool.name in _DEFAULT_MANIFEST_TOOL_NAMES
+            )
+        ]
         if profile == CONNECTOR_PROFILE:
             return [tool for tool in visible if not _is_connector_excluded(tool.name)]
         return visible
@@ -269,15 +308,23 @@ class ToolProfileMiddleware(Middleware):
     ) -> object:
         name = context.message.name
         profile = current_profile()
-        if profile == BUILDER_PROFILE:
+        if profile == CUSTOMER_PROFILE:
+            if name in _MANIFEST_TOOL_NAMES and name not in _CUSTOMER_MANIFEST_TOOL_NAMES:
+                raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == BUILDER_PROFILE:
             if name not in _BUILDER_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
         elif profile == CHATGPT_PROFILE:
             if name not in _CHATGPT_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
-        elif name in BUILDER_ONLY_TOOL_NAMES:
+        elif name in BUILDER_ONLY_TOOL_NAMES or (
+            name in _MANIFEST_TOOL_NAMES and name not in _DEFAULT_MANIFEST_TOOL_NAMES
+        ):
             raise NotFoundError(f"Unknown tool: {name!r}")
-        elif profile == CONNECTOR_PROFILE and _is_connector_excluded(name):
+        elif profile == CONNECTOR_PROFILE and (
+            _is_connector_excluded(name)
+            or (name in _MANIFEST_TOOL_NAMES and name not in _CONNECTOR_MANIFEST_TOOL_NAMES)
+        ):
             raise NotFoundError(f"Unknown tool: {name!r}")
         return await call_next(context)
 

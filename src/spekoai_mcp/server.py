@@ -23,6 +23,7 @@ from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
+from spekoai_mcp.generated_action_tools import register_generated_action_tools
 from spekoai_mcp.profiles import ToolProfileMiddleware
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
@@ -111,6 +112,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
         auth=auth,
     )
     register_action_tools(mcp)
+    register_generated_action_tools(mcp)
     register_docs_tools(mcp)
     register_resources(mcp)
     register_prompts(mcp)

@@ -20,6 +20,7 @@ from fastmcp.exceptions import NotFoundError
 
 import spekoai_mcp.http_client as http_client
 import spekoai_mcp.profiles as profiles
+from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.builder_tools import BUILDER_TOOL_NAMES
 from spekoai_mcp.code_snippets import SNIPPET_FRAMEWORKS
@@ -93,6 +94,20 @@ async def test_builder_profile_lists_exactly_the_preset(
     _force_http_profile(monkeypatch, "builder")
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == BUILDER_PROFILE_TOOL_NAMES
+
+
+async def test_customer_profile_adds_manifest_control_plane_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _force_http_profile(monkeypatch, "customer")
+    names = [tool.name for tool in await create_server().list_tools()]
+    manifest_names = [
+        entry["id"] for entry in action_entries() if entry["id"] not in ACTION_TOOL_NAMES
+    ]
+    assert names == ACTION_TOOL_NAMES + manifest_names + DOCS_TOOL_NAMES + BUILDER_TOOL_NAMES
+    assert "capabilities.search" in names
+    assert "operations.wait" in names
+    assert "operations.cancel" in names
 
 
 async def test_builder_profile_tools_expose_quality_metadata(
@@ -243,7 +258,12 @@ async def test_list_voices_relays_to_voices_endpoint(
     result = await create_server().call_tool("voices.list", {"provider": "cartesia"})
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.speko.dev/v1/voices?provider=cartesia"
-    assert captured["headers"] == {"Authorization": "Bearer sk_platform_test"}
+    assert captured["headers"] == {
+        "Authorization": "Bearer sk_platform_test",
+        "X-Speko-Source": "mcp",
+        "X-Speko-MCP-Profile": "builder",
+        "X-Speko-Client": "unknown-mcp-client",
+    }
     assert result.structured_content == {"ok": True}
 
 

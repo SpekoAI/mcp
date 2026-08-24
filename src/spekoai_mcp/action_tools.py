@@ -14,7 +14,7 @@ import ipaddress
 import json
 import re
 import socket
-from pathlib import Path
+from functools import wraps
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 
@@ -554,8 +554,9 @@ def register_action_tools(mcp: FastMCP) -> None:
         name = tool.__name__
         public_name = ACTION_TOOL_NAME_BY_FUNCTION[name]
         title = tool_title(name)
+        attributed_tool = _with_action_attribution(tool, public_name)
         mcp.tool(
-            tool,
+            attributed_tool,
             name=public_name,
             title=title,
             output_schema=SPEKO_API_OUTPUT_SCHEMA,
@@ -567,6 +568,20 @@ def register_action_tools(mcp: FastMCP) -> None:
                 open_world_hint=True,
             ),
         )
+
+
+def _with_action_attribution(tool: Any, action_id: str) -> Any:
+    """Bind the public dotted tool name while a handwritten relay executes."""
+
+    @wraps(tool)
+    async def attributed(*args: Any, **kwargs: Any) -> Any:
+        token = http_client.set_current_action_id(action_id)
+        try:
+            return await tool(*args, **kwargs)
+        finally:
+            http_client.reset_current_action_id(token)
+
+    return attributed
 
 
 def tool_title(name: str) -> str:
@@ -597,33 +612,6 @@ def list_result(payload: list[Any], text: str = "Speko API request completed.") 
 
 def tool_error(exc: Exception, *, next_step: str) -> ToolError:
     return ToolError(http_client.tool_error_message(exc, next_step=next_step))
-
-
-def collect_workspace_metadata(workspace_root: str, *, deep: bool) -> dict[str, Any]:
-    root = Path(workspace_root).expanduser().resolve()
-    if not root.exists() or not root.is_dir():
-        return {"workspace_root": str(root), "missing": True}
-    candidates = ["package.json", "pyproject.toml", "requirements.txt", "pnpm-lock.yaml"]
-    files: dict[str, str] = {}
-    for name in candidates:
-        path = root / name
-        if path.exists() and path.is_file():
-            files[name] = path.read_text(encoding="utf-8", errors="ignore")[:200_000]
-    if deep:
-        source_files: list[Path] = []
-        for pattern in ["*.ts", "*.tsx", "*.js", "*.jsx", "*.py"]:
-            source_files.extend(root.rglob(pattern))
-        sampled = [
-            path
-            for path in source_files
-            if "node_modules" not in path.parts and ".venv" not in path.parts and path.is_file()
-        ][:60]
-        for path in sampled:
-            files[str(path.relative_to(root))] = path.read_text(
-                encoding="utf-8",
-                errors="ignore",
-            )[:50_000]
-    return {"workspace_root": str(root), "files": files, "deep": deep}
 
 
 async def call(
@@ -1793,15 +1781,27 @@ async def list_online_eval_results(
 
 
 async def inspect_workspace(
-    workspace_root: Annotated[str, Field(description="Workspace root to summarize.")] = ".",
-    deep: Annotated[bool, Field(description="Include a shallow sample of source files.")] = False,
+    files: Annotated[
+        dict[str, str],
+        Field(
+            description=(
+                "Client-supplied relative file names and text content. Send only files the "
+                "user selected for migration analysis; the MCP server never reads its filesystem."
+            ),
+            max_length=60,
+        ),
+    ],
     metadata: Annotated[
         dict[str, Any] | None,
-        Field(description="Optional client-supplied metadata to pass through."),
+        Field(description="Optional client-supplied languages, frameworks, and migration hints."),
     ] = None,
 ) -> ToolResult:
     """Inspect a voice-agent codebase and return migration recommendations."""
-    body = collect_workspace_metadata(workspace_root, deep=deep)
+    if any(len(content) > 200_000 for content in files.values()):
+        raise ToolError("Each workspace file must be 200,000 characters or smaller.")
+    if sum(len(content) for content in files.values()) > 500_000:
+        raise ToolError("Workspace metadata must be 500,000 characters or smaller in total.")
+    body: dict[str, Any] = {"files": files}
     if metadata:
         body["metadata"] = metadata
     return await call("POST", "/v1/inference/inspect", body=body, text="Inspected workspace.")

@@ -28,7 +28,17 @@ DEFAULT_API_BASE_URL = "https://api.speko.dev"
 # These are initial resource scopes, not the complete authorization-server
 # scope catalog. In particular, offline_access belongs in Better Auth's AS
 # metadata but MUST NOT be advertised as a protected-resource requirement.
-OAUTH_RESOURCE_SCOPES = ["openid", "profile", "email"]
+OAUTH_RESOURCE_SCOPES = [
+    "openid",
+    "profile",
+    "email",
+    "speko:read",
+    "speko:write",
+    "speko:execute",
+    "speko:billing",
+    "speko:credentials",
+    "speko:compliance",
+]
 
 logger = get_logger(__name__)
 

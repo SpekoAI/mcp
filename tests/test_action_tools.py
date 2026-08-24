@@ -26,6 +26,9 @@ def speko_api_mock(monkeypatch: pytest.MonkeyPatch):
                 "path": request.url.path,
                 "query": request.url.query.decode("utf-8"),
                 "auth": request.headers.get("authorization"),
+                "source": request.headers.get("x-speko-source"),
+                "profile": request.headers.get("x-speko-mcp-profile"),
+                "action_id": request.headers.get("x-speko-action-id"),
                 "body": body,
             }
         )
@@ -87,7 +90,6 @@ LIST_PATHS = {
 
 async def test_action_tools_cover_expected_api_paths(
     speko_api_mock: list[dict[str, object]],
-    tmp_path,
 ) -> None:
     mcp = create_server()
     await mcp.call_tool("organization.get", {})
@@ -126,7 +128,9 @@ async def test_action_tools_cover_expected_api_paths(
     )
     await mcp.call_tool("sessions.list", {"limit": 10, "agent": "agent_1"})
     await mcp.call_tool("sessions.get", {"session_id": "sess_1"})
-    await mcp.call_tool("sessions.transcript.get", {"session_id": "sess_1"})
+    await mcp.call_tool(
+        "sessions.transcript.get", {"session_id": "22222222-2222-4222-8222-222222222222"}
+    )
     await mcp.call_tool("sessions.recording.get", {"session_id": "sess_1"})
     await mcp.call_tool(
         "agents.calls.list", {"agent_id": "agent_1", "since": "2026-05-01T00:00:00.000Z"}
@@ -136,7 +140,9 @@ async def test_action_tools_cover_expected_api_paths(
     await mcp.call_tool("phone_numbers.list", {})
     await mcp.call_tool("phone_numbers.available.search", {"area_code": "415", "limit": 2})
     await mcp.call_tool("phone_numbers.create", {"body": {"e164": "+12015550123"}})
-    await mcp.call_tool("phone_numbers.get", {"phone_number_id": "pn_1"})
+    await mcp.call_tool(
+        "phone_numbers.get", {"phone_number_id": "11111111-1111-4111-8111-111111111111"}
+    )
     await mcp.call_tool(
         "phone_numbers.update", {"phone_number_id": "pn_1", "body": {"label": "Main"}}
     )
@@ -172,7 +178,8 @@ async def test_action_tools_cover_expected_api_paths(
     await mcp.call_tool("agents.evals.run", {"agent_id": "agent_1", "eval_id": "eval_1"})
     await mcp.call_tool("evals.get", {"eval_id": "eval_1"})
     await mcp.call_tool(
-        "migration.workspace.inspect", {"workspace_root": str(tmp_path), "deep": False}
+        "migration.workspace.inspect",
+        {"files": {"package.json": '{"name":"migration-fixture"}'}},
     )
     await mcp.call_tool("migration.session_config.build", {"body": {"prose": "A support agent"}})
     await mcp.call_tool(
@@ -184,9 +191,17 @@ async def test_action_tools_cover_expected_api_paths(
     paths = {(call["method"], call["path"]) for call in speko_api_mock}
     assert paths == EXPECTED_METHOD_PATHS
     assert {call["auth"] for call in speko_api_mock} == {"Bearer sk_test-token"}
+    assert {call["source"] for call in speko_api_mock} == {"mcp"}
+    assert {call["profile"] for call in speko_api_mock} == {"default"}
+    create = next(call for call in speko_api_mock if call["path"] == "/v1/agents")
+    assert create["action_id"] == "agents.create"
     assert share_result.structured_content["png_url"].endswith(".png")
-    ledger = next(call for call in speko_api_mock if call["path"] == "/v1/credits/ledger")
-    assert ledger["query"] == "limit=25&kind=grant%2Cdebit"
+    ledger = next(
+        call
+        for call in speko_api_mock
+        if call["path"] == "/v1/actions/credits.ledger.list"
+    )
+    assert ledger["body"] == {"limit": 25, "kind": "grant,debit"}
     available = next(
         call for call in speko_api_mock if call["path"] == "/v1/phone-numbers/available"
     )
@@ -382,13 +397,13 @@ def test_error_details_include_validation_issues() -> None:
 
 
 EXPECTED_METHOD_PATHS = {
-    ("GET", "/v1/organization"),
-    ("GET", "/v1/credits/balance"),
-    ("GET", "/v1/credits/ledger"),
-    ("GET", "/v1/usage"),
-    ("GET", "/v1/agents"),
+    ("POST", "/v1/actions/organization.get"),
+    ("POST", "/v1/actions/credits.balance.get"),
+    ("POST", "/v1/actions/credits.ledger.list"),
+    ("POST", "/v1/actions/usage.summary.get"),
+    ("POST", "/v1/actions/agents.list"),
     ("POST", "/v1/agents"),
-    ("GET", "/v1/agents/agent_1"),
+    ("POST", "/v1/actions/agents.get"),
     ("PATCH", "/v1/agents/agent_1"),
     ("DELETE", "/v1/agents/agent_1"),
     ("GET", "/v1/agents/agent_1/tools"),
@@ -404,24 +419,24 @@ EXPECTED_METHOD_PATHS = {
     ("POST", "/v1/sessions/phone"),
     ("GET", "/v1/sessions"),
     ("GET", "/v1/sessions/sess_1"),
-    ("GET", "/v1/sessions/sess_1/transcript"),
+    ("POST", "/v1/actions/sessions.transcript.get"),
     ("GET", "/v1/sessions/sess_1/recording"),
     ("GET", "/v1/agents/agent_1/calls"),
     ("GET", "/v1/calls/call_1"),
     ("GET", "/v1/calls/call_1/recording"),
-    ("GET", "/v1/phone-numbers"),
+    ("POST", "/v1/actions/phone_numbers.list"),
     ("GET", "/v1/phone-numbers/available"),
     ("POST", "/v1/phone-numbers"),
-    ("GET", "/v1/phone-numbers/pn_1"),
+    ("POST", "/v1/actions/phone_numbers.get"),
     ("PATCH", "/v1/phone-numbers/pn_1"),
     ("DELETE", "/v1/phone-numbers/pn_1"),
     ("POST", "/v1/knowledge-bases"),
-    ("GET", "/v1/knowledge-bases"),
-    ("GET", "/v1/knowledge-bases/kb_1"),
+    ("POST", "/v1/actions/knowledge_bases.list"),
+    ("POST", "/v1/actions/knowledge_bases.get"),
     ("DELETE", "/v1/knowledge-bases/kb_1"),
-    ("GET", "/v1/knowledge-bases/kb_1/documents"),
+    ("POST", "/v1/actions/knowledge_bases.documents.list"),
     ("POST", "/v1/knowledge-bases/kb_1/documents"),
-    ("GET", "/v1/knowledge-bases/kb_1/documents/doc_1"),
+    ("POST", "/v1/actions/knowledge_bases.documents.get"),
     ("DELETE", "/v1/knowledge-bases/kb_1/documents/doc_1"),
     ("POST", "/v1/knowledge-bases/kb_1/documents/doc_1/finalize"),
     ("GET", "/v1/agents/agent_1/evals"),
