@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.8
+
+- Expose the complete Gateway action catalog through the customer MCP profile.
+
 ## 0.2.7
 
 Renumbered from 0.2.6: the `mcp-server-v0.2.6` tag was already on origin,
