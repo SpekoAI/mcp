@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.2.6
+## 0.2.7
+
+Renumbered from 0.2.6: the `mcp-server-v0.2.6` tag was already on origin,
+pointing at `c3556fc3` — the commit production runs, whose package version is
+`0.2.5`. Release tags are not moved, so this release takes the next free
+number. Tag and package version are aligned again from here.
+
 
 - Cut every tool that produces synthetic speech, or arms something that will,
   from the `connector` profile published in Anthropic's MCP Directory. The
