@@ -9,6 +9,7 @@ from spekoai_mcp.action_tools import (
 from spekoai_mcp.profiles import (
     CONNECTOR_EXCLUDED_PREFIXES,
     CONNECTOR_PROFILE,
+    DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES,
     _is_connector_excluded,
 )
 
@@ -52,13 +53,37 @@ def test_connector_profile_hides_bulk_and_scheduled_tools() -> None:
         assert _is_connector_excluded(name), name
 
 
-def test_connector_profile_keeps_outbound_calling() -> None:
+def test_connector_profile_excludes_speech_and_arming() -> None:
+    """Was `test_connector_profile_keeps_outbound_calling` until 2026-08-27.
+
+    It asserted the outbound-calling wedge survived the directory cut. The MCP
+    Directory team refuted the premise — "configuring is arming" — so every
+    name it protected now has to be excluded instead.
+    """
+    for name in DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES:
+        assert _is_connector_excluded(name), name
+
+    # Same category, reached by the directory's own reasoning rather than by
+    # their enumeration.
     for name in (
-        "sessions.phone.create",
-        "agents.create",
-        "agents.test_call",
-        "phone_numbers.create",
+        "agents.rollback",
+        "agents.tools.create",
+        "agents.tools.update",
+        "knowledge_bases.documents.finalize",
+    ):
+        assert _is_connector_excluded(name), name
+
+
+def test_connector_profile_keeps_reads_and_transcription() -> None:
+    """The cut must not overshoot what the directory explicitly blessed."""
+    for name in (
+        "audio.transcribe",
         "sessions.transcript.get",
+        "agents.list",
+        "agents.tools.list",
+        "agents.tools.get",
+        "phone_numbers.list",
+        "credits.balance.get",
     ):
         assert not _is_connector_excluded(name), name
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.6
+
+- Cut every tool that produces synthetic speech, or arms something that will,
+  from the `connector` profile published in Anthropic's MCP Directory. The
+  profile previously dropped only `audio.synthesize`, on the reading that the
+  policy bans generated audio alone; the directory team refuted that on
+  2026-08-27 — "in this product, configuring is arming. A deployed agent speaks
+  on inbound traffic with no further tool call" — so live-call creation, agent
+  create/update/deploy/rollback, agent-tool and knowledge-base writes, and
+  phone-number provisioning are now excluded too. `audio.transcribe` and every
+  read stay, as the directory explicitly allowed. The surface goes 61 -> 36.
+- Add `SPEKOAI_MCP_DEFAULT_PROFILE`, the profile served at bare `/mcp` on a
+  deployment. A query parameter was the wrong place for a policy boundary: the
+  directory record listed us as `https://mcp.speko.ai/mcp` and scanned that, so
+  `?profile=connector` was never applied and the review found the full surface
+  behind a listing that said otherwise. A deployment default cannot be dropped
+  by a URL rewrite, a CDN rule, or a retyped listing field. There is
+  deliberately no `?profile=full` opt-out, and an unset variable leaves the
+  default surface byte-identical for existing clients.
+
 ## 0.2.5
 
 - Expose the read-only docs MCP at POST / for origin-normalizing discovery clients.

@@ -13,24 +13,35 @@ Two further presets are published in third-party assistant directories:
 (OpenAI's Plugin Directory). Each is shaped by that directory's policy, so
 they are deliberately not the same list.
 
+A profile can also be the DEPLOYMENT default, via
+``SPEKOAI_MCP_DEFAULT_PROFILE``. That is how a directory-published surface is
+served at bare ``/mcp`` with no query string in the contract at all — see
+:func:`default_profile` for why a query parameter turned out to be the wrong
+place to put a policy boundary, and Anthropic's 2026-08-27 review for the
+refutation that forced it.
+
 Design constraints (see platform issue #1169):
 
-- The DEFAULT surface (no ``profile`` query param, or any unrecognized
-  value) must stay byte-identical for existing clients. Builder-only
+- On a deployment that leaves ``SPEKOAI_MCP_DEFAULT_PROFILE`` unset, the
+  DEFAULT surface must stay byte-identical for existing clients. Builder-only
   tools are registered on the same server but hidden from the default
   view by :class:`ToolProfileMiddleware`, and the default tool ordering
   is untouched because builder-only tools are registered last.
 - A separate path (e.g. ``/builder/mcp``) is deliberately NOT used. A query
-  parameter keeps one API-key authentication surface.
+  parameter keeps one API-key authentication surface, and the OAuth resource
+  indicator is bound to ``/mcp`` (see ``auth.py``). A restricted *host* is the
+  supported way to get a narrower base endpoint: same ``/mcp`` path, its own
+  ``SPEKOAI_MCP_BASE_URL``, plus ``SPEKOAI_MCP_DEFAULT_PROFILE``.
 
 The profile is resolved from the live HTTP request on every MCP request
-(FastMCP's ``RequestContextMiddleware`` is installed in ``create_app``),
-    so one deployment serves both surfaces. Outside an HTTP request the
-    default profile applies.
+(FastMCP's ``RequestContextMiddleware`` is installed in ``create_app``), so one
+deployment serves several surfaces. Outside an HTTP request the deployment
+default applies.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 
 import mcp.types as mt
@@ -42,10 +53,17 @@ from fastmcp.tools.base import Tool
 from spekoai_mcp.action_manifest import action_entries, manifest_tool_names
 
 PROFILE_QUERY_PARAM = "profile"
+DEFAULT_PROFILE_ENV_VAR = "SPEKOAI_MCP_DEFAULT_PROFILE"
 BUILDER_PROFILE = "builder"
 CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
 CUSTOMER_PROFILE = "customer"
+
+# Every value `?profile=` and SPEKOAI_MCP_DEFAULT_PROFILE will honour. Anything
+# else resolves to the deployment default, so a typo can never widen a surface.
+KNOWN_PROFILES: frozenset[str] = frozenset(
+    {BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE, CUSTOMER_PROFILE}
+)
 
 _MANIFEST_TOOL_NAMES = frozenset(entry["id"] for entry in action_entries())
 _DEFAULT_MANIFEST_TOOL_NAMES = manifest_tool_names("default")
@@ -55,35 +73,111 @@ _CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
 _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 
 # The `connector` profile is the surface published in assistant directories
-# (Anthropic's MCP Directory first). It keeps the full operational surface —
-# including real outbound calling via `sessions.phone.create` — and removes
-# only the capabilities that read as bulk or unattended calling:
+# (Anthropic's MCP Directory first).
 #
-#   agents.evals.*     — one `evals.run` fans out into many sessions at once
-#   agents.monitors.*  — scoring rules over completed runs; harmless, but the
-#                        name reads as scheduled automation to a reviewer
+# It used to keep the full operational surface, including real outbound calling
+# via `sessions.phone.create`, on the theory that Anthropic's Software Directory
+# Policy bans only *generated audio* — so dropping `audio.synthesize` was
+# enough and the outbound-calling wedge survived. The MCP Directory team
+# refuted that on 2026-08-27:
 #
-# Directory policy requires that each outbound call be individually authorised
-# by the user, with no bulk, scheduled, or unattended calling exposed. After
-# this cut every remaining path to a call is one call per explicit tool
-# invocation. Disclosure is enforced separately, in action_tools.
+#   "in this product, configuring is arming. A deployed agent speaks on
+#    inbound traffic with no further tool call, so those tools produce
+#    synthetic speech just as directly as the generation tool does."
+#
+# So the line is not "does this tool return audio" but:
+#
+#   **No tool on a directory surface may produce synthetic speech, or arm
+#     something that will.**
+#
+# Four groups fall on the wrong side of that line. The nine names the
+# directory team enumerated are marked (A); the rest are the same category
+# reached by their own reasoning, cut now rather than in another round trip.
+#
+#   generation        audio.synthesize (A)
+#   live call         sessions.create (A), sessions.phone.create (A),
+#                     agents.test_call (A)
+#   arming            agents.create (A), agents.update (A), agents.deploy (A),
+#                     agents.rollback — redeploys a prior version, so it arms
+#                     agents.tools.* writes — rewire what a live agent does
+#                     knowledge_bases.* writes — change what a live agent says
+#   inbound capacity  phone_numbers.create (A), phone_numbers.update (A)
+#
+# Held from the earlier cut, for bulk/unattended rather than speech reasons:
+#
+#   agents.evals.*    — one `evals.run` fans out into many sessions at once
+#   agents.monitors.* — scoring rules over completed runs; harmless, but the
+#                       name reads as scheduled automation to a reviewer
+#
+# What deliberately STAYS, because the team named it explicitly:
+#
+#   audio.transcribe  — speech-to-text generates no audio and returns only
+#                       text, so it is outside the prohibition.
+#   every read        — listing agents, sessions, transcripts, recordings,
+#                       phone numbers, credits and usage.
+#
+# Also staying, and worth naming because they are writes: `agents.delete`,
+# `phone_numbers.delete` and `knowledge_bases.delete` REMOVE capability rather
+# than arm it, and `share_cards.create` and the `migration.*` tools produce
+# drafts and documents, never speech.
+#
+# Direct MCP clients (Claude Code, Codex, Cursor) keep the full surface on a
+# deployment whose `SPEKOAI_MCP_DEFAULT_PROFILE` is unset. Disclosure is
+# enforced separately, in action_tools.
 CONNECTOR_EXCLUDED_PREFIXES: tuple[str, ...] = (
     "agents.evals.",
     "agents.monitors.",
 )
 
-# Tools withheld from the published directory surface for policy rather than
-# capability reasons. Anthropic's Software Directory Policy prohibits
-# "software that uses AI models to generate images, video, or audio content",
-# so `audio.synthesize` — which returns generated speech to the client — is
-# not offered there.
-#
-# `audio.transcribe` deliberately stays: speech-to-text generates no audio and
-# returns only text, so it is outside that prohibition.
-#
-# Direct MCP clients (Claude Code, Codex, Cursor) keep the full surface on the
-# default `/mcp` path.
-CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset({"audio.synthesize"})
+# Tools withheld from the published directory surface by exact name. See the
+# four groups above; every entry here either produces synthetic speech or arms
+# something that will.
+CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        # generation
+        "audio.synthesize",
+        # live session / call creation
+        "sessions.create",
+        "sessions.phone.create",
+        "agents.test_call",
+        # agent configuration and deployment — configuring is arming
+        "agents.create",
+        "agents.update",
+        "agents.deploy",
+        "agents.rollback",
+        # rewiring the tools a live agent can call is configuring it.
+        # `agents.tools.list` / `.get` are reads and stay.
+        "agents.tools.create",
+        "agents.tools.update",
+        "agents.tools.delete",
+        # knowledge-base writes change what a live agent says.
+        # `knowledge_bases.delete` stays: it removes capability.
+        "knowledge_bases.create",
+        "knowledge_bases.documents.create",
+        "knowledge_bases.documents.delete",
+        "knowledge_bases.documents.finalize",
+        # phone number provisioning — inbound capacity for an armed agent
+        "phone_numbers.create",
+        "phone_numbers.update",
+    }
+)
+
+# The nine names the MCP Directory team enumerated on 2026-08-27. Kept as its
+# own constant so a test can assert the reply we send them is true, rather than
+# re-deriving the list from the exclusion set it is meant to check.
+DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "audio.synthesize",
+        "sessions.create",
+        "sessions.phone.create",
+        "agents.test_call",
+        "agents.create",
+        "agents.update",
+        "agents.deploy",
+        "phone_numbers.create",
+        "phone_numbers.update",
+    }
+)
 
 # The curated ChatGPT preset, published to OpenAI's Plugin Directory as
 # `https://mcp.speko.ai/mcp?profile=chatgpt`.
@@ -194,21 +288,50 @@ BUILDER_ONLY_TOOL_NAMES: frozenset[str] = frozenset(
 _BUILDER_PROFILE_TOOL_SET = frozenset(BUILDER_PROFILE_TOOL_NAMES) | _BUILDER_MANIFEST_TOOL_NAMES
 
 
+def default_profile() -> str | None:
+    """The profile a request with no ``?profile=`` gets on this deployment.
+
+    Read from ``SPEKOAI_MCP_DEFAULT_PROFILE`` on every call rather than at
+    import, so a test can set it without reloading the module. Unset — the
+    normal case — returns ``None``, the full default surface.
+
+    This exists because a query parameter turned out to be the wrong place to
+    put a policy boundary. The measurement in :func:`current_profile` was
+    right about the transport: a real streamable-http client does repeat the
+    whole URL on every request. What it could not cover is the directory
+    *record*. Anthropic's MCP Directory listed us as
+    ``https://mcp.speko.ai/mcp`` and scanned that, so ``?profile=connector``
+    was never in play, and their review found the full surface behind a
+    listing that said otherwise (2026-08-27):
+
+        "The restricted profile does not resolve this, because the directory
+         listing points at the base endpoint … The tools below need to come
+         off that surface itself."
+
+    A base-endpoint default is the fix, because it cannot be dropped by a URL
+    rewrite, a CDN rule, or a listing field somebody retyped. A deployment
+    that sets ``SPEKOAI_MCP_DEFAULT_PROFILE=connector`` serves the connector
+    surface at bare ``/mcp``, with no query string anywhere in the contract.
+
+    There is deliberately NO ``?profile=full`` escape hatch. On a restricted
+    deployment the restriction has to be a property of the host, not a default
+    a caller can opt out of — otherwise it is the same unenforceable boundary
+    in a new costume. The full surface lives on a deployment that leaves this
+    variable unset.
+    """
+    value = (os.environ.get(DEFAULT_PROFILE_ENV_VAR) or "").strip()
+    return value if value in KNOWN_PROFILES else None
+
+
 def current_profile() -> str | None:
     """Resolve the tool profile for the current HTTP request.
 
-    Returns a profile name only for an exact match against one of the three
+    Returns a profile name for an exact ``?profile=`` match against one of the
     known values; anything else (missing param, unknown value, no HTTP request
-    at all) resolves to ``None`` — the default profile — so existing clients
-    cannot be affected by typos or future values.
+    at all) falls back to :func:`default_profile` for this deployment, so a
+    typo or a future value can never widen the surface.
 
-    Resolution is per request, and the invariant that makes that safe is worth
-    naming because the failure mode is silent: if a client ever stopped
-    repeating the query string, a request would not error, it would fall back
-    to the full default surface — which on a published directory profile means
-    serving exactly the tools the listing states are absent.
-
-    Measured 2026-08-22, all three legs green:
+    Resolution is per request. Measured 2026-08-22, all three legs green:
 
     - the real streamable-http client repeats the whole URL on every request
       (asserted in ``test_chatgpt_profile_http.py``, not assumed);
@@ -217,21 +340,21 @@ def current_profile() -> str | None:
     - ``mcp.speko.ai/mcp`` answers directly with no redirect, and the
       trailing-slash ``/mcp/`` 307 preserves the query string.
 
-    Residual risk sits entirely outside this app: a proxy or CDN rule that
-    rewrites the URL without its query. Nothing here can detect that — a
-    query-less request is indistinguishable from a legitimate default-surface
-    client — so it is checked at publish time instead, by confirming the
-    directory's tool scan returns the preset's count and not the default's.
+    The residual risk that measurement could not reach — a proxy, CDN rule or
+    directory record that drops the query — is now closed by
+    :func:`default_profile` instead of documented, for any deployment that
+    sets it. A query-less request on a restricted host resolves to the
+    restricted profile, not the full one.
     """
     try:
         request = get_http_request()
-    except Exception:  # noqa: BLE001 - no-HTTP-context must NEVER select a profile,
+    except Exception:  # noqa: BLE001 - no-HTTP-context must NEVER widen the surface,
         # whatever exception type FastMCP raises for it now or in the future.
-        return None
+        return default_profile()
     value = request.query_params.get(PROFILE_QUERY_PARAM)
-    if value in (BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE, CUSTOMER_PROFILE):
+    if value in KNOWN_PROFILES:
         return value
-    return None
+    return default_profile()
 
 
 class ToolProfileMiddleware(Middleware):

@@ -92,7 +92,14 @@ Configuration:
 - `SPEKOAI_MCP_BASE_URL` — public MCP origin used to derive the exact resource
   audience;
 - `SPEKOAI_MCP_DELEGATION_SECRET` — 32+ character secret shared only with
-  Platform for stateless API delegation.
+  Platform for stateless API delegation;
+- `SPEKOAI_MCP_DEFAULT_PROFILE` — optional tool profile served at bare `/mcp`
+  on this deployment (`builder` | `connector` | `chatgpt` | `customer`). Unset
+  means the full default surface, which is what direct MCP clients (Claude
+  Code, Codex, Cursor, Composio, Docker, Paperclip) need. A deployment that
+  sets it serves that profile with no query string in the contract at all, and
+  there is no `?profile=` value that widens it again — that is the supported
+  way to publish a narrower base endpoint in an assistant directory.
 
 See [docs/fastmcp-v4.md](docs/fastmcp-v4.md) for deployment order, smoke tests,
 and failure diagnosis.

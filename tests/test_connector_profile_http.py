@@ -23,7 +23,11 @@ from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.server.auth import AccessToken, MultiAuth, TokenVerifier
 
 from spekoai_mcp.action_tools import DISCLOSURE_OPENER, DISCLOSURE_RULE
-from spekoai_mcp.profiles import CONNECTOR_EXCLUDED_PREFIXES
+from spekoai_mcp.profiles import (
+    CONNECTOR_EXCLUDED_PREFIXES,
+    DEFAULT_PROFILE_ENV_VAR,
+    DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES,
+)
 from spekoai_mcp.server import create_app
 
 HEADERS = {"Authorization": "Bearer sk_test_connector_profile"}
@@ -83,15 +87,53 @@ async def test_connector_profile_hides_evals_and_monitors_over_http(http_base_ur
     assert hidden == [], f"bulk/scheduled tools leaked into the listing: {hidden}"
 
 
-async def test_connector_profile_keeps_outbound_calling_over_http(http_base_url: str) -> None:
-    """Cutting bulk tooling must not cost us the outbound-calling wedge."""
+async def test_connector_profile_withholds_every_tool_the_directory_named(
+    http_base_url: str,
+) -> None:
+    """The nine tools Anthropic's MCP Directory enumerated on 2026-08-27.
+
+    This test used to be `test_connector_profile_keeps_outbound_calling_over_http`
+    and asserted the opposite for three of these names. That was our reading of
+    the policy — generated audio only — and the directory team refuted it:
+    "configuring is arming."
+    """
     async with Client(
         StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
     ) as client:
-        names = [tool.name for tool in await client.list_tools()]
+        names = {tool.name for tool in await client.list_tools()}
 
-    for kept in ("sessions.phone.create", "agents.create", "agents.test_call"):
-        assert kept in names, f"{kept} missing from the connector surface"
+    leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+    assert leaked == [], f"tools the directory requires absent are advertised: {leaked}"
+
+
+async def test_connector_profile_keeps_transcription_and_reads_over_http(
+    http_base_url: str,
+) -> None:
+    """The cut must not overshoot what the directory explicitly blessed.
+
+    "audio.transcribe (speech-to-text) is fine and should stay, as are the read
+    tools — listing agents, sessions, transcripts, recordings, phone numbers,
+    credits and usage."
+    """
+    async with Client(
+        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
+    ) as client:
+        names = {tool.name for tool in await client.list_tools()}
+
+    for kept in (
+        "audio.transcribe",
+        "agents.list",
+        "agents.get",
+        "sessions.list",
+        "sessions.transcript.get",
+        "sessions.recording.get",
+        "calls.get",
+        "calls.recording.get",
+        "phone_numbers.list",
+        "credits.balance.get",
+        "usage.summary.get",
+    ):
+        assert kept in names, f"{kept} was cut from the connector surface but should stay"
 
 
 async def test_excluded_tool_is_uncallable_on_connector_over_http(http_base_url: str) -> None:
@@ -102,12 +144,90 @@ async def test_excluded_tool_is_uncallable_on_connector_over_http(http_base_url:
             await client.call_tool("agents.evals.run", {"agent_id": "x", "eval_id": "y"})
 
 
+async def test_directory_required_tool_is_uncallable_on_connector_over_http(
+    http_base_url: str,
+) -> None:
+    """Hidden must also mean uncallable, or the listing is cosmetic."""
+    async with Client(
+        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
+    ) as client:
+        with pytest.raises(Exception, match="Unknown tool: 'sessions.phone.create'"):
+            await client.call_tool(
+                "sessions.phone.create",
+                {"body": {"to": "+12015551234", "agentId": "a"}},
+            )
+
+
+async def test_default_profile_env_var_restricts_the_bare_base_endpoint(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole point of the change: no query string anywhere in the contract.
+
+    `SPEKOAI_MCP_DEFAULT_PROFILE=connector` is read per request, so the already
+    running server picks it up — which is also what makes this a real test of
+    the production code path rather than of app construction.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+
+    async with Client(
+        StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
+    ) as client:
+        names = {tool.name for tool in await client.list_tools()}
+
+    leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+    assert leaked == [], f"restricted deployment served them at bare /mcp: {leaked}"
+    assert "audio.transcribe" in names, "the restricted base endpoint lost transcription"
+
+    async with Client(
+        StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
+    ) as client:
+        with pytest.raises(Exception, match="Unknown tool: 'audio.synthesize'"):
+            await client.call_tool(
+                "audio.synthesize", {"body": {"text": "hi", "intent": {"language": "en"}}}
+            )
+
+
+async def test_no_profile_param_can_widen_a_restricted_deployment(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """There is deliberately no `?profile=full` escape hatch.
+
+    If a caller could opt out of the deployment default, the boundary would be
+    exactly as unenforceable as the query param it replaced.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+
+    for attempt in ("full", "default", "", "connector-full"):
+        async with Client(
+            StreamableHttpTransport(f"{http_base_url}/mcp?profile={attempt}", headers=HEADERS)
+        ) as client:
+            names = {tool.name for tool in await client.list_tools()}
+        leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+        assert leaked == [], f"?profile={attempt} widened a restricted deployment: {leaked}"
+
+
+async def test_unset_env_var_leaves_the_base_endpoint_full(http_base_url: str) -> None:
+    """No regression for Claude Code, Codex, Cursor, Composio, Docker, Paperclip."""
+    async with Client(
+        StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
+    ) as client:
+        names = {tool.name for tool in await client.list_tools()}
+
+    for kept in ("audio.synthesize", "sessions.phone.create", "agents.create", "agents.deploy"):
+        assert kept in names, f"{kept} vanished from the unrestricted base endpoint"
+
+
 async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> None:
     """The gate must read the real query param, not a patched helper.
 
     `test_ai_disclosure.py` monkeypatches `current_profile`, so it never proves
-    that `?profile=connector` survives Starlette routing and reaches
+    that a directory profile survives Starlette routing and reaches
     `get_http_request()`. This does.
+
+    Retargeted from `?profile=connector` to `?profile=chatgpt` when the
+    connector cut removed `sessions.phone.create`: ChatGPT's directory allows
+    outbound calling, so it is now the only directory profile that can exercise
+    the disclosure path end to end.
     """
     from spekoai_mcp import action_tools
 
@@ -123,7 +243,7 @@ async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> 
     action_tools.call = fake_call  # type: ignore[assignment]
     try:
         async with Client(
-            StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
+            StreamableHttpTransport(f"{http_base_url}/mcp?profile=chatgpt", headers=HEADERS)
         ) as client:
             await client.call_tool(
                 "sessions.phone.create",
