@@ -108,6 +108,34 @@ async def test_customer_profile_adds_manifest_control_plane_tools(
     assert "capabilities.search" in names
     assert "operations.wait" in names
     assert "operations.cancel" in names
+    gateway_entries = [
+        entry
+        for entry in action_entries()
+        if entry["id"].startswith("gateway.") or entry["id"].startswith("api_keys.")
+    ]
+    assert len(gateway_entries) == 21
+    assert all(entry["profiles"] == ["customer"] for entry in gateway_entries)
+    assert {entry["id"] for entry in gateway_entries}.issubset(names)
+
+
+async def test_customer_gateway_tool_uses_generic_action_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _force_http_profile(monkeypatch, "customer")
+    captured = _capture_speko_api(monkeypatch)
+
+    result = await create_server().call_tool("gateway.overview.get", {})
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://api.speko.dev/v1/actions/gateway.overview.get"
+    assert captured["headers"] == {
+        "Authorization": "Bearer sk_platform_test",
+        "X-Speko-Source": "mcp",
+        "X-Speko-MCP-Profile": "customer",
+        "X-Speko-Client": "unknown-mcp-client",
+        "X-Speko-Action-Id": "gateway.overview.get",
+    }
+    assert result.structured_content == {"ok": True}
 
 
 async def test_builder_profile_tools_expose_quality_metadata(
