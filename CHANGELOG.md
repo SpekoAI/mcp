@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9
+
+- Bind each hosted tool surface to its deployment instead of selecting it from
+  a public `profile` query parameter. Query strings can no longer switch or
+  widen a host's tool set.
+- Add dedicated bare `/mcp` contracts for `chatgpt.speko.ai` and
+  `builder-mcp.speko.ai`, alongside `anthropic.speko.ai`.
+- Reject unknown non-empty `SPEKOAI_MCP_DEFAULT_PROFILE` values instead of
+  silently falling back to the legacy full surface.
+
 ## 0.2.8
 
 - Expose the complete Gateway action catalog through the customer MCP profile.

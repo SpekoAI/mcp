@@ -1,10 +1,10 @@
-"""Tests for the per-request builder tool profile (`/mcp?profile=builder`).
+"""Tests for the deployment-bound builder tool profile.
 
 Covers the three invariants of platform issue #1169 section 1:
 
 1. The builder profile advertises exactly the curated preset.
-2. The DEFAULT profile (no/unknown `profile` query param, or no HTTP
-   request at all) is byte-identical to the pre-profile surface — same
+2. The DEFAULT profile (no deployment setting) is byte-identical to the
+   pre-profile surface — same
    names, same order, and builder-only tools are neither listed nor
    callable.
 3. `code_snippets.get` returns non-empty, correct-by-anchor code for
@@ -19,7 +19,6 @@ import pytest
 from fastmcp.exceptions import NotFoundError
 
 import spekoai_mcp.http_client as http_client
-import spekoai_mcp.profiles as profiles
 from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.builder_tools import BUILDER_TOOL_NAMES
@@ -28,17 +27,19 @@ from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.profiles import (
     BUILDER_ONLY_TOOL_NAMES,
     BUILDER_PROFILE_TOOL_NAMES,
+    DEFAULT_PROFILE_ENV_VAR,
 )
 from spekoai_mcp.server import create_server
 
 DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
-def _force_http_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
-    """Simulate an HTTP request whose query string carries `profile`."""
-    query_params: dict[str, str] = {} if profile is None else {"profile": profile}
-    fake_request = SimpleNamespace(query_params=query_params)
-    monkeypatch.setattr(profiles, "get_http_request", lambda: fake_request)
+def _force_deployment_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
+    """Configure the tool surface selected by one deployed host."""
+    if profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
 
 
 # --- profile constants stay coherent ---------------------------------------
@@ -65,17 +66,17 @@ async def test_default_profile_without_http_request_is_unchanged() -> None:
 async def test_default_profile_over_http_is_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, None)
+    _force_deployment_profile(monkeypatch, None)
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == DEFAULT_TOOL_NAMES
 
 
-async def test_unknown_profile_value_falls_back_to_default(
+async def test_unknown_deployment_profile_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "ops")
-    names = [tool.name for tool in await create_server().list_tools()]
-    assert names == DEFAULT_TOOL_NAMES
+    _force_deployment_profile(monkeypatch, "ops")
+    with pytest.raises(RuntimeError, match=DEFAULT_PROFILE_ENV_VAR):
+        await create_server().list_tools()
 
 
 async def test_builder_only_tools_not_callable_on_default_profile() -> None:
@@ -91,7 +92,7 @@ async def test_builder_only_tools_not_callable_on_default_profile() -> None:
 async def test_builder_profile_lists_exactly_the_preset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == BUILDER_PROFILE_TOOL_NAMES
 
@@ -99,7 +100,7 @@ async def test_builder_profile_lists_exactly_the_preset(
 async def test_customer_profile_adds_manifest_control_plane_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "customer")
+    _force_deployment_profile(monkeypatch, "customer")
     names = [tool.name for tool in await create_server().list_tools()]
     manifest_names = [
         entry["id"] for entry in action_entries() if entry["id"] not in ACTION_TOOL_NAMES
@@ -121,7 +122,7 @@ async def test_customer_profile_adds_manifest_control_plane_tools(
 async def test_customer_gateway_tool_uses_generic_action_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "customer")
+    _force_deployment_profile(monkeypatch, "customer")
     captured = _capture_speko_api(monkeypatch)
 
     result = await create_server().call_tool("gateway.overview.get", {})
@@ -141,7 +142,7 @@ async def test_customer_gateway_tool_uses_generic_action_adapter(
 async def test_builder_profile_tools_expose_quality_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     tools = await create_server().list_tools()
     assert all(tool.title for tool in tools)
     assert all(tool.output_schema for tool in tools)
@@ -158,7 +159,7 @@ async def test_builder_profile_tools_expose_quality_metadata(
 async def test_builder_profile_blocks_tools_outside_the_preset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     mcp = create_server()
     for name in ["agents.delete", "sessions.list", "phone_numbers.create"]:
         assert name not in BUILDER_PROFILE_TOOL_NAMES
@@ -172,7 +173,7 @@ async def test_builder_profile_blocks_tools_outside_the_preset(
 async def test_get_code_snippet_returns_code_for_every_framework(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     mcp = create_server()
     for framework in SNIPPET_FRAMEWORKS:
         result = await mcp.call_tool("code_snippets.get", {"framework": framework})
@@ -191,7 +192,7 @@ async def test_code_snippets_carry_correctness_anchors(
     """Anchor the snippets to the real integration surface: the session
     mint endpoint, the secret key env var, and the browser SDK entrypoint
     with its short-lived credential fields."""
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     mcp = create_server()
 
     async def code_for(framework: str) -> str:
@@ -226,7 +227,7 @@ async def test_code_snippets_carry_correctness_anchors(
 async def test_get_code_snippet_rejects_unknown_framework(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     with pytest.raises(Exception, match="framework"):
         await create_server().call_tool("code_snippets.get", {"framework": "ruby"})
 
@@ -281,7 +282,7 @@ def _capture_speko_api(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
 async def test_list_voices_relays_to_voices_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     captured = _capture_speko_api(monkeypatch)
     result = await create_server().call_tool("voices.list", {"provider": "cartesia"})
     assert captured["method"] == "GET"
@@ -298,7 +299,7 @@ async def test_list_voices_relays_to_voices_endpoint(
 async def test_list_models_relays_to_providers_known_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     captured = _capture_speko_api(monkeypatch)
     result = await create_server().call_tool("models.list", {})
     assert captured["method"] == "GET"

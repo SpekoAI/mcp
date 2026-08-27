@@ -2,10 +2,10 @@
 
 These tools exist for app builders (v0, Lovable, Bolt, Replit, Base44,
 Figma Make) whose agents consume MCP tools during code generation. They
-are registered on the shared server but only advertised (and callable)
-under ``/mcp?profile=builder`` — ``ToolProfileMiddleware`` in
-``profiles.py`` hides them from the default surface so existing clients
-see zero change.
+are registered on the shared image but only advertised (and callable) by
+the builder deployment at ``https://builder-mcp.speko.ai/mcp``.
+``ToolProfileMiddleware`` in ``profiles.py`` hides them from every other
+surface.
 
 - ``voices.list``  — relay of GET /v1/voices (TTS voice + provider catalog).
 - ``models.list``  — relay of GET /v1/providers/known (STT/LLM/TTS/S2S

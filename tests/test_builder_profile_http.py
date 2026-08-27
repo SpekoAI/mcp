@@ -1,12 +1,11 @@
-"""End-to-end HTTP tests for the builder profile.
+"""End-to-end HTTP tests for the builder host's profile.
 
 Unlike `test_builder_profile.py` (which monkeypatches the profile
 resolution), these tests run the real ASGI app under a real uvicorn
-server and speak actual streamable-http MCP, so the `?profile=builder`
-query param is exercised through Starlette routing,
-`RequestContextMiddleware`, and `get_http_request` — the same code path
-production traffic takes. Auth uses a stub verifier (any bearer token)
-so no network access is needed; the auth middleware itself still runs.
+server and speak actual streamable-http MCP. The deployment environment selects
+the surface while the URL stays at bare `/mcp`, matching production. Auth uses
+a stub verifier (any bearer token) so no network access is needed; the auth
+middleware itself still runs.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from fastmcp.server.auth import AccessToken, MultiAuth, TokenVerifier
 
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES
+from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES, DEFAULT_PROFILE_ENV_VAR
 from spekoai_mcp.server import create_app
 
 HEADERS = {"Authorization": "Bearer sk_test_builder_profile"}
@@ -72,24 +71,31 @@ def http_base_url() -> Iterator[str]:
     thread.join(timeout=5)
 
 
-async def test_default_mcp_tool_list_is_unchanged_over_http(http_base_url: str) -> None:
+async def test_default_mcp_tool_list_is_unchanged_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = [tool.name for tool in await client.list_tools()]
     assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
-async def test_unknown_profile_value_is_default_over_http(http_base_url: str) -> None:
+async def test_query_parameter_cannot_select_builder_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
     async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=ops", headers=HEADERS)
+        StreamableHttpTransport(f"{http_base_url}/mcp?profile=builder", headers=HEADERS)
     ) as client:
         names = [tool.name for tool in await client.list_tools()]
     assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
-async def test_builder_profile_over_http(http_base_url: str) -> None:
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=builder", headers=HEADERS)
-    ) as client:
+async def test_builder_profile_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "builder")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = [tool.name for tool in await client.list_tools()]
         assert names == BUILDER_PROFILE_TOOL_NAMES
 
@@ -102,7 +108,10 @@ async def test_builder_profile_over_http(http_base_url: str) -> None:
             await client.call_tool("agents.delete", {"agent_id": "x"})
 
 
-async def test_builder_only_tool_hidden_on_default_over_http(http_base_url: str) -> None:
+async def test_builder_only_tool_hidden_on_default_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         with pytest.raises(Exception, match="Unknown tool: 'code_snippets.get'"):
             await client.call_tool("code_snippets.get", {"framework": "curl"})

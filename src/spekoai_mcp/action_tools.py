@@ -32,8 +32,8 @@ ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
 # --- AI disclosure -----------------------------------------------------------
 #
-# Agents created or dialled through the PUBLISHED DIRECTORY SURFACE
-# (`?profile=connector`) disclose that they are an AI. Enforced here, in the
+# Agents created or dialled through a PUBLISHED DIRECTORY HOST disclose that
+# they are an AI. Enforced here, in the
 # relay, rather than left to whatever system prompt a caller happens to pass:
 # assistant-directory policy requires the platform to inject the disclosure,
 # not to trust configuration.
@@ -42,11 +42,8 @@ ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 #   - the first thing spoken on the call (DISCLOSURE_OPENER)
 #   - the answer when someone asks "am I talking to a person?" (DISCLOSURE_RULE)
 #
-# Scope: the connector profile ONLY. Direct MCP clients (Claude Code, Codex,
-# Cursor) keep their existing behaviour on the default `/mcp` surface, as do
-# the dashboard and the platform API. Codex is the largest identified direct
-# client by request volume, so widening this would change behaviour for users
-# who never saw the directory listing.
+# Scope: directory deployments only. Direct MCP clients keep their existing
+# behaviour on the customer host, as do the dashboard and the platform API.
 DISCLOSURE_OPENER = "Before we start, I should say I am an AI assistant."
 
 DISCLOSURE_RULE = (
@@ -86,8 +83,7 @@ def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
     Fires for any profile in ``DIRECTORY_PROFILES`` — Anthropic's MCP
     Directory (`connector`) and OpenAI's Plugin Directory (`chatgpt`) both
     require that a person picking up the phone is told they are speaking to
-    an AI. Outside an HTTP request ``current_profile()`` returns ``None``,
-    so stdio and in-process callers are never rewritten.
+    an AI. Deployments without a configured profile are never rewritten.
     """
     if current_profile() in DIRECTORY_PROFILES:
         apply_ai_disclosure(body)

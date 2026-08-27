@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES
+from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES, DEFAULT_PROFILE_ENV_VAR
 from spekoai_mcp.server import (
     MCP_PATH,
     MCP_PROTOCOL_VERSION,
@@ -586,25 +586,39 @@ def test_legacy_telemetry_replaces_user_agent_control_characters() -> None:
     assert MCPProtocolGuard._sanitized_user_agent(scope) == "Cursor/3.17.8?private?value"
 
 
+def test_invalid_deployment_profile_fails_during_app_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "costumer")
+
+    with pytest.raises(RuntimeError, match=DEFAULT_PROFILE_ENV_VAR):
+        create_app(auth=StubVerifier())
+
+
 @pytest.mark.parametrize(
-    ("path", "expected_names"),
+    ("deployment_profile", "expected_names"),
     [
-        (MCP_PATH, None),
-        (f"{MCP_PATH}?profile=builder", BUILDER_PROFILE_TOOL_NAMES),
+        (None, None),
+        ("builder", BUILDER_PROFILE_TOOL_NAMES),
     ],
 )
 def test_tool_profiles_match_in_both_protocol_eras(
-    path: str,
+    deployment_profile: str | None,
     expected_names: list[str] | None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    if deployment_profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, deployment_profile)
     with TestClient(create_app(auth=StubVerifier())) as client:
         modern = client.post(
-            path,
+            MCP_PATH,
             headers=modern_headers("tools/list"),
             json=modern_request("tools/list"),
         )
         legacy = client.post(
-            path,
+            MCP_PATH,
             headers=legacy_headers(),
             json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
         )

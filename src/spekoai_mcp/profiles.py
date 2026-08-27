@@ -1,42 +1,31 @@
-"""Per-request tool profiles for the hosted MCP endpoint.
+"""Deployment-bound tool profiles for the hosted MCP endpoints.
 
 App builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) let users add
 remote MCP servers whose tools inform the agent DURING code generation.
 The full operational surface (sessions/numbers/KBs/evals/monitors/usage)
 is too broad and too write-heavy for that use case, so the server supports
-a curated builder preset selected per request via a query parameter:
+a curated builder preset on a dedicated host:
 
-    https://mcp.speko.ai/mcp?profile=builder
+    https://builder-mcp.speko.ai/mcp
 
-Two further presets are published in third-party assistant directories:
-``?profile=connector`` (Anthropic's MCP Directory) and ``?profile=chatgpt``
+Two further hosts are published in third-party assistant directories:
+``anthropic.speko.ai`` (Anthropic's MCP Directory) and ``chatgpt.speko.ai``
 (OpenAI's Plugin Directory). Each is shaped by that directory's policy, so
-they are deliberately not the same list.
+they deliberately do not serve the same tool list.
 
 A profile can also be the DEPLOYMENT default, via
-``SPEKOAI_MCP_DEFAULT_PROFILE``. That is how a directory-published surface is
-served at bare ``/mcp`` with no query string in the contract at all — see
-:func:`default_profile` for why a query parameter turned out to be the wrong
-place to put a policy boundary, and Anthropic's 2026-08-27 review for the
-refutation that forced it.
+``SPEKOAI_MCP_DEFAULT_PROFILE`` selects the immutable surface for one
+deployment. Query parameters are deliberately ignored: a host is the policy
+boundary, and callers cannot switch or widen its surface.
 
 Design constraints (see platform issue #1169):
 
 - On a deployment that leaves ``SPEKOAI_MCP_DEFAULT_PROFILE`` unset, the
-  DEFAULT surface must stay byte-identical for existing clients. Builder-only
-  tools are registered on the same server but hidden from the default
-  view by :class:`ToolProfileMiddleware`, and the default tool ordering
-  is untouched because builder-only tools are registered last.
-- A separate path (e.g. ``/builder/mcp``) is deliberately NOT used. A query
-  parameter keeps one API-key authentication surface, and the OAuth resource
-  indicator is bound to ``/mcp`` (see ``auth.py``). A restricted *host* is the
-  supported way to get a narrower base endpoint: same ``/mcp`` path, its own
-  ``SPEKOAI_MCP_BASE_URL``, plus ``SPEKOAI_MCP_DEFAULT_PROFILE``.
-
-The profile is resolved from the live HTTP request on every MCP request
-(FastMCP's ``RequestContextMiddleware`` is installed in ``create_app``), so one
-deployment serves several surfaces. Outside an HTTP request the deployment
-default applies.
+  legacy default surface stays byte-identical for local development and
+  backwards-compatible self-hosting.
+- Every hosted deployment sets a known profile and serves it at bare ``/mcp``.
+  The same path keeps RFC 9728 discovery and OAuth resource binding uniform;
+  the hostname supplies the policy boundary.
 """
 
 from __future__ import annotations
@@ -46,21 +35,19 @@ from collections.abc import Sequence
 
 import mcp.types as mt
 from fastmcp.exceptions import NotFoundError
-from fastmcp.server.dependencies import get_http_request
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool
 
 from spekoai_mcp.action_manifest import action_entries, manifest_tool_names
 
-PROFILE_QUERY_PARAM = "profile"
 DEFAULT_PROFILE_ENV_VAR = "SPEKOAI_MCP_DEFAULT_PROFILE"
 BUILDER_PROFILE = "builder"
 CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
 CUSTOMER_PROFILE = "customer"
 
-# Every value `?profile=` and SPEKOAI_MCP_DEFAULT_PROFILE will honour. Anything
-# else resolves to the deployment default, so a typo can never widen a surface.
+# Every value SPEKOAI_MCP_DEFAULT_PROFILE will honour. Unknown non-empty values
+# fail closed instead of silently widening a deployment.
 KNOWN_PROFILES: frozenset[str] = frozenset(
     {BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE, CUSTOMER_PROFILE}
 )
@@ -180,7 +167,7 @@ DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 # The curated ChatGPT preset, published to OpenAI's Plugin Directory as
-# `https://mcp.speko.ai/mcp?profile=chatgpt`.
+# `https://chatgpt.speko.ai/mcp`.
 #
 # This is a SEPARATE profile from `connector`, not a reuse of it, because the
 # two directories forbid different things:
@@ -289,11 +276,11 @@ _BUILDER_PROFILE_TOOL_SET = frozenset(BUILDER_PROFILE_TOOL_NAMES) | _BUILDER_MAN
 
 
 def default_profile() -> str | None:
-    """The profile a request with no ``?profile=`` gets on this deployment.
+    """Return the immutable tool profile configured for this deployment.
 
     Read from ``SPEKOAI_MCP_DEFAULT_PROFILE`` on every call rather than at
-    import, so a test can set it without reloading the module. Unset — the
-    normal case — returns ``None``, the full default surface.
+    import, so tests can set it without reloading the module. Unset returns
+    ``None`` for backwards-compatible self-hosting and local development.
 
     This exists because a query parameter turned out to be the wrong place to
     put a policy boundary. The measurement in :func:`current_profile` was
@@ -308,57 +295,37 @@ def default_profile() -> str | None:
          listing points at the base endpoint … The tools below need to come
          off that surface itself."
 
-    A base-endpoint default is the fix, because it cannot be dropped by a URL
+    A host-bound profile is the fix, because it cannot be dropped by a URL
     rewrite, a CDN rule, or a listing field somebody retyped. A deployment
     that sets ``SPEKOAI_MCP_DEFAULT_PROFILE=connector`` serves the connector
     surface at bare ``/mcp``, with no query string anywhere in the contract.
 
-    There is deliberately NO ``?profile=full`` escape hatch. On a restricted
-    deployment the restriction has to be a property of the host, not a default
-    a caller can opt out of — otherwise it is the same unenforceable boundary
-    in a new costume. The full surface lives on a deployment that leaves this
-    variable unset.
+    Query parameters never participate in selection. On a restricted
+    deployment the restriction is a property of the host, not a default a
+    caller can opt out of. An unknown non-empty environment value raises rather
+    than silently exposing the legacy surface.
     """
     value = (os.environ.get(DEFAULT_PROFILE_ENV_VAR) or "").strip()
-    return value if value in KNOWN_PROFILES else None
+    if not value:
+        return None
+    if value not in KNOWN_PROFILES:
+        known = ", ".join(sorted(KNOWN_PROFILES))
+        raise RuntimeError(f"{DEFAULT_PROFILE_ENV_VAR} must be one of: {known}")
+    return value
 
 
 def current_profile() -> str | None:
-    """Resolve the tool profile for the current HTTP request.
+    """Return the deployment profile; request input can never override it.
 
-    Returns a profile name for an exact ``?profile=`` match against one of the
-    known values; anything else (missing param, unknown value, no HTTP request
-    at all) falls back to :func:`default_profile` for this deployment, so a
-    typo or a future value can never widen the surface.
-
-    Resolution is per request. Measured 2026-08-22, all three legs green:
-
-    - the real streamable-http client repeats the whole URL on every request
-      (asserted in ``test_chatgpt_profile_http.py``, not assumed);
-    - this server advertises protocol ``2026-07-28`` and runs stateless on it,
-      so there is no second, session-shaped path a request could arrive by;
-    - ``mcp.speko.ai/mcp`` answers directly with no redirect, and the
-      trailing-slash ``/mcp/`` 307 preserves the query string.
-
-    The residual risk that measurement could not reach — a proxy, CDN rule or
-    directory record that drops the query — is now closed by
-    :func:`default_profile` instead of documented, for any deployment that
-    sets it. A query-less request on a restricted host resolves to the
-    restricted profile, not the full one.
+    The name is kept because action relays and disclosure policy ask for the
+    profile serving the current call. It is intentionally independent of the
+    HTTP request: ``?profile=builder`` and every other query value are inert.
     """
-    try:
-        request = get_http_request()
-    except Exception:  # noqa: BLE001 - no-HTTP-context must NEVER widen the surface,
-        # whatever exception type FastMCP raises for it now or in the future.
-        return default_profile()
-    value = request.query_params.get(PROFILE_QUERY_PARAM)
-    if value in KNOWN_PROFILES:
-        return value
     return default_profile()
 
 
 class ToolProfileMiddleware(Middleware):
-    """Filter the tool surface per request based on the resolved profile.
+    """Filter the tool surface based on the deployment's configured profile.
 
     - default profile: hide (and refuse calls to) builder-only tools, so
       the advertised list and callable set are exactly the pre-profile

@@ -1,4 +1,4 @@
-"""Tests for the ChatGPT tool profile (`/mcp?profile=chatgpt`).
+"""Tests for the ChatGPT host's deployment-bound tool profile.
 
 The profile is what OpenAI's Plugin Directory reviews, so these tests are
 written as the policy checks a reviewer would run, not as a spelling test on
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import re
-from types import SimpleNamespace
 
 import pytest
 from fastmcp.exceptions import NotFoundError, ToolError
@@ -31,6 +30,7 @@ from spekoai_mcp.profiles import (
     CHATGPT_PROFILE,
     CHATGPT_PROFILE_TOOL_NAMES,
     CONNECTOR_PROFILE,
+    DEFAULT_PROFILE_ENV_VAR,
     DIRECTORY_PROFILES,
 )
 from spekoai_mcp.server import create_server
@@ -42,11 +42,12 @@ DESTRUCTIVE_PUBLIC_NAMES = {
 }
 
 
-def _force_http_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
-    """Simulate an HTTP request whose query string carries `profile`."""
-    query_params: dict[str, str] = {} if profile is None else {"profile": profile}
-    fake_request = SimpleNamespace(query_params=query_params)
-    monkeypatch.setattr(profiles, "get_http_request", lambda: fake_request)
+def _force_deployment_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
+    """Configure the tool surface selected by one deployed host."""
+    if profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
 
 
 # --- the preset is coherent -------------------------------------------------
@@ -161,10 +162,10 @@ def test_no_developer_only_tooling_is_exposed() -> None:
 # --- resolution -------------------------------------------------------------
 
 
-def test_chatgpt_profile_resolves_from_the_query_param(
+def test_chatgpt_profile_resolves_from_deployment_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     assert profiles.current_profile() == CHATGPT_PROFILE
 
 
@@ -180,7 +181,7 @@ def test_chatgpt_is_a_directory_profile() -> None:
 async def test_chatgpt_profile_lists_exactly_the_preset_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == CHATGPT_PROFILE_TOOL_NAMES
 
@@ -189,7 +190,7 @@ async def test_out_of_profile_tools_are_uncallable(monkeypatch: pytest.MonkeyPat
     """Hidden must also mean unreachable — a reviewer who reads the source and
     calls the name anyway gets the same 'Unknown tool' an unregistered name
     would give."""
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     mcp = create_server()
     for name in [
         "agents.delete",
@@ -209,7 +210,7 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
     """OpenAI names missing or wrong action labels as a common cause of
     rejection, so every advertised tool must carry a title, an output schema
     and all three hints — with the reads marked read-only and the writes not."""
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     tools = await create_server().list_tools()
     assert all(tool.title for tool in tools)
     assert all(tool.output_schema for tool in tools)
@@ -244,7 +245,7 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
 async def test_default_profile_is_unchanged_by_the_chatgpt_preset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, None)
+    _force_deployment_profile(monkeypatch, None)
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == DEFAULT_TOOL_NAMES
 
@@ -252,7 +253,7 @@ async def test_default_profile_is_unchanged_by_the_chatgpt_preset(
 async def test_builder_profile_is_unchanged_by_the_chatgpt_preset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "builder")
+    _force_deployment_profile(monkeypatch, "builder")
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == BUILDER_PROFILE_TOOL_NAMES
 
@@ -260,7 +261,7 @@ async def test_builder_profile_is_unchanged_by_the_chatgpt_preset(
 async def test_connector_profile_is_unchanged_by_the_chatgpt_preset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "connector")
+    _force_deployment_profile(monkeypatch, "connector")
     names = [tool.name for tool in await create_server().list_tools()]
     excluded = profiles.CONNECTOR_EXCLUDED_TOOL_NAMES
     prefixes = profiles.CONNECTOR_EXCLUDED_PREFIXES
@@ -269,12 +270,12 @@ async def test_connector_profile_is_unchanged_by_the_chatgpt_preset(
     ]
 
 
-async def test_unknown_profile_still_falls_back_to_default(
+async def test_unknown_deployment_profile_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, "chat-gpt")
-    names = [tool.name for tool in await create_server().list_tools()]
-    assert names == DEFAULT_TOOL_NAMES
+    _force_deployment_profile(monkeypatch, "chat-gpt")
+    with pytest.raises(RuntimeError, match=DEFAULT_PROFILE_ENV_VAR):
+        await create_server().list_tools()
 
 
 # --- disclosure -------------------------------------------------------------
@@ -308,7 +309,7 @@ async def test_no_advertised_description_names_a_withheld_tool(
     A description that points at a dropped tool dead-ends the model on
     'Unknown tool' with no way to recover.
     """
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     tools = await create_server().list_tools()
     all_tools = set(DEFAULT_TOOL_NAMES) | set(BUILDER_TOOL_NAMES)
     # Descriptions name tools either dotted (sessions.transcript.get) or by the
@@ -339,7 +340,7 @@ async def test_no_advertised_description_names_a_withheld_tool(
 async def test_every_advertised_tool_is_reachable(monkeypatch: pytest.MonkeyPatch) -> None:
     """Listed must mean callable. If the middleware ever intersects where it
     should union, a tool could advertise and then fail on dispatch."""
-    _force_http_profile(monkeypatch, "chatgpt")
+    _force_deployment_profile(monkeypatch, "chatgpt")
     mcp = create_server()
     for name in CHATGPT_PROFILE_TOOL_NAMES:
         try:

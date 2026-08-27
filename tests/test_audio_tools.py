@@ -4,7 +4,7 @@ Two things are being pinned here:
 
 1. The tools work — correct endpoint, correct body, and a transcript
    assembled out of the SSE frames `/v1/transcribe` actually answers with.
-2. `audio.synthesize` is absent from the `?profile=connector` surface while
+2. `audio.synthesize` is absent from the Anthropic host's surface while
    `audio.transcribe` stays. Anthropic's Software Directory Policy prohibits
    software that generates audio content, so the published listing omits
    synthesis; transcription returns text and is unaffected. Direct MCP
@@ -16,7 +16,6 @@ from __future__ import annotations
 import base64
 import json
 import socket
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -24,9 +23,12 @@ from fastmcp.exceptions import NotFoundError, ToolError
 
 import spekoai_mcp.action_tools as action_tools
 import spekoai_mcp.http_client as http_client
-import spekoai_mcp.profiles as profiles
 from spekoai_mcp.http_client import SpekoRawResponse
-from spekoai_mcp.profiles import CONNECTOR_EXCLUDED_TOOL_NAMES, CONNECTOR_PROFILE
+from spekoai_mcp.profiles import (
+    CONNECTOR_EXCLUDED_TOOL_NAMES,
+    CONNECTOR_PROFILE,
+    DEFAULT_PROFILE_ENV_VAR,
+)
 from spekoai_mcp.server import create_server
 
 MP3 = b"ID3\x04\x00audio-bytes"
@@ -101,12 +103,12 @@ def _client_returning(response: _FakeStream) -> Any:
     return FakeClient
 
 
-def _force_http_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
-    """Simulate an HTTP request whose query string carries `profile`."""
-    query_params: dict[str, str] = {} if profile is None else {"profile": profile}
-    monkeypatch.setattr(
-        profiles, "get_http_request", lambda: SimpleNamespace(query_params=query_params)
-    )
+def _force_deployment_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
+    """Configure the tool surface selected by one deployed host."""
+    if profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
 
 
 # --- the tools are registered ----------------------------------------------
@@ -371,7 +373,7 @@ async def test_a_public_url_is_fetched_with_its_content_type(
 async def test_connector_profile_hides_synthesis_but_keeps_transcription(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _force_http_profile(monkeypatch, CONNECTOR_PROFILE)
+    _force_deployment_profile(monkeypatch, CONNECTOR_PROFILE)
     names = [tool.name for tool in await create_server().list_tools()]
     assert "audio.synthesize" not in names
     assert "audio.transcribe" in names
@@ -381,7 +383,7 @@ async def test_connector_profile_refuses_to_call_synthesis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Hidden must also mean uncallable, or the filter is cosmetic."""
-    _force_http_profile(monkeypatch, CONNECTOR_PROFILE)
+    _force_deployment_profile(monkeypatch, CONNECTOR_PROFILE)
     with pytest.raises(NotFoundError, match="Unknown tool"):
         await create_server().call_tool(
             "audio.synthesize", {"body": {"text": "hi", "intent": {"language": "en"}}}
@@ -390,7 +392,7 @@ async def test_connector_profile_refuses_to_call_synthesis(
 
 async def test_default_profile_still_exposes_synthesis(monkeypatch: pytest.MonkeyPatch) -> None:
     """The exclusion is scoped to the published listing, not to every client."""
-    _force_http_profile(monkeypatch, None)
+    _force_deployment_profile(monkeypatch, None)
     names = [tool.name for tool in await create_server().list_tools()]
     assert "audio.synthesize" in names
 

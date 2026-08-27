@@ -1,12 +1,11 @@
-"""End-to-end HTTP tests for the connector profile.
+"""End-to-end HTTP tests for the Anthropic host's connector profile.
 
 Unlike `test_builder_profile.py` (which monkeypatches the profile
 resolution), these tests run the real ASGI app under a real uvicorn
-server and speak actual streamable-http MCP, so the `?profile=connector`
-query param is exercised through Starlette routing,
-`RequestContextMiddleware`, and `get_http_request` — the same code path
-production traffic takes. Auth uses a stub verifier (any bearer token)
-so no network access is needed; the auth middleware itself still runs.
+server and speak actual streamable-http MCP. The deployment environment selects
+the surface while the URL stays at bare `/mcp`, matching production. Auth uses
+a stub verifier (any bearer token) so no network access is needed; the auth
+middleware itself still runs.
 """
 
 from __future__ import annotations
@@ -75,11 +74,12 @@ def http_base_url() -> Iterator[str]:
     thread.join(timeout=5)
 
 
-async def test_connector_profile_hides_evals_and_monitors_over_http(http_base_url: str) -> None:
+async def test_connector_profile_hides_evals_and_monitors_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The published directory surface must expose no bulk or scheduled tooling."""
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
-    ) as client:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = [tool.name for tool in await client.list_tools()]
 
     assert names, "connector profile advertised no tools at all"
@@ -88,7 +88,7 @@ async def test_connector_profile_hides_evals_and_monitors_over_http(http_base_ur
 
 
 async def test_connector_profile_withholds_every_tool_the_directory_named(
-    http_base_url: str,
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The nine tools Anthropic's MCP Directory enumerated on 2026-08-27.
 
@@ -97,9 +97,8 @@ async def test_connector_profile_withholds_every_tool_the_directory_named(
     the policy — generated audio only — and the directory team refuted it:
     "configuring is arming."
     """
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
-    ) as client:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = {tool.name for tool in await client.list_tools()}
 
     leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
@@ -107,7 +106,7 @@ async def test_connector_profile_withholds_every_tool_the_directory_named(
 
 
 async def test_connector_profile_keeps_transcription_and_reads_over_http(
-    http_base_url: str,
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The cut must not overshoot what the directory explicitly blessed.
 
@@ -115,9 +114,8 @@ async def test_connector_profile_keeps_transcription_and_reads_over_http(
     tools — listing agents, sessions, transcripts, recordings, phone numbers,
     credits and usage."
     """
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
-    ) as client:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = {tool.name for tool in await client.list_tools()}
 
     for kept in (
@@ -136,21 +134,21 @@ async def test_connector_profile_keeps_transcription_and_reads_over_http(
         assert kept in names, f"{kept} was cut from the connector surface but should stay"
 
 
-async def test_excluded_tool_is_uncallable_on_connector_over_http(http_base_url: str) -> None:
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
-    ) as client:
+async def test_excluded_tool_is_uncallable_on_connector_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         with pytest.raises(Exception, match="Unknown tool: 'agents.evals.run'"):
             await client.call_tool("agents.evals.run", {"agent_id": "x", "eval_id": "y"})
 
 
 async def test_directory_required_tool_is_uncallable_on_connector_over_http(
-    http_base_url: str,
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Hidden must also mean uncallable, or the listing is cosmetic."""
-    async with Client(
-        StreamableHttpTransport(f"{http_base_url}/mcp?profile=connector", headers=HEADERS)
-    ) as client:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         with pytest.raises(Exception, match="Unknown tool: 'sessions.phone.create'"):
             await client.call_tool(
                 "sessions.phone.create",
@@ -158,7 +156,7 @@ async def test_directory_required_tool_is_uncallable_on_connector_over_http(
             )
 
 
-async def test_default_profile_env_var_restricts_the_bare_base_endpoint(
+async def test_connector_deployment_restricts_the_bare_base_endpoint(
     http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The whole point of the change: no query string anywhere in the contract.
@@ -187,17 +185,17 @@ async def test_default_profile_env_var_restricts_the_bare_base_endpoint(
             )
 
 
-async def test_no_profile_param_can_widen_a_restricted_deployment(
+async def test_no_query_parameter_can_widen_or_retarget_a_restricted_deployment(
     http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """There is deliberately no `?profile=full` escape hatch.
+    """There is deliberately no query-string profile selector.
 
     If a caller could opt out of the deployment default, the boundary would be
     exactly as unenforceable as the query param it replaced.
     """
     monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
 
-    for attempt in ("full", "default", "", "connector-full"):
+    for attempt in ("customer", "builder", "chatgpt", "connector", "full", "default", ""):
         async with Client(
             StreamableHttpTransport(f"{http_base_url}/mcp?profile={attempt}", headers=HEADERS)
         ) as client:
@@ -206,8 +204,11 @@ async def test_no_profile_param_can_widen_a_restricted_deployment(
         assert leaked == [], f"?profile={attempt} widened a restricted deployment: {leaked}"
 
 
-async def test_unset_env_var_leaves_the_base_endpoint_full(http_base_url: str) -> None:
+async def test_unset_env_var_leaves_the_base_endpoint_full(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """No regression for Claude Code, Codex, Cursor, Composio, Docker, Paperclip."""
+    monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
     async with Client(
         StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
     ) as client:
@@ -217,15 +218,13 @@ async def test_unset_env_var_leaves_the_base_endpoint_full(http_base_url: str) -
         assert kept in names, f"{kept} vanished from the unrestricted base endpoint"
 
 
-async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> None:
-    """The gate must read the real query param, not a patched helper.
+async def test_disclosure_resolves_from_the_host_profile(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate must read the deployment setting, not a patched helper.
 
-    `test_ai_disclosure.py` monkeypatches `current_profile`, so it never proves
-    that a directory profile survives Starlette routing and reaches
-    `get_http_request()`. This does.
-
-    Retargeted from `?profile=connector` to `?profile=chatgpt` when the
-    connector cut removed `sessions.phone.create`: ChatGPT's directory allows
+    Retargeted from the connector host to the ChatGPT host when the connector
+    cut removed `sessions.phone.create`: ChatGPT's directory allows
     outbound calling, so it is now the only directory profile that can exercise
     the disclosure path end to end.
     """
@@ -242,8 +241,9 @@ async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> 
     original = action_tools.call
     action_tools.call = fake_call  # type: ignore[assignment]
     try:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "chatgpt")
         async with Client(
-            StreamableHttpTransport(f"{http_base_url}/mcp?profile=chatgpt", headers=HEADERS)
+            StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
         ) as client:
             await client.call_tool(
                 "sessions.phone.create",
@@ -261,6 +261,7 @@ async def test_disclosure_resolves_from_the_query_string(http_base_url: str) -> 
         assert DISCLOSURE_RULE in sent["systemPrompt"]
 
         captured.clear()
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
         async with Client(
             StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)
         ) as client:

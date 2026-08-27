@@ -24,7 +24,7 @@ from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.generated_action_tools import register_generated_action_tools
-from spekoai_mcp.profiles import ToolProfileMiddleware
+from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 
@@ -101,11 +101,13 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
     docs self-serve surface (docs.search + spekoai://docs/* resources).
 
-    One server serves two per-request tool profiles (see `profiles.py`):
-    the default full surface, and a curated builder preset selected with
-    `/mcp?profile=builder`. Builder-only tools are registered LAST so the
-    default profile's tool ordering stays byte-identical after the
-    middleware filters them out."""
+    One image serves host-bound tool profiles (see `profiles.py`). Builder-only
+    tools are registered LAST so the legacy default profile's tool ordering
+    stays byte-identical after the middleware filters them out."""
+    # Validate deployment configuration before the hosted app and its health
+    # endpoint exist. A misspelled profile must crash startup, not produce a
+    # healthy instance whose MCP requests fail later in middleware.
+    default_profile()
     mcp: FastMCP = FastMCP(
         name="spekoai",
         instructions=INSTRUCTIONS,

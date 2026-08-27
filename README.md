@@ -47,7 +47,9 @@ bearer_token_env_var = "SPEKO_API_KEY"
 
 ## Tool surfaces
 
-The default profile exposes operational tools using domain/action names:
+Hosted tool surfaces are bound to hostnames; a `profile` query parameter is
+ignored. The primary endpoint exposes operational tools using domain/action
+names:
 
 - account: `organization.get`, `credits.balance.get`,
   `credits.ledger.list`, `usage.summary.get`;
@@ -61,16 +63,21 @@ The default profile exposes operational tools using domain/action names:
 
 ### Builder profile
 
-App builders can request the curated profile at:
+App builders use the curated host at:
 
 ```text
-https://mcp.speko.ai/mcp?profile=builder
+https://builder-mcp.speko.ai/mcp
 ```
 
 It contains docs search, catalogs, agent reads, stack preview, integration code
 snippets, the test-call review path, and the limited `agents.create` and
 `agents.test_call` writes. Generated applications use Speko SDKs at runtime;
 they do not call MCP tools.
+
+Assistant directories use their own policy-specific hosts:
+
+- Anthropic: `https://anthropic.speko.ai/mcp`
+- ChatGPT: `https://chatgpt.speko.ai/mcp`
 
 ## Authentication and downstream calls
 
@@ -93,13 +100,10 @@ Configuration:
   audience;
 - `SPEKOAI_MCP_DELEGATION_SECRET` — 32+ character secret shared only with
   Platform for stateless API delegation;
-- `SPEKOAI_MCP_DEFAULT_PROFILE` — optional tool profile served at bare `/mcp`
-  on this deployment (`builder` | `connector` | `chatgpt` | `customer`). Unset
-  means the full default surface, which is what direct MCP clients (Claude
-  Code, Codex, Cursor, Composio, Docker, Paperclip) need. A deployment that
-  sets it serves that profile with no query string in the contract at all, and
-  there is no `?profile=` value that widens it again — that is the supported
-  way to publish a narrower base endpoint in an assistant directory.
+- `SPEKOAI_MCP_DEFAULT_PROFILE` — deployment-only tool surface served at bare
+  `/mcp` (`builder` | `connector` | `chatgpt` | `customer`). Hosted services
+  set it explicitly; public query parameters never select or override it.
+  Unset preserves the legacy full surface for local and self-hosted use.
 
 See [docs/fastmcp-v4.md](docs/fastmcp-v4.md) for deployment order, smoke tests,
 and failure diagnosis.
