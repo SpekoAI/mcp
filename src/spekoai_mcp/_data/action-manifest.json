@@ -4353,7 +4353,8 @@
                       "enum": [
                         "stt",
                         "tts",
-                        "llm"
+                        "llm",
+                        "s2s"
                       ]
                     },
                     "routable": {
@@ -4577,7 +4578,8 @@
                       "enum": [
                         "stt",
                         "tts",
-                        "llm"
+                        "llm",
+                        "s2s"
                       ]
                     },
                     "status": {
@@ -4939,7 +4941,8 @@
                 "enum": [
                   "stt",
                   "tts",
-                  "llm"
+                  "llm",
+                  "s2s"
                 ]
               },
               "requests": {
