@@ -74,6 +74,36 @@ def test_connector_profile_excludes_speech_and_arming() -> None:
         assert _is_connector_excluded(name), name
 
 
+def test_connector_profile_excludes_destructive_and_outward_facing_writes() -> None:
+    """0.2.10: not "arming" tools, cut for describability.
+
+    The 0.2.7 cut deliberately kept these because deleting removes capability
+    rather than arming anything. They come off anyway so the directory surface
+    can be described in one honest clause as a read surface — three irreversible
+    deletes and a public-page creator made that claim false.
+    """
+    for name in (
+        "agents.delete",
+        "phone_numbers.delete",
+        "knowledge_bases.delete",
+        "share_cards.create",
+    ):
+        assert _is_connector_excluded(name), name
+
+
+def test_connector_profile_keeps_reads_of_the_same_resources() -> None:
+    """Cutting the deletes must not cost the corresponding reads."""
+    for name in (
+        "agents.get",
+        "agents.list",
+        "phone_numbers.get",
+        "phone_numbers.list",
+        "knowledge_bases.get",
+        "knowledge_bases.list",
+    ):
+        assert not _is_connector_excluded(name), name
+
+
 def test_connector_profile_keeps_reads_and_transcription() -> None:
     """The cut must not overshoot what the directory explicitly blessed."""
     for name in (

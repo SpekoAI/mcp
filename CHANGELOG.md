@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.10
+
+- Cut `agents.delete`, `phone_numbers.delete`, `knowledge_bases.delete` and
+  `share_cards.create` from the `connector` profile, taking the Anthropic MCP
+  Directory surface from 36 tools to 32. These are not "arming" tools, which is
+  why the 0.2.7 cut kept them; they come off for a different reason. A directory
+  listing has to be describable in one honest clause, and with three irreversible
+  deletes and a public-page creator present the surface could not be called a
+  read surface. `phone_numbers.delete` also releases a billed number. Reads of
+  all four resources stay, as does `audio.transcribe`.
+
 ## 0.2.9
 
 - Bind each hosted tool surface to its deployment instead of selecting it from

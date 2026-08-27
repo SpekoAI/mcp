@@ -138,7 +138,6 @@ CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
         "agents.tools.update",
         "agents.tools.delete",
         # knowledge-base writes change what a live agent says.
-        # `knowledge_bases.delete` stays: it removes capability.
         "knowledge_bases.create",
         "knowledge_bases.documents.create",
         "knowledge_bases.documents.delete",
@@ -146,6 +145,18 @@ CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
         # phone number provisioning — inbound capacity for an armed agent
         "phone_numbers.create",
         "phone_numbers.update",
+        # Irreversible deletes and the one outward-facing create. These are NOT
+        # "arming" — they remove capability or publish a page — so the earlier
+        # cut deliberately kept them. They come off anyway, for a different
+        # reason: a directory listing has to be describable in one honest
+        # clause, and with these present the surface could not be called a read
+        # surface. `phone_numbers.delete` also releases a billed number, and
+        # `share_cards.create` publishes a public page for an agent build.
+        # Reads of all four resources stay.
+        "agents.delete",
+        "phone_numbers.delete",
+        "knowledge_bases.delete",
+        "share_cards.create",
     }
 )
 

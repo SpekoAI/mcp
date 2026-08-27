@@ -74,10 +74,77 @@ snippets, the test-call review path, and the limited `agents.create` and
 `agents.test_call` writes. Generated applications use Speko SDKs at runtime;
 they do not call MCP tools.
 
-Assistant directories use their own policy-specific hosts:
+### Assistant directory hosts
 
-- Anthropic: `https://anthropic.speko.ai/mcp`
-- ChatGPT: `https://chatgpt.speko.ai/mcp`
+Assistant directories are published on their own hosts, each shaped by that
+directory's policy. The surface is a property of the host: there is no query
+parameter, header, or account setting that widens it.
+
+#### Anthropic MCP Directory
+
+```text
+https://anthropic.speko.ai/mcp
+```
+
+**32 tools.** Reads across the account, plus speech-to-text:
+
+- account: `organization.get`, `credits.balance.get`, `credits.ledger.list`,
+  `usage.summary.get`;
+- agents: `agents.list`, `agents.get`, `agents.preview_stacks`,
+  `agents.versions.list`, `agents.tools.list`, `agents.tools.get`,
+  `agents.calls.list`;
+- sessions and calls: `sessions.list`, `sessions.get`,
+  `sessions.transcript.get`, `sessions.recording.get`, `calls.get`,
+  `calls.recording.get`;
+- phone numbers: `phone_numbers.list`, `phone_numbers.get`,
+  `phone_numbers.available.search`;
+- knowledge bases: `knowledge_bases.list`, `knowledge_bases.get`,
+  `knowledge_bases.documents.list`, `knowledge_bases.documents.get`;
+- evals and monitoring: `evals.get`, `agents.monitoring.results.list`;
+- audio: `audio.transcribe`;
+- migration helpers: `migration.workspace.inspect`,
+  `migration.external_config.parse`, `migration.session_config.build`,
+  `migration.briefing.render`;
+- other: `docs.search`.
+
+Deliberately **not** on this host, because each one either produces synthetic
+speech or arms something that will:
+
+| group | absent |
+| ----- | ------ |
+| audio generation | `audio.synthesize` |
+| live session / call creation | `sessions.create`, `sessions.phone.create`, `agents.test_call` |
+| agent configuration and deployment | `agents.create`, `agents.update`, `agents.deploy`, `agents.rollback`, `agents.tools.create`, `agents.tools.update`, `agents.tools.delete` |
+| knowledge-base writes | `knowledge_bases.create`, `knowledge_bases.documents.create`, `knowledge_bases.documents.delete`, `knowledge_bases.documents.finalize` |
+| phone number provisioning | `phone_numbers.create`, `phone_numbers.update` |
+| bulk or scheduled evaluation | `agents.evals.*`, `agents.monitors.*` |
+| irreversible and outward-facing writes | `agents.delete`, `phone_numbers.delete`, `knowledge_bases.delete`, `share_cards.create` |
+
+Configuring an agent is equivalent to arming it: a deployed agent speaks on
+inbound traffic with no further tool call. Agent create, update, deploy and
+rollback are therefore withheld alongside the generation tool itself.
+`audio.transcribe` stays because speech-to-text produces no audio and returns
+only text.
+
+The last row is cut for a different reason. Deleting removes capability rather
+than arming anything, so those tools are not covered by the rule above — but a
+published surface has to be describable in one honest clause, and three
+irreversible deletes plus a creator of public pages meant this one could not be
+called a read surface. `phone_numbers.delete` also releases a billed number.
+Reads of all four resources stay. Calling a withheld tool on this host returns
+`Unknown tool: '<name>'`, identical to a name that was never registered.
+
+#### OpenAI Plugin Directory
+
+```text
+https://chatgpt.speko.ai/mcp
+```
+
+**18 tools.** A separate list, not a reuse of the Anthropic one, because the
+two directories forbid different things: OpenAI has no restriction on generated
+audio, so `audio.synthesize` and outbound calling stay, while its rules on
+selling digital goods remove phone-number provisioning and the credits and
+usage reads.
 
 ## Authentication and downstream calls
 
