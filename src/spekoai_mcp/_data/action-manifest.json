@@ -10906,6 +10906,2225 @@
       "secretOutputPaths": []
     },
     {
+      "id": "agents.evals.update",
+      "version": 1,
+      "description": "Partially update one test case. Only the fields you send are written; omitted fields are left untouched. `description` and `source_call_id` accept null to clear them. Sending `input_payload` replaces it wholesale, so read the case first if you mean to keep its other keys — to change only the caller character use agents.evals.character.set instead.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "eval_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_behavior": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assertion_kind": {
+            "type": "string",
+            "enum": [
+              "contains_phrase",
+              "tool_called",
+              "language_switched",
+              "within_latency",
+              "no_hallucination",
+              "custom",
+              "voicemail_handled"
+            ]
+          },
+          "assertion_config": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "input_kind": {
+            "type": "string",
+            "enum": [
+              "transcript",
+              "audio_url",
+              "assertion_only",
+              "phone_call"
+            ]
+          },
+          "input_payload": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "source_call_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "block_deploy_on_fail": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "agent_id",
+          "eval_id"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "expected_behavior": {
+                "type": "string"
+              },
+              "assertion_kind": {
+                "type": "string"
+              },
+              "assertion_config": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "input_kind": {
+                "type": "string"
+              },
+              "input_payload": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source_call_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "block_deploy_on_fail": {
+                "type": "boolean"
+              },
+              "resource_uri": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organization_id",
+              "agent_id",
+              "name",
+              "description",
+              "expected_behavior",
+              "assertion_kind",
+              "assertion_config",
+              "input_kind",
+              "input_payload",
+              "source_call_id",
+              "block_deploy_on_fail",
+              "resource_uri",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.character.set",
+      "version": 1,
+      "description": "Set or clear JUST the simulated-caller character on one test case. Merged into the existing input_payload without touching its other keys — this is the safe way to change a persona. Pass null to clear it back to a clean caller.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "eval_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "character": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "fast_talker",
+                      "interrupter",
+                      "hesitant",
+                      "noisy_line",
+                      "rambler",
+                      "impatient",
+                      "script_reader",
+                      "multitasker",
+                      "rapid_interrupter",
+                      "faint_line"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "preset": {
+                        "type": "string",
+                        "enum": [
+                          "fast_talker",
+                          "interrupter",
+                          "hesitant",
+                          "noisy_line",
+                          "rambler",
+                          "impatient",
+                          "script_reader",
+                          "multitasker",
+                          "rapid_interrupter",
+                          "faint_line"
+                        ]
+                      }
+                    },
+                    "additionalProperties": {}
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "agent_id",
+          "eval_id",
+          "character"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "expected_behavior": {
+                "type": "string"
+              },
+              "assertion_kind": {
+                "type": "string"
+              },
+              "assertion_config": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "input_kind": {
+                "type": "string"
+              },
+              "input_payload": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source_call_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "block_deploy_on_fail": {
+                "type": "boolean"
+              },
+              "resource_uri": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organization_id",
+              "agent_id",
+              "name",
+              "description",
+              "expected_behavior",
+              "assertion_kind",
+              "assertion_config",
+              "input_kind",
+              "input_payload",
+              "source_call_id",
+              "block_deploy_on_fail",
+              "resource_uri",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.delete",
+      "version": 1,
+      "description": "Delete one test case. Historical runs survive — the run rows reference the case through a nullable column, so the track record is not destroyed with the case.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "eval_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "agent_id",
+          "eval_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "deleted": {
+                "type": "boolean",
+                "const": true
+              },
+              "eval_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deleted",
+              "eval_id"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "destructive",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.runs.list",
+      "version": 1,
+      "description": "The five most recent runs of ONE test case, newest first, each with the verdict in its result. Poll this after agents.evals.run to watch a case settle.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "eval_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "agent_id",
+          "eval_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "eval_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "version_number": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "result": {
+                      "anyOf": [
+                        {},
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organization_id",
+                    "agent_id",
+                    "eval_id",
+                    "status",
+                    "version_number",
+                    "result",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "runs"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.generate",
+      "version": 1,
+      "description": "Author test cases for an agent from its own configuration — system prompt, intent, tools, knowledge-base titles and first message — using the scenario generator. Returns the generated cases WITHOUT saving by default; pass persist:true to also insert them as test cases. Calls an LLM, so it is slower than the other actions here.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "persist": {
+            "default": false,
+            "description": "Insert the generated cases as test cases instead of only returning them.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "agent_id",
+          "persist"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "boolean"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "generated": {
+                "type": "array",
+                "items": {}
+              },
+              "persisted": {
+                "type": "boolean"
+              },
+              "evals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "expected_behavior": {
+                      "type": "string"
+                    },
+                    "assertion_kind": {
+                      "type": "string"
+                    },
+                    "assertion_config": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "input_kind": {
+                      "type": "string"
+                    },
+                    "input_payload": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source_call_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "block_deploy_on_fail": {
+                      "type": "boolean"
+                    },
+                    "resource_uri": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organization_id",
+                    "agent_id",
+                    "name",
+                    "description",
+                    "expected_behavior",
+                    "assertion_kind",
+                    "assertion_config",
+                    "input_kind",
+                    "input_payload",
+                    "source_call_id",
+                    "block_deploy_on_fail",
+                    "resource_uri",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "generated",
+              "persisted",
+              "evals"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.trends.get",
+      "version": 1,
+      "description": "Pass-rate over time for one agent, as a contiguous zero-filled series plus window totals. Manual test calls are excluded — they are hardcoded-pass and would inflate the rate. Out-of-range `days` clamps rather than erroring.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "days": {
+            "default": 30,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          },
+          "bucket": {
+            "default": "day",
+            "type": "string",
+            "enum": [
+              "day",
+              "week"
+            ]
+          }
+        },
+        "required": [
+          "agent_id",
+          "days",
+          "bucket"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "agent_id": {
+                "type": "string"
+              },
+              "bucket": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week"
+                ]
+              },
+              "days": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "series": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bucket": {
+                      "type": "string",
+                      "description": "UTC date key for the bucket start, YYYY-MM-DD."
+                    },
+                    "passed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "failed": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "inconclusive": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pass_rate": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "bucket",
+                    "passed",
+                    "failed",
+                    "inconclusive",
+                    "total",
+                    "pass_rate"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "totals": {
+                "type": "object",
+                "properties": {
+                  "passed": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "inconclusive": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "pass_rate": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "passed",
+                  "failed",
+                  "inconclusive",
+                  "total",
+                  "pass_rate"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "agent_id",
+              "bucket",
+              "days",
+              "from",
+              "to",
+              "series",
+              "totals"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.runs.suggest_fix",
+      "version": 1,
+      "description": "Ask for a minimal system-prompt revision that would make a FAILED run pass. The failures are extracted from the run itself, so you only need the run id. Read-only — it proposes, it does not deploy; pass the result to agents.apply_prompt_fix to ship it. Returns status \"no_fix_needed\" when the run has no failures.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "agent_id",
+          "run_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "no_fix_needed"
+                ]
+              },
+              "summary": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "proposedSystemPrompt": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "addressed": {
+                "type": "array",
+                "items": {}
+              }
+            },
+            "required": [
+              "status",
+              "summary",
+              "proposedSystemPrompt",
+              "addressed"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.evals.suggest_prompt_fix",
+      "version": 1,
+      "description": "Ask for a minimal system-prompt revision from failures you supply yourself, when the failures did not come from one stored run. Prefer agents.evals.runs.suggest_fix when you have a run id. Read-only — it proposes, it does not deploy.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "failures": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          }
+        },
+        "required": [
+          "agent_id",
+          "failures"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "The scenario that failed."
+              },
+              "expected_behavior": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000,
+                "description": "Why it failed."
+              }
+            },
+            "required": [
+              "name",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "proposedSystemPrompt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "summary",
+              "proposedSystemPrompt"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.apply_prompt_fix",
+      "version": 1,
+      "description": "Deploy a revised system prompt as a NEW agent version. Takes the current live config, swaps the prompt, and deploys — which auto-enqueues a version-stamped re-test, closing the fail → suggest → apply → re-test loop. Send the FULL prompt, not a diff. Requires the agent to already have a deployed version.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "system_prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24000
+          },
+          "based_on_run": {
+            "description": "The run this fix answers — recorded in the new version source.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "agent_id",
+          "system_prompt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "version_number": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "status": {
+                "type": "string"
+              },
+              "session_config": {},
+              "briefing_markdown": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_by_user_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organization_id",
+              "agent_id",
+              "version_number",
+              "status",
+              "session_config",
+              "briefing_markdown",
+              "source",
+              "created_by_user_id",
+              "created_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.apply_stack_fix",
+      "version": 1,
+      "description": "Re-pin ONE pipeline layer (stt, llm or tts) to a different provider and deploy that as a new agent version — the fix that is not a prompt change. Every other layer and config key is carried forward. Auto-enqueues a re-test like agents.apply_prompt_fix.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "layer": {
+            "type": "string",
+            "enum": [
+              "stt",
+              "llm",
+              "tts"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "based_on_run": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "agent_id",
+          "layer",
+          "provider"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": "string"
+              },
+              "version_number": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "status": {
+                "type": "string"
+              },
+              "session_config": {},
+              "briefing_markdown": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_by_user_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organization_id",
+              "agent_id",
+              "version_number",
+              "status",
+              "session_config",
+              "briefing_markdown",
+              "source",
+              "created_by_user_id",
+              "created_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.config_structure.get",
+      "version": 1,
+      "description": "Read the agent's LIVE system prompt back as a structured decision view — its goals, the rules it follows, and its conditional branches, plus a best-effort flow. Derived on demand, not stored. Returns status \"empty\" when the agent has no prompt yet.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok",
+                  "empty"
+                ]
+              },
+              "goals": {
+                "type": "array",
+                "items": {}
+              },
+              "rules": {
+                "type": "array",
+                "items": {}
+              },
+              "branches": {
+                "type": "array",
+                "items": {}
+              },
+              "flow": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "goals",
+              "rules",
+              "branches",
+              "flow"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
       "id": "scenarios.list",
       "version": 1,
       "description": "List the organization scenario library, newest first. A scenario is one thing a caller is trying to do, reusable across agents. Pass `agent_id` to list only the scenarios attached to that agent.",

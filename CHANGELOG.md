@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.11
+
+- Add twenty contract-backed actions to the `customer` surface, covering the two
+  things that were HTTP-only: authoring an agent's execution graph, and running
+  the reliability loop end to end.
+  - Graph: `agents.graph.get`, `agents.graph.replace`, `agents.graph.seed`.
+  - Scenario library: `scenarios.list`, `scenarios.create`, `scenarios.attach`,
+    `scenarios.detach`, `scenarios.archive`, `scenarios.runs.list`.
+  - Test cases: `agents.evals.update`, `agents.evals.character.set`,
+    `agents.evals.delete`, `agents.evals.runs.list`, `agents.evals.generate`.
+  - Analysis: `agents.evals.trends.get`, `agents.config_structure.get`.
+  - Fix loop: `agents.evals.runs.suggest_fix`,
+    `agents.evals.suggest_prompt_fix`, `agents.apply_prompt_fix`,
+    `agents.apply_stack_fix`.
+- The `connector` surface the Anthropic MCP Directory scans is unchanged at 32
+  tools; every action above is `customer`-only.
+
 ## 0.2.10
 
 - Cut `agents.delete`, `phone_numbers.delete`, `knowledge_bases.delete` and
