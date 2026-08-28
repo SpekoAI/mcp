@@ -3033,7 +3033,7 @@
       "allowedPrincipals": [
         "oauth-user"
       ],
-      "requiredRole": "admin",
+      "requiredRole": "member",
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
