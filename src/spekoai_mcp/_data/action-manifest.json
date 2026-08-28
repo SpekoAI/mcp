@@ -9299,6 +9299,2846 @@
       "secretOutputPaths": []
     },
     {
+      "id": "agents.graph.get",
+      "version": 1,
+      "description": "Read the authored execution graph stored for one agent version. Omit `version` for the agent latest. Returns graph:null when the version has no graph yet (not an error). Read this before agents.graph.replace so an edit starts from the current graph, never a guess.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "authored",
+                      "seeded",
+                      "healed"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "graph": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "entryNodeId": {
+                        "type": "string",
+                        "description": "Id of the single `entry`-kind node the walk starts at."
+                      },
+                      "nodes": {
+                        "minItems": 1,
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      },
+                      "edges": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            },
+                            "condition": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "const": "unconditional"
+                                    }
+                                  },
+                                  "required": [
+                                    "type"
+                                  ],
+                                  "additionalProperties": {}
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "const": "llm"
+                                    },
+                                    "when": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "when"
+                                  ],
+                                  "additionalProperties": {}
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "const": "expression"
+                                    },
+                                    "expr": {
+                                      "type": "string",
+                                      "description": "Deterministic slot comparison, e.g. `intent == \"billing\"`."
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "expr"
+                                  ],
+                                  "additionalProperties": {}
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "type": "string",
+                                      "const": "tool_result"
+                                    },
+                                    "on": {
+                                      "type": "string",
+                                      "enum": [
+                                        "success",
+                                        "failure"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "on"
+                                  ],
+                                  "additionalProperties": {}
+                                }
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "direction": {
+                              "type": "string",
+                              "enum": [
+                                "forward",
+                                "backward"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "from",
+                            "to",
+                            "condition"
+                          ],
+                          "additionalProperties": {}
+                        }
+                      }
+                    },
+                    "required": [
+                      "entryNodeId",
+                      "nodes",
+                      "edges"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "version",
+              "source",
+              "graph"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Slug ([A-Za-z0-9._-]), unique within the graph."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "entry",
+                  "message",
+                  "tool",
+                  "transfer",
+                  "end"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "instruction": {
+                "description": "What the model should accomplish at this node.",
+                "$ref": "#/$defs/__schema1"
+              },
+              "say": {
+                "description": "A verbatim line. End nodes speak this exactly.",
+                "$ref": "#/$defs/__schema2"
+              },
+              "slots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "State key, a slug ([A-Za-z0-9_]+). Expression edges reference it."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "enum"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enum": {
+                      "description": "Required, non-empty, when type is \"enum\".",
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "type"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "allowedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "toolName": {
+                "description": "Required on a `tool` node.",
+                "$ref": "#/$defs/__schema4"
+              },
+              "toolArgs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "outputBindings": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "model": {
+                "type": "string"
+              },
+              "entryBehavior": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wait"
+                ]
+              },
+              "edgeOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "label"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema4": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.graph.replace",
+      "version": 1,
+      "description": "Replace the execution graph for one agent version with an authored graph. WHOLE-OBJECT REPLACE — the graph you send becomes the graph, so read agents.graph.get first and send the full modified object, never a partial patch. Marks the graph source as \"authored\", which permanently protects it from the seeder. Rejects with INVALID_GRAPH plus the exact per-field reasons when the graph fails structural validation.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "description": "Required. The agent version this graph belongs to."
+          },
+          "graph": {
+            "type": "object",
+            "properties": {
+              "entryNodeId": {
+                "type": "string",
+                "description": "Id of the single `entry`-kind node the walk starts at."
+              },
+              "nodes": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "edges": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "condition": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "unconditional"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "llm"
+                            },
+                            "when": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "when"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "expression"
+                            },
+                            "expr": {
+                              "type": "string",
+                              "description": "Deterministic slot comparison, e.g. `intent == \"billing\"`."
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "expr"
+                          ],
+                          "additionalProperties": {}
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "tool_result"
+                            },
+                            "on": {
+                              "type": "string",
+                              "enum": [
+                                "success",
+                                "failure"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "on"
+                          ],
+                          "additionalProperties": {}
+                        }
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "forward",
+                        "backward"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "from",
+                    "to",
+                    "condition"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "entryNodeId",
+              "nodes",
+              "edges"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "agent_id",
+          "version",
+          "graph"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Slug ([A-Za-z0-9._-]), unique within the graph."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "entry",
+                  "message",
+                  "tool",
+                  "transfer",
+                  "end"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "instruction": {
+                "description": "What the model should accomplish at this node.",
+                "$ref": "#/$defs/__schema1"
+              },
+              "say": {
+                "description": "A verbatim line. End nodes speak this exactly.",
+                "$ref": "#/$defs/__schema2"
+              },
+              "slots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "State key, a slug ([A-Za-z0-9_]+). Expression edges reference it."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "enum"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enum": {
+                      "description": "Required, non-empty, when type is \"enum\".",
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "type"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "allowedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "toolName": {
+                "description": "Required on a `tool` node.",
+                "$ref": "#/$defs/__schema4"
+              },
+              "toolArgs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "outputBindings": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "model": {
+                "type": "string"
+              },
+              "entryBehavior": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wait"
+                ]
+              },
+              "edgeOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "label"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema4": {
+            "type": "string"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "seeded",
+                  "healed"
+                ]
+              },
+              "graph": {
+                "type": "object",
+                "properties": {
+                  "entryNodeId": {
+                    "type": "string",
+                    "description": "Id of the single `entry`-kind node the walk starts at."
+                  },
+                  "nodes": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "condition": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "unconditional"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "llm"
+                                },
+                                "when": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "when"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "expression"
+                                },
+                                "expr": {
+                                  "type": "string",
+                                  "description": "Deterministic slot comparison, e.g. `intent == \"billing\"`."
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "expr"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "tool_result"
+                                },
+                                "on": {
+                                  "type": "string",
+                                  "enum": [
+                                    "success",
+                                    "failure"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "on"
+                              ],
+                              "additionalProperties": {}
+                            }
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "forward",
+                            "backward"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "from",
+                        "to",
+                        "condition"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "entryNodeId",
+                  "nodes",
+                  "edges"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "version",
+              "source",
+              "graph"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Slug ([A-Za-z0-9._-]), unique within the graph."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "entry",
+                  "message",
+                  "tool",
+                  "transfer",
+                  "end"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "instruction": {
+                "description": "What the model should accomplish at this node.",
+                "$ref": "#/$defs/__schema1"
+              },
+              "say": {
+                "description": "A verbatim line. End nodes speak this exactly.",
+                "$ref": "#/$defs/__schema2"
+              },
+              "slots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "State key, a slug ([A-Za-z0-9_]+). Expression edges reference it."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "enum"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enum": {
+                      "description": "Required, non-empty, when type is \"enum\".",
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "type"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "allowedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "toolName": {
+                "description": "Required on a `tool` node.",
+                "$ref": "#/$defs/__schema4"
+              },
+              "toolArgs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "outputBindings": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "model": {
+                "type": "string"
+              },
+              "entryBehavior": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wait"
+                ]
+              },
+              "edgeOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "label"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema4": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.graph.seed",
+      "version": 1,
+      "description": "Derive a first execution graph for an agent version from its system prompt (falling back to the version derived flow). Idempotent: an existing graph is returned unchanged with status \"exists\". `force` re-derives ONLY over a previously seeded graph — an authored or healed graph is never clobbered. Use this to bootstrap, then agents.graph.replace to edit.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "force": {
+            "default": false,
+            "description": "Re-derive over a stale `seeded` graph. Never overwrites `authored`/`healed`.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "agent_id",
+          "force"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "boolean"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "created",
+                  "exists"
+                ]
+              },
+              "version": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "authored",
+                  "seeded",
+                  "healed"
+                ]
+              },
+              "graph": {
+                "type": "object",
+                "properties": {
+                  "entryNodeId": {
+                    "type": "string",
+                    "description": "Id of the single `entry`-kind node the walk starts at."
+                  },
+                  "nodes": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "condition": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "unconditional"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "llm"
+                                },
+                                "when": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "when"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "expression"
+                                },
+                                "expr": {
+                                  "type": "string",
+                                  "description": "Deterministic slot comparison, e.g. `intent == \"billing\"`."
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "expr"
+                              ],
+                              "additionalProperties": {}
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "tool_result"
+                                },
+                                "on": {
+                                  "type": "string",
+                                  "enum": [
+                                    "success",
+                                    "failure"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "on"
+                              ],
+                              "additionalProperties": {}
+                            }
+                          ]
+                        },
+                        "label": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "forward",
+                            "backward"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "from",
+                        "to",
+                        "condition"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "entryNodeId",
+                  "nodes",
+                  "edges"
+                ],
+                "additionalProperties": {}
+              },
+              "derivedVia": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "graph",
+                      "flow"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deriveReason": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "determinism": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "llmEdgesBefore": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "llmEdgesAfter": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "converted": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "stallRisks": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    },
+                    "required": [
+                      "llmEdgesBefore",
+                      "llmEdgesAfter",
+                      "converted",
+                      "stallRisks"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "version",
+              "source",
+              "graph",
+              "derivedVia",
+              "deriveReason",
+              "determinism"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Slug ([A-Za-z0-9._-]), unique within the graph."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "entry",
+                  "message",
+                  "tool",
+                  "transfer",
+                  "end"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "instruction": {
+                "description": "What the model should accomplish at this node.",
+                "$ref": "#/$defs/__schema1"
+              },
+              "say": {
+                "description": "A verbatim line. End nodes speak this exactly.",
+                "$ref": "#/$defs/__schema2"
+              },
+              "slots": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "description": "State key, a slug ([A-Za-z0-9_]+). Expression edges reference it."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "enum"
+                      ]
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "enum": {
+                      "description": "Required, non-empty, when type is \"enum\".",
+                      "$ref": "#/$defs/__schema3"
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "type"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "allowedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "toolName": {
+                "description": "Required on a `tool` node.",
+                "$ref": "#/$defs/__schema4"
+              },
+              "toolArgs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "outputBindings": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "model": {
+                "type": "string"
+              },
+              "entryBehavior": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "wait"
+                ]
+              },
+              "edgeOrder": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "label"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema4": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.list",
+      "version": 1,
+      "description": "List the organization scenario library, newest first. A scenario is one thing a caller is trying to do, reusable across agents. Pass `agent_id` to list only the scenarios attached to that agent.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "scenarios": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "organization_id": {
+                      "type": "string"
+                    },
+                    "origin_agent_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attached_agent_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "attachments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "agent_id": {
+                            "type": "string"
+                          },
+                          "persona_id": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "fast_talker",
+                                  "interrupter",
+                                  "hesitant",
+                                  "noisy_line",
+                                  "rambler",
+                                  "impatient",
+                                  "script_reader",
+                                  "multitasker",
+                                  "rapid_interrupter",
+                                  "faint_line"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "agent_id",
+                          "persona_id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "job": {
+                      "type": "string"
+                    },
+                    "caller_goal": {
+                      "type": "string"
+                    },
+                    "success_criteria": {
+                      "type": "string"
+                    },
+                    "required_tool": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "behavior": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "superseded_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fingerprint": {
+                      "type": "string"
+                    },
+                    "first_seen_run_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "organization_id",
+                    "origin_agent_id",
+                    "attached_agent_ids",
+                    "attachments",
+                    "job",
+                    "caller_goal",
+                    "success_criteria",
+                    "required_tool",
+                    "source",
+                    "behavior",
+                    "status",
+                    "superseded_by",
+                    "fingerprint",
+                    "first_seen_run_id",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "scenarios"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.create",
+      "version": 1,
+      "description": "Author a scenario into the organization library and optionally attach it to agents. Deduped by content: an identical scenario already in the org (for example one the reliability gate derived) is reused and only the attachments are added, so re-running this never creates a twin. Scenario content is FROZEN at creation — there is no update action by design; evolve a scenario by creating a new one and calling scenarios.archive on the old one with superseded_by.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "The task the caller is trying to complete."
+          },
+          "caller_goal": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "success_criteria": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The bar the agent must clear for this scenario to count as passed."
+          },
+          "required_tool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "behavior": {
+            "description": "Optional frozen caller-behavior tag.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "agent_ids": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema1"
+            }
+          }
+        },
+        "required": [
+          "job",
+          "caller_goal",
+          "success_criteria"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "enum": [
+              "happy_path_baseline",
+              "interruption",
+              "silence_then_speak",
+              "noisy_background",
+              "mind_change",
+              "cancel_at_end",
+              "multi_intent",
+              "piecemeal_selfcorrections",
+              "repeat_request",
+              "reschedule_booking",
+              "angry_customer",
+              "panic_urgency",
+              "non_native_phrasing",
+              "wrong_number",
+              "out_of_scope_question",
+              "unsafe_request",
+              "prompt_extraction",
+              "human_handoff_request",
+              "answering_machine"
+            ]
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "origin_agent_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "attached_agent_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "persona_id": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "fast_talker",
+                            "interrupter",
+                            "hesitant",
+                            "noisy_line",
+                            "rambler",
+                            "impatient",
+                            "script_reader",
+                            "multitasker",
+                            "rapid_interrupter",
+                            "faint_line"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "agent_id",
+                    "persona_id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "job": {
+                "type": "string"
+              },
+              "caller_goal": {
+                "type": "string"
+              },
+              "success_criteria": {
+                "type": "string"
+              },
+              "required_tool": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "type": "string"
+              },
+              "behavior": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "superseded_by": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fingerprint": {
+                "type": "string"
+              },
+              "first_seen_run_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organization_id",
+              "origin_agent_id",
+              "attached_agent_ids",
+              "attachments",
+              "job",
+              "caller_goal",
+              "success_criteria",
+              "required_tool",
+              "source",
+              "behavior",
+              "status",
+              "superseded_by",
+              "fingerprint",
+              "first_seen_run_id",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.attach",
+      "version": 1,
+      "description": "Attach a library scenario to an agent so the reliability gate drives it there. Supply `persona_id` to pin the caller character this agent runs the scenario with (persona x scenario compose); pass null to clear it; omit it to leave an existing pin unchanged.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "persona_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fast_talker",
+                  "interrupter",
+                  "hesitant",
+                  "noisy_line",
+                  "rambler",
+                  "impatient",
+                  "script_reader",
+                  "multitasker",
+                  "rapid_interrupter",
+                  "faint_line"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "scenario_id",
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "attached": {
+                "type": "boolean",
+                "const": true
+              },
+              "persona_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "fast_talker",
+                      "interrupter",
+                      "hesitant",
+                      "noisy_line",
+                      "rambler",
+                      "impatient",
+                      "script_reader",
+                      "multitasker",
+                      "rapid_interrupter",
+                      "faint_line"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "attached",
+              "persona_id"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.detach",
+      "version": 1,
+      "description": "Detach a library scenario from one agent. The scenario itself and its history survive — only the agent link is removed.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "scenario_id",
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "detached": {
+                "type": "boolean",
+                "const": true
+              }
+            },
+            "required": [
+              "detached"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "destructive",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.archive",
+      "version": 1,
+      "description": "Archive a scenario — the only lifecycle transition there is. An archived scenario stops being driven by the gate but keeps its run history. Pass `superseded_by` with the id of the scenario that replaces it to record the lineage; the replacement must already exist in this organization and cannot be the scenario itself.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "superseded_by": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "archived": {
+                "type": "boolean",
+                "const": true
+              },
+              "superseded_by": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "archived",
+              "superseded_by"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "destructive",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "scenarios.runs.list",
+      "version": 1,
+      "description": "List up to 50 recent reliability runs that exercised this scenario, each with the per-scenario verdict it produced — the scenario track record across agent versions. Only runs written after the gate began stamping scenarioId carry the link, so older runs will not appear.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "runs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "run_id": {
+                      "type": "string"
+                    },
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version_number": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "detail": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "session_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "persona_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "persona_label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "run_id",
+                    "agent_id",
+                    "status",
+                    "verdict",
+                    "version_number",
+                    "created_at",
+                    "outcome",
+                    "detail",
+                    "session_id",
+                    "persona_id",
+                    "persona_label"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "runs"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
       "id": "billing.checkout.create",
       "version": 1,
       "description": "Create a short-lived Stripe Checkout handoff for adding workspace credits.",
