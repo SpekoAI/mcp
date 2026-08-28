@@ -1,0 +1,107 @@
+{
+  "schema": "speko.routing.llm",
+  "schema_version": "0.1.0",
+  "generated_at": "2026-04-25",
+  "language_scope": [
+    "en"
+  ],
+  "_note": "Curated v0 snapshot. Sourced from publicly known 2026-04 model specs (Artificial Analysis index, vendor pricing pages). cost_per_min_usd assumes a conversational mix of ~150 input tok/min + ~80 output tok/min. Will be replaced by live API integration in v1.",
+  "providers": [
+    {
+      "id": "openai-gpt-4o",
+      "canonical_id": "openai",
+      "name": "OpenAI",
+      "model": "gpt-4o",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 67,
+      "ttft_p50_ms": 380,
+      "cost_per_min_usd": 0.00118
+    },
+    {
+      "id": "openai-gpt-4o-mini",
+      "canonical_id": "openai",
+      "name": "OpenAI",
+      "model": "gpt-4o-mini",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 46,
+      "ttft_p50_ms": 320,
+      "cost_per_min_usd": 7e-05
+    },
+    {
+      "id": "openai-gpt-4-1-mini",
+      "canonical_id": "openai",
+      "name": "OpenAI",
+      "model": "gpt-4.1-mini",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 53,
+      "ttft_p50_ms": 360,
+      "cost_per_min_usd": 0.00018
+    },
+    {
+      "id": "anthropic-claude-3-5-sonnet",
+      "canonical_id": "anthropic",
+      "name": "Anthropic",
+      "model": "claude-3-5-sonnet",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 65,
+      "ttft_p50_ms": 720,
+      "cost_per_min_usd": 0.00165
+    },
+    {
+      "id": "anthropic-claude-3-5-haiku",
+      "canonical_id": "anthropic",
+      "name": "Anthropic",
+      "model": "claude-3-5-haiku",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 51,
+      "ttft_p50_ms": 540,
+      "cost_per_min_usd": 0.00045
+    },
+    {
+      "id": "google-gemini-2-0-flash",
+      "canonical_id": "google",
+      "name": "Google",
+      "model": "gemini-2.0-flash",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 60,
+      "ttft_p50_ms": 290,
+      "cost_per_min_usd": 7e-05
+    },
+    {
+      "id": "google-gemini-1-5-flash",
+      "canonical_id": "google",
+      "name": "Google",
+      "model": "gemini-1.5-flash",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 49,
+      "ttft_p50_ms": 310,
+      "cost_per_min_usd": 6e-05
+    },
+    {
+      "id": "xai-grok-2",
+      "canonical_id": "xai",
+      "name": "xAI",
+      "model": "grok-2",
+      "language": "en",
+      "status": "production",
+      "supports_tools": true,
+      "quality_score": 56,
+      "ttft_p50_ms": 410,
+      "cost_per_min_usd": 0.00104
+    }
+  ]
+}

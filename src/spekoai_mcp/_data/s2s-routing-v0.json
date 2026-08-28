@@ -1,0 +1,309 @@
+{
+  "schema": "speko.routing.s2s",
+  "schema_version": "0.1.0",
+  "generated_at": "2026-04-25",
+  "language_scope": ["en"],
+  "use_case_scope": ["commands"],
+  "_use_case_note": "v0 measures the 'commands' use case via a single scenario (coffee-order-happy-001). 'Conversation', 'barge-in', and 'multi-turn' use cases are not yet measured. Add scenarios in v0.2.",
+
+  "data_basis": {
+    "page_source": "speko-landing/landing-page/src/data/benchmarks.ts (s2sProviders)",
+    "raw_artifacts_gcs": "gs://speko-bench-probe-audio/results-s2s/",
+    "harness": "speko-bench-cli/agent/ (LiveKit Agents 1.5+, Cloud Run jobs in 3 regions)",
+    "scenario_id": "coffee-order-happy-001",
+    "iterations_per_region": 20,
+    "measured_at": "2026-04-25"
+  },
+
+  "scoring": {
+    "weights": {
+      "tool_call_p50": 0.40,
+      "task_success_pct": 0.40,
+      "cost_per_minute": 0.20,
+      "_note": "v0 weights for the commands use case. Tool-call latency and task success matter equally for voice agents driving real actions; cost is the tiebreaker. p95/stdev not in composite — surfaced as an advisory consistency_note per region."
+    },
+    "normalization": {
+      "method": "min-max-inverted",
+      "formula": "norm(x) = (max - x) / (max - min) for lower-is-better axes; norm(x) = (x - min) / (max - min) for higher-is-better axes; computed over the active candidate set after hard filters",
+      "missing_value_policy": "Provider with a null axis value is normalized to 0.5 (neutral) for that axis only; flagged in scores as 'imputed: true' per axis."
+    },
+    "composite_formula": "composite = 0.40 * tool_call_p50_norm + 0.40 * task_success_norm + 0.20 * cost_norm",
+    "hard_filters": {
+      "realtime": {
+        "max_tool_call_p50_ms": 6000,
+        "min_task_success_pct": 50,
+        "exclude_warned": true,
+        "requires_protocol": "realtime_websocket_or_webrtc",
+        "requires_language": "en"
+      }
+    },
+    "tiebreaker": "If composites are within 0.02, prefer lower tool_call_p50_ms. If still tied, prefer lower stdev (consistency)."
+  },
+
+  "providers": [
+    {
+      "id": "openai-gpt-realtime",
+      "name": "OpenAI",
+      "model": "gpt-realtime",
+      "status": "production",
+      "modes_supported": ["realtime"],
+      "protocols": {
+        "realtime": "websocket-or-webrtc"
+      },
+      "endpoints": {
+        "realtime": "wss://api.openai.com/v1/realtime"
+      },
+      "languages_count": 57,
+      "billing_model": "per-million-audio-tokens",
+      "cost_per_minute_usd": {
+        "value": 0.30,
+        "note": "$100/M input + $200/M output audio tokens. No regional endpoints for non-enterprise — server is always US."
+      },
+      "english": {
+        "tool_call_turn": {
+          "us-east4":        { "p50_ms": 3485, "p95_ms": 6513, "p99_ms": 6818, "stdev_ms": 1114, "n": 20 },
+          "europe-west3":    { "p50_ms": 3775, "p95_ms": 4819, "p99_ms": 4936, "stdev_ms":  427, "n": 19 },
+          "asia-southeast1": { "p50_ms": 5114, "p95_ms": 5681, "p99_ms": 5756, "stdev_ms": 1189, "n": 20 }
+        },
+        "conversational_turn": {
+          "us-east4":        { "p50_ms": 2768, "p95_ms": 4329, "p99_ms": 4643, "stdev_ms":  612, "n": 20 },
+          "europe-west3":    { "p50_ms": 6245, "p95_ms": 6567, "p99_ms": 6581, "stdev_ms": 1121, "n": 19 },
+          "asia-southeast1": { "p50_ms": 2740, "p95_ms": 3235, "p99_ms": 3866, "stdev_ms":  375, "n": 20 }
+        },
+        "task_success_pct": {
+          "us-east4":        85,
+          "europe-west3":   100,
+          "asia-southeast1": 90
+        }
+      },
+      "warning": "europe-west3 conversational p50 = 6245ms is anomalous (~2x the other two regions). Cause unknown — possibly LiveKit europe SFU silence-detection or a Vertex-side artifact. Under investigation.",
+      "scores": {
+        "realtime.us-east4": {
+          "composite": 0.133,
+          "tool_call_p50_norm": 0.000,
+          "task_success_norm": 0.333,
+          "cost_norm": 0.000,
+          "passed_filter": true
+        },
+        "realtime.europe-west3": {
+          "composite": 0.400,
+          "tool_call_p50_norm": 0.000,
+          "task_success_norm": 1.000,
+          "cost_norm": 0.000,
+          "passed_filter": true
+        },
+        "realtime.asia-southeast1": {
+          "composite": 0.400,
+          "tool_call_p50_norm": 0.000,
+          "task_success_norm": 1.000,
+          "cost_norm": 0.000,
+          "passed_filter": true
+        }
+      }
+    },
+
+    {
+      "id": "xai-grok-voice-think-fast",
+      "name": "xAI",
+      "model": "grok-voice-think-fast-1.0",
+      "internal_model_id": "grok-4-1-fast-non-reasoning",
+      "status": "production",
+      "modes_supported": ["realtime"],
+      "protocols": {
+        "realtime": "websocket"
+      },
+      "endpoints": {
+        "realtime": "wss://api.x.ai/v1/realtime"
+      },
+      "languages_count": 20,
+      "billing_model": "tbd",
+      "cost_per_minute_usd": {
+        "value": null,
+        "note": "Public S2S/voice-agent pricing not yet listed. Standalone STT $0.10/hr batch, $0.20/hr streaming; TTS pricing in $/M chars. Treat realtime cost as imputed neutral until xAI publishes."
+      },
+      "english": {
+        "tool_call_turn": {
+          "us-east4":        { "p50_ms": 1319, "p95_ms": 2306, "p99_ms": 3724, "stdev_ms":  713, "n": 20 },
+          "europe-west3":    null,
+          "asia-southeast1": { "p50_ms": 4365, "p95_ms": 4688, "p99_ms": 4715, "stdev_ms":  332, "n": 19 }
+        },
+        "conversational_turn": {
+          "us-east4":        { "p50_ms": 2583, "p95_ms": 2901, "p99_ms": 3237, "stdev_ms":  622, "n": 20 },
+          "europe-west3":    null,
+          "asia-southeast1": { "p50_ms": 2815, "p95_ms": 3027, "p99_ms": 3049, "stdev_ms":  141, "n": 19 }
+        },
+        "task_success_pct": {
+          "us-east4":        95,
+          "europe-west3":    null,
+          "asia-southeast1": 90
+        }
+      },
+      "warning": "europe-west3 hit Cloud Run's 30-min task-timeout before producing data. Likely cause: high EU-to-US RTT compounded across 20 iterations. Re-run with extended timeout pending.",
+      "scores": {
+        "realtime.us-east4": {
+          "composite": 0.900,
+          "tool_call_p50_norm": 1.000,
+          "task_success_norm": 1.000,
+          "cost_norm": 0.500,
+          "cost_imputed": true,
+          "passed_filter": true
+        },
+        "realtime.europe-west3": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "no data — Cloud Run task-timeout exceeded"
+        },
+        "realtime.asia-southeast1": {
+          "composite": 0.574,
+          "tool_call_p50_norm": 0.185,
+          "task_success_norm": 1.000,
+          "cost_norm": 0.500,
+          "cost_imputed": true,
+          "passed_filter": true
+        }
+      }
+    },
+
+    {
+      "id": "google-gemini-live-2-5-flash",
+      "name": "Google",
+      "model": "gemini-live-2.5-flash-native-audio",
+      "status": "production",
+      "modes_supported": ["realtime"],
+      "protocols": {
+        "realtime": "websocket"
+      },
+      "endpoints": {
+        "realtime": "Vertex AI regional endpoints (vertexai=true, location parameter)"
+      },
+      "languages_count": 24,
+      "billing_model": "per-million-audio-tokens",
+      "cost_per_minute_usd": {
+        "value": 0.01125,
+        "note": "$3.00/M input + $12.00/M output audio tokens (Gemini 2.5 Flash Live). 27x cheaper than OpenAI gpt-realtime."
+      },
+      "vertex_region_mapping": {
+        "us-east4": "us-east4",
+        "europe-west3": "europe-west4",
+        "asia-southeast1": "us-west1",
+        "_note": "Vertex Live API has no APAC region — us-west1 is the closest US-Pacific egress. EU-West3 Cloud Run runner pinned to europe-west4 Vertex (closest supported)."
+      },
+      "english": {
+        "tool_call_turn": {
+          "us-east4":        { "p50_ms": 2655, "p95_ms": 2775, "p99_ms": 2813, "stdev_ms":  127, "n": 17 },
+          "europe-west3":    { "p50_ms": 2679, "p95_ms": 2795, "p99_ms": 2810, "stdev_ms":  109, "n": 14 },
+          "asia-southeast1": { "p50_ms": 1069, "p95_ms": 1168, "p99_ms": 1214, "stdev_ms":  146, "n": 20 }
+        },
+        "conversational_turn": {
+          "us-east4":        { "p50_ms": 2382, "p95_ms": 2493, "p99_ms": 2493, "stdev_ms":   62, "n": 17 },
+          "europe-west3":    { "p50_ms": 2329, "p95_ms": 2425, "p99_ms": 2425, "stdev_ms":   85, "n": 14 },
+          "asia-southeast1": { "p50_ms": 2635, "p95_ms": 2774, "p99_ms": 2782, "stdev_ms":   74, "n": 20 }
+        },
+        "task_success_pct": {
+          "us-east4":        80,
+          "europe-west3":    65,
+          "asia-southeast1": 90
+        }
+      },
+      "warning": "asia-southeast1 tool-call p50 = 1069ms is suspiciously low; may be a measurement artifact (LiveKit APAC SFU reading first audio frame before model finishes generating intelligible content). europe-west3 task success = 65% is below the others; under investigation.",
+      "scores": {
+        "realtime.us-east4": {
+          "composite": 0.353,
+          "tool_call_p50_norm": 0.383,
+          "task_success_norm": 0.000,
+          "cost_norm": 1.000,
+          "passed_filter": true
+        },
+        "realtime.europe-west3": {
+          "composite": 0.600,
+          "tool_call_p50_norm": 1.000,
+          "task_success_norm": 0.000,
+          "cost_norm": 1.000,
+          "passed_filter": true
+        },
+        "realtime.asia-southeast1": {
+          "composite": 1.000,
+          "tool_call_p50_norm": 1.000,
+          "task_success_norm": 1.000,
+          "cost_norm": 1.000,
+          "passed_filter": true
+        }
+      }
+    }
+  ],
+
+  "rankings": {
+    "realtime": {
+      "us-east4": {
+        "primary": "xai-grok-voice-think-fast",
+        "fallback_1": "google-gemini-live-2-5-flash",
+        "fallback_2": "openai-gpt-realtime",
+        "ranked": [
+          { "id": "xai-grok-voice-think-fast",     "composite": 0.900 },
+          { "id": "google-gemini-live-2-5-flash",  "composite": 0.353 },
+          { "id": "openai-gpt-realtime",            "composite": 0.133 }
+        ],
+        "rationale": "xAI's 1319ms tool-call p50 + 95% task success carries the latency and accuracy axes. Gemini Live wins on cost but loses on tool-call latency and task-success in this region. OpenAI is dominated on every axis here."
+      },
+      "europe-west3": {
+        "primary": "google-gemini-live-2-5-flash",
+        "fallback_1": "openai-gpt-realtime",
+        "ranked": [
+          { "id": "google-gemini-live-2-5-flash",  "composite": 0.600 },
+          { "id": "openai-gpt-realtime",            "composite": 0.400 }
+        ],
+        "rationale": "Gemini Live wins on tool-call p50 (2679ms vs 3775ms) and cost (27x cheaper). OpenAI wins task success outright (100% vs 65%). The 65% Gemini number is a flag — if the issue persists in v0.2, OpenAI should be the primary in EU-West despite the cost premium. xAI excluded (no data — Cloud Run timeout)."
+      },
+      "asia-southeast1": {
+        "primary": "google-gemini-live-2-5-flash",
+        "fallback_1": "xai-grok-voice-think-fast",
+        "fallback_2": "openai-gpt-realtime",
+        "ranked": [
+          { "id": "google-gemini-live-2-5-flash",  "composite": 1.000 },
+          { "id": "xai-grok-voice-think-fast",     "composite": 0.574 },
+          { "id": "openai-gpt-realtime",            "composite": 0.400 }
+        ],
+        "rationale": "Gemini sweeps every axis — fastest tool-call (1069ms, with measurement-artifact caveat), tied-best task success (90%), 27x cheaper. xAI second on the latency axis. OpenAI dominated."
+      }
+    }
+  },
+
+  "filtered_out": {
+    "realtime.us-east4": [],
+    "realtime.europe-west3": [
+      {
+        "id": "xai-grok-voice-think-fast",
+        "reason": "no data — Cloud Run task-timeout reached before producing results; re-run with extended timeout pending"
+      }
+    ],
+    "realtime.asia-southeast1": []
+  },
+
+  "caveats": {
+    "scenario_count": "v0 measures one scenario (coffee-order-happy-001) which exercises a single tool call (place_order) with 2 turns. Conversational, barge-in, and multi-turn use cases are not yet measured.",
+    "providers_pending": [
+      {
+        "id": "alibaba-qwen3-omni-flash-realtime",
+        "status": "adapter shipped, integration partial",
+        "blocker": "DashScope WebSocket adapter (agent/qwen_realtime.py) connects and streams audio successfully (smoke test passed) but tool-calling is stubbed as a no-op. The coffee-order-happy scenario REQUIRES place_order, so 0/20 tool calls completed across all 3 regions. Real fix requires wiring tool calling through the DashScope WS protocol."
+      }
+    ],
+    "regional_data_gaps": [
+      {
+        "provider": "xai-grok-voice-think-fast",
+        "region": "europe-west3",
+        "gap": "no data; re-run pending"
+      }
+    ],
+    "scoring_assumptions": [
+      "xAI cost_per_minute is null — imputed as neutral 0.5 in scoring with `cost_imputed: true` flagged on those score entries. Update once xAI publishes voice-agent pricing.",
+      "Stdev / consistency is not in the composite. Surfaced for advisory only; high-stdev providers may be deprioritized via a separate advisory layer."
+    ],
+    "measurement_caveats": [
+      "OpenAI gpt-realtime: server is always US (no regional endpoints for non-enterprise) — three regional numbers measure pure developer-vantage latency.",
+      "xAI Grok Voice Agent: server is US-only — same developer-vantage interpretation as OpenAI.",
+      "Gemini Live: Vertex AI exposes regional endpoints, so each Cloud Run region was routed to its closest supported Vertex region (us-east4→us-east4, europe-west3→europe-west4, asia-southeast1→us-west1 since Live API has no APAC region today). This is the only provider where regional numbers reflect actual server location.",
+      "Gemini APAC sub-second tool-call p50: deserves a follow-up — LiveKit's APAC SFU may be reading first audio frame before the model has finished generating intelligible content."
+    ]
+  }
+}
