@@ -9730,7 +9730,7 @@
     {
       "id": "agents.graph.replace",
       "version": 1,
-      "description": "Replace the execution graph for one agent version with an authored graph. WHOLE-OBJECT REPLACE — the graph you send becomes the graph, so read agents.graph.get first and send the full modified object, never a partial patch. Marks the graph source as \"authored\", which permanently protects it from the seeder. Rejects with INVALID_GRAPH plus the exact per-field reasons when the graph fails structural validation.",
+      "description": "Publish an authored execution graph as a NEW agent version. A graph change is a change to the agent, so it cuts a version the same way a config change does: the live config is carried forward unchanged and only the graph differs, which is what makes agents.rollback able to restore a previous workflow. WHOLE-OBJECT REPLACE — the graph you send becomes the graph, so read agents.graph.get first and send the full modified object, never a partial patch. Marks the graph source as \"authored\", which permanently protects it from the seeder. Rejects with INVALID_GRAPH plus the exact per-field reasons when the graph fails structural validation, and with VERSION_CONFLICT when the version you edited from is no longer live — re-read and retry rather than forcing.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -9744,7 +9744,7 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991,
-            "description": "Required. The agent version this graph belongs to."
+            "description": "Required. The version you EDITED FROM — the one agents.graph.get returned. Used as a concurrency token: if it is no longer the live version the write is refused rather than burying whoever published in between. The graph lands on a new version."
           },
           "graph": {
             "type": "object",
@@ -10041,6 +10041,11 @@
             "type": "object",
             "properties": {
               "version": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "previousVersion": {
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 9007199254740991
