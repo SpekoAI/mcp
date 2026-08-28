@@ -24,6 +24,7 @@ from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.generated_action_tools import register_generated_action_tools
+from spekoai_mcp.http_client import reset_current_client_ua, set_current_client_ua
 from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
@@ -32,7 +33,10 @@ MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
 MCP_PROTOCOL_VERSION = "2026-07-28"
 HEADER_MISMATCH = -32020
-LEGACY_USER_AGENT_MAX_LENGTH = 128
+# Cap on the inbound User-Agent, used both for the legacy-protocol log line and
+# for the X-Speko-Client-UA header forwarded to Platform. Platform re-bounds it
+# at 200 (MAX_PROPERTY_LENGTH); this tighter cap keeps the header small.
+USER_AGENT_MAX_LENGTH = 128
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +209,19 @@ class MCPProtocolGuard:
             await self.app(scope, receive, send)
             return
 
+        # Bind the harness identity for this request. Set here, at the ASGI
+        # edge, because it is the only place the raw HTTP headers are still in
+        # scope — by the time a tool handler runs, FastMCP has decoded the
+        # JSON-RPC body and the transport headers are gone. Reset in `finally`
+        # so a ContextVar cannot leak across requests on a reused worker task.
+        ua_token = set_current_client_ua(self._sanitized_user_agent(scope))
+        try:
+            await self._dispatch(scope, receive, send)
+        finally:
+            reset_current_client_ua(ua_token)
+
+    async def _dispatch(self, scope: Scope, receive: Receive, send: Send) -> None:
+
         if scope.get("method") != "POST":
             response = JSONResponse(
                 {
@@ -301,7 +318,7 @@ class MCPProtocolGuard:
             "",
         )
         printable = "".join(character if character.isprintable() else "?" for character in raw)
-        return printable[:LEGACY_USER_AGENT_MAX_LENGTH]
+        return printable[:USER_AGENT_MAX_LENGTH]
 
     @staticmethod
     async def _jsonrpc_error(

@@ -19,6 +19,16 @@ DEFAULT_API_BASE = "https://api.speko.dev"
 _TEST_TRANSPORT: httpx.AsyncBaseTransport | None = None
 _CURRENT_ACTION_ID: ContextVar[str | None] = ContextVar("speko_mcp_action_id", default=None)
 
+# The inbound MCP client's User-Agent, forwarded to Platform so analytics can
+# name the HARNESS (Claude Code, Cursor, …) rather than only the auth identity.
+#
+# A ContextVar rather than a parameter for the same reason _CURRENT_ACTION_ID is
+# one: the value is set once per request by the ASGI middleware and has to reach
+# _platform_headers through every tool handler in between, generated and
+# handwritten alike, without threading an argument through all of them. The
+# server runs stateless_http=True, so there is no session to hang it on.
+_CURRENT_CLIENT_UA: ContextVar[str | None] = ContextVar("speko_mcp_client_ua", default=None)
+
 
 class SpekoAuthError(RuntimeError):
     """Raised when a private MCP tool is called without MCP auth."""
@@ -80,6 +90,15 @@ def reset_current_action_id(token: Token[str | None]) -> None:
     _CURRENT_ACTION_ID.reset(token)
 
 
+def set_current_client_ua(user_agent: str) -> Token[str | None]:
+    """Bind the inbound User-Agent for the duration of one request."""
+    return _CURRENT_CLIENT_UA.set(user_agent)
+
+
+def reset_current_client_ua(token: Token[str | None]) -> None:
+    _CURRENT_CLIENT_UA.reset(token)
+
+
 def _platform_headers(
     *,
     action_id: str | None = None,
@@ -96,7 +115,16 @@ def _platform_headers(
         "X-Speko-Source": "mcp",
         "X-Speko-MCP-Profile": current_profile() or "default",
         "X-Speko-Client": client_id if isinstance(client_id, str) else "unknown-mcp-client",
+        # NEW, and deliberately NOT a redefinition of X-Speko-Client above.
+        # That header is an auth identity by construction (an OAuth client_id or
+        # "unknown-mcp-client") and is already persisted as
+        # actionExecution.clientName, so repurposing it would silently change the
+        # meaning of a live column. This one carries the harness instead; the
+        # platform maps it to a readable bucket.
     }
+    client_ua = _CURRENT_CLIENT_UA.get()
+    if client_ua:
+        headers["X-Speko-Client-UA"] = client_ua
     if resolved_action_id:
         headers["X-Speko-Action-Id"] = resolved_action_id
     if extra_headers:
