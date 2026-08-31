@@ -7008,6 +7008,22 @@
                     {
                       "type": "object",
                       "properties": {
+                        "vad": {
+                          "type": "object",
+                          "properties": {
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "silero",
+                                "ai-coustics"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "provider"
+                          ],
+                          "additionalProperties": false
+                        },
                         "profile": {
                           "type": "string",
                           "enum": [
@@ -7071,6 +7087,9 @@
                           ]
                         },
                         "dtmfToolDescription": {
+                          "type": "string"
+                        },
+                        "amdPrompt": {
                           "type": "string"
                         },
                         "waitForCallee": {
@@ -7788,6 +7807,22 @@
                   {
                     "type": "object",
                     "properties": {
+                      "vad": {
+                        "type": "object",
+                        "properties": {
+                          "provider": {
+                            "type": "string",
+                            "enum": [
+                              "silero",
+                              "ai-coustics"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "provider"
+                        ],
+                        "additionalProperties": false
+                      },
                       "profile": {
                         "type": "string",
                         "enum": [
@@ -7851,6 +7886,9 @@
                         ]
                       },
                       "dtmfToolDescription": {
+                        "type": "string"
+                      },
+                      "amdPrompt": {
                         "type": "string"
                       },
                       "waitForCallee": {
@@ -8738,6 +8776,22 @@
                       {
                         "type": "object",
                         "properties": {
+                          "vad": {
+                            "type": "object",
+                            "properties": {
+                              "provider": {
+                                "type": "string",
+                                "enum": [
+                                  "silero",
+                                  "ai-coustics"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "provider"
+                            ],
+                            "additionalProperties": false
+                          },
                           "profile": {
                             "type": "string",
                             "enum": [
@@ -8801,6 +8855,9 @@
                             ]
                           },
                           "dtmfToolDescription": {
+                            "type": "string"
+                          },
+                          "amdPrompt": {
                             "type": "string"
                           },
                           "waitForCallee": {
