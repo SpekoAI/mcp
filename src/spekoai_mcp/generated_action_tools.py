@@ -31,9 +31,35 @@ class ManifestActionTool(Tool):
             idempotency_key=idempotency_key,
         )
         return ToolResult(
-            content=[TextContent(type="text", text=f"Executed {self.action_id}.")],
+            content=[TextContent(type="text", text=_payload_text(self.action_id, payload))],
             structured_content=payload,
         )
+
+
+_TEXT_BYTE_CEILING = 100_000
+
+
+def _payload_text(action_id: str, payload: Any) -> str:
+    """Serialize the result payload into the text block.
+
+    Hosts that do not surface structuredContent to the model (claude.ai web,
+    among others) only see text content. A bare "Executed X." acknowledgment
+    made every account tool look like it returned nothing, so the text block
+    must carry a functionally equivalent JSON rendering of the payload
+    (MCP spec: servers SHOULD return both). Oversized payloads are truncated
+    with an explicit marker instead of silently flooding the context.
+    """
+    try:
+        text = json.dumps(payload, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return f"Executed {action_id}. (result not serializable as JSON)"
+    if len(text) > _TEXT_BYTE_CEILING:
+        return (
+            text[:_TEXT_BYTE_CEILING]
+            + f'... [truncated by the Speko MCP server: {len(text)} chars total; '
+            f"narrow the query or use pagination arguments]"
+        )
+    return text
 
 
 def _idempotency_key(action_id: str, arguments: dict[str, Any]) -> str:
