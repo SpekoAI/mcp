@@ -1858,6 +1858,9 @@
                   "sms10dlc": {
                     "$ref": "#/$defs/__schema0"
                   },
+                  "smsMessaging": {
+                    "$ref": "#/$defs/__schema0"
+                  },
                   "sms10dlcSharedCampaign": {
                     "$ref": "#/$defs/__schema0"
                   },
@@ -1877,6 +1880,7 @@
                 "required": [
                   "buyPhoneNumbers",
                   "sms10dlc",
+                  "smsMessaging",
                   "sms10dlcSharedCampaign",
                   "imessageIntegration",
                   "agentDuplication",
