@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.12
+
+- Fix: tool results now carry their payload in the text content block, not only
+  in `structuredContent`. Hosts are not required to feed both to the model and
+  several do not — claude.ai web reads text blocks only — so every read tool on
+  the published connector appeared to return nothing while every call actually
+  succeeded. Claude Code surfaces structured content, which is why neither
+  manual testing nor the suite caught it.
+- `tool_text.payload_text()` is now the single renderer for both tool families,
+  the manifest-generated tools and the handwritten relays, which had drifted
+  apart: `SpekoAI/mcp#9` fixed only the former.
+- `audio.synthesize` keeps its summary text (`summary_only=True`); its payload
+  is base64 audio. Oversized payloads truncate at 100k chars with a marker
+  pointing at pagination; unserializable payloads degrade to an acknowledgment
+  rather than raising.
+- Adds a sweep asserting every advertised tool on the `connector`, `chatgpt` and
+  `customer` profiles answers in the text block.
+
 ## 0.2.11
 
 - Add twenty contract-backed actions to the `customer` surface, covering the two

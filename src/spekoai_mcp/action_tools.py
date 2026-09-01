@@ -27,6 +27,7 @@ from pydantic import Field
 
 from spekoai_mcp import http_client
 from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
+from spekoai_mcp.tool_text import payload_text
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
@@ -280,7 +281,10 @@ async def synthesize_speech(
             "size_bytes": len(raw.content),
             "sample_rate": body.get("sampleRate"),
         },
+        # The payload is base64 audio; rendering it as text would flood the
+        # model's context with megabytes of useless characters.
         text=f"Synthesized {len(raw.content)} bytes of {raw.content_type}.",
+        summary_only=True,
     )
 
 
@@ -592,17 +596,31 @@ def tool_title(name: str) -> str:
     return " ".join(replacements.get(part, part.capitalize()) for part in name.split("_"))
 
 
-def result(payload: dict[str, Any], text: str = "Speko API request completed.") -> ToolResult:
+def result(
+    payload: dict[str, Any],
+    text: str = "Speko API request completed.",
+    *,
+    summary_only: bool = False,
+) -> ToolResult:
+    """Return `payload` in both blocks.
+
+    `text` is an acknowledgment, not an answer — on a text-only host it is the
+    *whole* result the model sees, so the payload has to go there too. Pass
+    `summary_only=True` for payloads that must never be rendered as text
+    (base64 audio, for one); those keep the acknowledgment.
+    """
+    body = text if summary_only else payload_text(payload)
     return ToolResult(
-        content=[TextContent(type="text", text=text)],
+        content=[TextContent(type="text", text=body)],
         structured_content=payload,
     )
 
 
 def list_result(payload: list[Any], text: str = "Speko API request completed.") -> ToolResult:
+    structured = {"result": payload}
     return ToolResult(
-        content=[TextContent(type="text", text=text)],
-        structured_content={"result": payload},
+        content=[TextContent(type="text", text=payload_text(structured))],
+        structured_content=structured,
     )
 
 

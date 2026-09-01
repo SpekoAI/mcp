@@ -15,6 +15,7 @@ from pydantic import Field
 
 from spekoai_mcp import http_client
 from spekoai_mcp.action_manifest import action_entries
+from spekoai_mcp.tool_text import payload_text
 
 
 class ManifestActionTool(Tool):
@@ -31,7 +32,12 @@ class ManifestActionTool(Tool):
             idempotency_key=idempotency_key,
         )
         return ToolResult(
-            content=[TextContent(type="text", text=f"Executed {self.action_id}.")],
+            content=[
+                TextContent(
+                    type="text",
+                    text=payload_text(payload, action=self.action_id),
+                )
+            ],
             structured_content=payload,
         )
 
