@@ -15316,7 +15316,7 @@
     {
       "id": "phone_numbers.list",
       "version": 1,
-      "description": "List phone and SIP numbers owned by the current workspace.",
+      "description": "List phone and SIP numbers owned by the current workspace. Buying a new number requires business verification (KYB), which is completed only in the Speko dashboard at https://platform.speko.ai/agents/phone-numbers; the purchase itself is a credit debit, not a card payment. The purchase tool is not exposed on every surface.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

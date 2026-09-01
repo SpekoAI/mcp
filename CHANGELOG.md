@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.13
+
+- `phone_numbers.list` carries the same note, because it is the ONLY phone tool
+  on the ChatGPT surface — that profile has neither `available.search` nor
+  `create`, so a caller there asking to buy a number had nothing to read at all.
+- `phone_numbers.available.search` now explains what searching does NOT get you:
+  buying a number is gated on business verification (KYB) that can only be
+  completed in the dashboard, and the purchase tool is absent from the Anthropic
+  connector surface entirely. Callers were being told "I can't" with nowhere to
+  go; the description now names the page that unblocks them.
+
 ## 0.2.12
 
 - Fix: tool results now carry their payload in the text content block, not only
