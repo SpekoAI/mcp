@@ -1428,12 +1428,13 @@ async def search_available_phone_numbers(
 
     Searching is read-only and always works. BUYING one does not follow from it.
     `phone_numbers.create` debits the workspace's prepaid credits (setup plus the
-    first month; it is not a card payment or a checkout) but is gated on business
-    verification (KYB), which is completed only in the Speko dashboard at
-    https://platform.speko.ai/agents/phone-numbers. A brand-new workspace has no
-    KYB record, so credits alone are never enough. The purchase tool is also
-    absent from the Anthropic connector surface. When a caller asks to buy a
-    number, point them at that page to finish KYB rather than retrying here.
+    first month; it is not a card payment or a checkout) and is gated on a
+    business declaration. A brand-new workspace has none, so credits alone are
+    never enough. Read `phone_numbers.kyb.get` and file it with
+    `phone_numbers.kyb.submit` — two fields and an attestation, right here — and
+    the purchase works immediately; approval is not required. The purchase tool
+    itself is absent from some surfaces, in which case the declaration still
+    applies and the number is bought in the dashboard.
     """
     return await call_list(
         "GET",

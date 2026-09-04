@@ -256,11 +256,24 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.recording.get",
     "calls.get",
     "calls.recording.get",
+    "phone_numbers.kyb.get",
     "audio.transcribe",
     "audio.synthesize",
+    "phone_numbers.kyb.submit",
     "agents.create",
     "agents.test_call",
     "sessions.phone.create",
+]
+
+# Manifest-generated actions that appear on the DEFAULT surface and have no
+# hand-written Python twin in `action_tools.py`, in registration order. Every
+# other manifest id on `default` shares a name with a legacy tool and so is
+# already counted in `ACTION_TOOL_NAMES`. Kept explicit rather than derived:
+# these tests exist to make an accidental change to the bare `/mcp` surface
+# fail, and a derived expectation could never do that.
+DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
+    "phone_numbers.kyb.get",
+    "phone_numbers.kyb.submit",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES

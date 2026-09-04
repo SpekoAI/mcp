@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.15
+
+- `phone_numbers.kyb.get` and `phone_numbers.kyb.submit` on every surface
+  (`mcp.speko.ai`, `anthropic.speko.ai`, `chatgpt.speko.ai`, and the customer
+  profile). The business declaration is two fields and an attestation, so it is
+  a turn of conversation rather than a form — `kyb.get` returns the prefilled
+  business name and the exact attestation text to show, `kyb.submit` records it
+  against the version the person agreed to, and buying a number works
+  immediately after. Anthropic surface 33 -> 35, ChatGPT 18 -> 20.
+- Outbound calling now requires that declaration. `POST /v1/sessions/phone`
+  refuses with `PHONE_NUMBER_KYB_REQUIRED` or `PHONE_NUMBER_KYB_SUSPENDED` and
+  returns the attestation text with the refusal. Calls from the shared
+  caller-ID pool dial from a Speko-owned number, which makes Speko the
+  carrier's customer of record, so an undeclared caller put the consent and
+  do-not-call exposure on us. `complianceAccess` had been computed for the
+  dashboard and enforced nowhere.
+- `phone_numbers.available.search` and `phone_numbers.list` stop telling callers
+  that verification can only be done in the dashboard. It can be done in the
+  conversation now, and the descriptions say so.
+
 ## 0.2.14
 
 - The Anthropic connector surface can place a call again. `sessions.phone.create`

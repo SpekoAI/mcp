@@ -23,7 +23,11 @@ from fastmcp.server.auth import AccessToken, MultiAuth, TokenVerifier
 
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
-from spekoai_mcp.profiles import BUILDER_PROFILE_TOOL_NAMES, DEFAULT_PROFILE_ENV_VAR
+from spekoai_mcp.profiles import (
+    BUILDER_PROFILE_TOOL_NAMES,
+    DEFAULT_MANIFEST_ONLY_TOOL_NAMES,
+    DEFAULT_PROFILE_ENV_VAR,
+)
 from spekoai_mcp.server import create_app
 
 HEADERS = {"Authorization": "Bearer sk_test_builder_profile"}
@@ -77,7 +81,7 @@ async def test_default_mcp_tool_list_is_unchanged_over_http(
     monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = [tool.name for tool in await client.list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DEFAULT_MANIFEST_ONLY_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 async def test_query_parameter_cannot_select_builder_over_http(
@@ -88,7 +92,7 @@ async def test_query_parameter_cannot_select_builder_over_http(
         StreamableHttpTransport(f"{http_base_url}/mcp?profile=builder", headers=HEADERS)
     ) as client:
         names = [tool.name for tool in await client.list_tools()]
-    assert names == ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+    assert names == ACTION_TOOL_NAMES + DEFAULT_MANIFEST_ONLY_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 async def test_builder_profile_over_http(

@@ -27,11 +27,12 @@ from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.profiles import (
     BUILDER_ONLY_TOOL_NAMES,
     BUILDER_PROFILE_TOOL_NAMES,
+    DEFAULT_MANIFEST_ONLY_TOOL_NAMES,
     DEFAULT_PROFILE_ENV_VAR,
 )
 from spekoai_mcp.server import create_server
 
-DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DOCS_TOOL_NAMES
+DEFAULT_TOOL_NAMES = ACTION_TOOL_NAMES + DEFAULT_MANIFEST_ONLY_TOOL_NAMES + DOCS_TOOL_NAMES
 
 
 def _force_deployment_profile(monkeypatch: pytest.MonkeyPatch, profile: str | None) -> None:
