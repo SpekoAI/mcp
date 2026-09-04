@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.16
+
+- `phone_numbers.kyb.get` now says which declaration fields the PERSON has to
+  state themselves. `collectFromUser` lists them and `declarationPrefillSource`
+  says where every prefilled value came from, so an auto-generated workspace
+  name ("Ada's Organization") is reported as `organization_name` and stays on
+  the collect list: it fills the field but nobody named that business. Only a
+  value the person previously declared, or one from a verified business profile,
+  comes off the list — and then to be repeated back for correction, not used
+  silently.
+- `phone_numbers.kyb.submit`'s description now forbids the failure this
+  invites: a caller inferring a plausible business name and use case from the
+  conversation, showing the attestation, collecting a "yes", and filing a record
+  that says nothing about who is calling. Both fields must be the person's own
+  words, and a value on `collectFromUser` that they have not stated is a reason
+  to stop and ask.
+
 ## 0.2.15
 
 - `phone_numbers.kyb.get` and `phone_numbers.kyb.submit` on every surface

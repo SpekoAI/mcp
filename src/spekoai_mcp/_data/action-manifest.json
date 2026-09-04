@@ -16130,7 +16130,7 @@
     {
       "id": "phone_numbers.kyb.get",
       "version": 1,
-      "description": "Read this workspace's business declaration for phone calling. Returns the declaration status, whether an attestation is still required, a prefilled business name, and the exact attestation text the caller must accept. Outbound calling and buying a number both require a submitted declaration, so call this before either and use `declarationPrefill` rather than asking for details already on file.",
+      "description": "Read this workspace's business declaration for phone calling. Outbound calling and buying a number both require a submitted declaration, so call this before either. `collectFromUser` lists the declaration fields the PERSON has to state in their own words — nothing on file is a declaration of them, so ask them and wait for the answer. A field NOT in that list is prefilled from what they previously declared or from a verified profile: repeat it back and let them correct it. `declarationPrefillSource` says where each value came from; `organization_name` is an auto-generated workspace label, not a business anyone named. `requiredAttestation.text` is the statement they must accept, verbatim.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16186,6 +16186,44 @@
                 ],
                 "additionalProperties": false
               },
+              "declarationPrefillSource": {
+                "type": "object",
+                "properties": {
+                  "businessName": {
+                    "type": "string",
+                    "enum": [
+                      "declared",
+                      "business_profile",
+                      "sms_10dlc",
+                      "organization_name",
+                      "none"
+                    ]
+                  },
+                  "useCase": {
+                    "type": "string",
+                    "enum": [
+                      "declared",
+                      "business_profile",
+                      "none"
+                    ]
+                  }
+                },
+                "required": [
+                  "businessName",
+                  "useCase"
+                ],
+                "additionalProperties": false
+              },
+              "collectFromUser": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "businessName",
+                    "useCase"
+                  ]
+                }
+              },
               "requiredAttestation": {
                 "type": "object",
                 "properties": {
@@ -16216,6 +16254,8 @@
               "complianceAccess",
               "attestationRequired",
               "declarationPrefill",
+              "declarationPrefillSource",
+              "collectFromUser",
               "requiredAttestation"
             ],
             "additionalProperties": false
@@ -16303,7 +16343,7 @@
     {
       "id": "phone_numbers.kyb.submit",
       "version": 1,
-      "description": "File the business declaration that unlocks outbound calling and number purchase. Two fields plus an attestation. Show the person the exact `requiredAttestation.text` from phone_numbers.kyb.get and pass `attestation_accepted: true` ONLY after they have said yes to it themselves — it is a legal statement binding their business, and accepting it on their behalf makes the record worthless. Pass `attestation_version` back from that same response so the record pins the text they agreed to. Submitting is enough to start calling; a human review follows and can place a hold.",
+      "description": "File the business declaration that unlocks outbound calling and number purchase. Two fields plus an attestation. `business_name` and `use_case` must be the PERSON'S OWN words: ask them, quote what they say, and do not infer either one from the conversation, the agent's prompt, the workspace name, or anything else — a declaration the caller wrote is a record of nothing. If they have not stated a value listed in phone_numbers.kyb.get's `collectFromUser`, stop and ask rather than filling it in. Show them the exact `requiredAttestation.text` and pass `attestation_accepted: true` ONLY after they have said yes to that statement themselves; accepting on their behalf makes the record worthless. Pass `attestation_version` back from the same response so the record pins the text they agreed to. Submitting is enough to start calling; a human reviews it afterwards and can place a hold.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
