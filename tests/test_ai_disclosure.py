@@ -9,7 +9,7 @@ from spekoai_mcp.action_tools import (
 from spekoai_mcp.profiles import (
     CONNECTOR_EXCLUDED_PREFIXES,
     CONNECTOR_PROFILE,
-    DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES,
+    DIRECTORY_WITHHELD_TOOL_NAMES,
     _is_connector_excluded,
 )
 
@@ -58,10 +58,16 @@ def test_connector_profile_excludes_speech_and_arming() -> None:
 
     It asserted the outbound-calling wedge survived the directory cut. The MCP
     Directory team refuted the premise — "configuring is arming" — so every
-    name it protected now has to be excluded instead.
+    name it protected had to be excluded instead. On 2026-09-04 exactly one
+    came back: `sessions.phone.create`, the call itself, with disclosure
+    injected server side. Everything else stays out.
     """
-    for name in DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES:
+    for name in DIRECTORY_WITHHELD_TOOL_NAMES:
         assert _is_connector_excluded(name), name
+
+    assert not _is_connector_excluded("sessions.phone.create"), (
+        "the connector surface must be able to place a call"
+    )
 
     # Same category, reached by the directory's own reasoning rather than by
     # their enumeration.

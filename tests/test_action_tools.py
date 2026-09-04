@@ -9,8 +9,13 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 import spekoai_mcp.http_client as http_client
-from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
+from spekoai_mcp.action_tools import (
+    ACTION_TOOL_NAMES,
+    DISCLOSURE_OPENER,
+    DISCLOSURE_RULE,
+)
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
+from spekoai_mcp.profiles import DEFAULT_PROFILE_ENV_VAR
 from spekoai_mcp.server import create_server
 
 
@@ -311,6 +316,35 @@ async def test_create_phone_session_rejects_non_e164_to_before_api(
         )
 
     assert speko_api_mock == []
+
+
+async def test_connector_profile_discloses_on_the_real_phone_call_path(
+    speko_api_mock: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sessions.phone.create` is on the published directory surface (0.2.14).
+
+    That the disclosure helper works is not the claim. The claim is that the
+    body the directory's own call puts on the wire carries disclosure, in a
+    caller-supplied first message the model chose.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+
+    await create_server().call_tool(
+        "sessions.phone.create",
+        {
+            "body": {
+                "to": "+12015551234",
+                "agentId": "agent_1",
+                "firstMessage": "Hi, this is Ava from Northside Clinic.",
+            }
+        },
+    )
+
+    sent = [call for call in speko_api_mock if call["path"] == "/v1/sessions/phone"]
+    assert len(sent) == 1, speko_api_mock
+    body = sent[0]["body"]
+    assert body["firstMessage"].startswith(DISCLOSURE_OPENER)
+    assert DISCLOSURE_RULE in body["systemPrompt"]
 
 
 async def test_update_agent_rejects_empty_body_before_api(

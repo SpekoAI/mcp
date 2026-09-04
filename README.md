@@ -86,7 +86,8 @@ parameter, header, or account setting that widens it.
 https://anthropic.speko.ai/mcp
 ```
 
-**32 tools.** Reads across the account, plus speech-to-text:
+**33 tools.** Reads across the account, speech-to-text, and outbound
+calling:
 
 - account: `organization.get`, `credits.balance.get`, `credits.ledger.list`,
   `usage.summary.get`;
@@ -102,18 +103,20 @@ https://anthropic.speko.ai/mcp
   `knowledge_bases.documents.list`, `knowledge_bases.documents.get`;
 - evals and monitoring: `evals.get`, `agents.monitoring.results.list`;
 - audio: `audio.transcribe`;
+- calling: `sessions.phone.create` — one outbound call per tool call, with
+  AI disclosure injected server side;
 - migration helpers: `migration.workspace.inspect`,
   `migration.external_config.parse`, `migration.session_config.build`,
   `migration.briefing.render`;
 - other: `docs.search`.
 
 Deliberately **not** on this host, because each one either produces synthetic
-speech or arms something that will:
+speech on demand or arms something that will:
 
 | group | absent |
 | ----- | ------ |
 | audio generation | `audio.synthesize` |
-| live session / call creation | `sessions.create`, `sessions.phone.create`, `agents.test_call` |
+| live session / call creation | `sessions.create`, `agents.test_call` |
 | agent configuration and deployment | `agents.create`, `agents.update`, `agents.deploy`, `agents.rollback`, `agents.tools.create`, `agents.tools.update`, `agents.tools.delete` |
 | knowledge-base writes | `knowledge_bases.create`, `knowledge_bases.documents.create`, `knowledge_bases.documents.delete`, `knowledge_bases.documents.finalize` |
 | phone number provisioning | `phone_numbers.create`, `phone_numbers.update` |
@@ -125,6 +128,16 @@ inbound traffic with no further tool call. Agent create, update, deploy and
 rollback are therefore withheld alongside the generation tool itself.
 `audio.transcribe` stays because speech-to-text produces no audio and returns
 only text.
+
+`sessions.phone.create` is on this host on purpose. It places one call, to one
+number, per explicit tool call, using an agent the customer deployed elsewhere
+— there is no bulk, scheduled or unattended path to it, and the caller cannot
+configure the agent that speaks. Every call created on a directory host has AI
+disclosure injected server side: the first thing said is that the caller is an
+AI, and the agent cannot be prompted out of admitting it. A surface that can
+read the transcript of a call it cannot place is a viewer, not a connector.
+`sessions.create` (a browser session token, useless in a chat client) and
+`agents.test_call` (two synthesized agents talking to each other) stay out.
 
 The last row is cut for a different reason. Deleting removes capability rather
 than arming anything, so those tools are not covered by the rule above — but a

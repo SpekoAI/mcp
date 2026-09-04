@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.14
+
+- The Anthropic connector surface can place a call again. `sessions.phone.create`
+  is served on `anthropic.speko.ai` (33 tools, up from 32); every other name the
+  MCP Directory enumerated on 2026-08-27 stays withheld. The tool creates exactly
+  one outbound call per explicit tool call, against an agent the customer deployed
+  through another surface, and `apply_directory_disclosure` already injects AI
+  disclosure into the opening line and the system prompt on every directory
+  profile, so the person who answers is told before anything else is said. A
+  surface that can read the transcript of a call it cannot place is a viewer, not
+  a connector. `sessions.create` (a browser session token, inert in a chat client)
+  and `agents.test_call` (two synthesized agents talking to each other) stay out,
+  as does everything that generates speech on demand or configures an agent.
+- New `DIRECTORY_CALLING_TOOL_NAMES` records the deviation explicitly, and
+  `DIRECTORY_WITHHELD_TOOL_NAMES` is what assertions about the published surface
+  use. `DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES` is unchanged: it stays a verbatim
+  record of what the directory team asked for.
+
 ## 0.2.13
 
 - `phone_numbers.list` carries the same note, because it is the ONLY phone tool

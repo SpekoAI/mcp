@@ -82,8 +82,7 @@ _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 # reached by their own reasoning, cut now rather than in another round trip.
 #
 #   generation        audio.synthesize (A)
-#   live call         sessions.create (A), sessions.phone.create (A),
-#                     agents.test_call (A)
+#   live call         sessions.create (A), agents.test_call (A)
 #   arming            agents.create (A), agents.update (A), agents.deploy (A),
 #                     agents.rollback — redeploys a prior version, so it arms
 #                     agents.tools.* writes — rewire what a live agent does
@@ -95,6 +94,18 @@ _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 #   agents.evals.*    — one `evals.run` fans out into many sessions at once
 #   agents.monitors.* — scoring rules over completed runs; harmless, but the
 #                       name reads as scheduled automation to a reviewer
+#
+# One name came back on 2026-09-04. `sessions.phone.create` — placing a real
+# outbound call to a real number with an agent the customer already deployed —
+# is the reason a voice platform belongs in an assistant directory at all. A
+# surface that can read transcripts of calls it cannot place is a viewer, not a
+# connector. It is served with server-injected AI disclosure on every directory
+# profile (`apply_directory_disclosure`), so the person who answers is told
+# they are speaking to an AI before anything else is said, and it creates
+# exactly one call per explicit tool call — no bulk, schedule or fan-out path
+# reaches it. The rest of the cut stands: nothing on this surface generates
+# speech on demand, and nothing configures or deploys an agent. See
+# DIRECTORY_CALLING_TOOL_NAMES.
 #
 # What deliberately STAYS, because the team named it explicitly:
 #
@@ -123,9 +134,9 @@ CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
     {
         # generation
         "audio.synthesize",
-        # live session / call creation
+        # live session / call creation. `sessions.phone.create` is NOT here:
+        # see DIRECTORY_CALLING_TOOL_NAMES.
         "sessions.create",
-        "sessions.phone.create",
         "agents.test_call",
         # agent configuration and deployment — configuring is arming
         "agents.create",
@@ -175,6 +186,24 @@ DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES: frozenset[str] = frozenset(
         "phone_numbers.create",
         "phone_numbers.update",
     }
+)
+
+# Names from that enumeration we serve anyway, and why. Kept as its own
+# constant so the deviation is explicit and greppable rather than an absence in
+# a set, and so a test can pin the exact scope of it.
+#
+# `sessions.phone.create` places one outbound call, to one number, per tool
+# call, using an agent the customer deployed through some other surface. It is
+# the product's whole reason to exist in a directory. Disclosure is injected
+# server side on this path for every profile in DIRECTORY_PROFILES, so it is
+# not the undisclosed-persona case the directory team saw in review.
+DIRECTORY_CALLING_TOOL_NAMES: frozenset[str] = frozenset({"sessions.phone.create"})
+
+# What the directory surface actually withholds today: their enumeration minus
+# the calling path we reinstated. Assertions about the published surface use
+# this; DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES stays a verbatim record of the ask.
+DIRECTORY_WITHHELD_TOOL_NAMES: frozenset[str] = (
+    DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES - DIRECTORY_CALLING_TOOL_NAMES
 )
 
 # The curated ChatGPT preset, published to OpenAI's Plugin Directory as

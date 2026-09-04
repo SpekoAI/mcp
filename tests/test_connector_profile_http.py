@@ -25,7 +25,7 @@ from spekoai_mcp.action_tools import DISCLOSURE_OPENER, DISCLOSURE_RULE
 from spekoai_mcp.profiles import (
     CONNECTOR_EXCLUDED_PREFIXES,
     DEFAULT_PROFILE_ENV_VAR,
-    DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES,
+    DIRECTORY_WITHHELD_TOOL_NAMES,
 )
 from spekoai_mcp.server import create_app
 
@@ -90,18 +90,17 @@ async def test_connector_profile_hides_evals_and_monitors_over_http(
 async def test_connector_profile_withholds_every_tool_the_directory_named(
     http_base_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The nine tools Anthropic's MCP Directory enumerated on 2026-08-27.
+    """The tools Anthropic's MCP Directory enumerated on 2026-08-27.
 
-    This test used to be `test_connector_profile_keeps_outbound_calling_over_http`
-    and asserted the opposite for three of these names. That was our reading of
-    the policy — generated audio only — and the directory team refuted it:
-    "configuring is arming."
+    Minus `sessions.phone.create`, reinstated 2026-09-04 with server-injected
+    disclosure — see `test_connector_profile_serves_outbound_calling_over_http`.
+    Nothing else from the enumeration may appear.
     """
     monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
         names = {tool.name for tool in await client.list_tools()}
 
-    leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+    leaked = sorted(DIRECTORY_WITHHELD_TOOL_NAMES & names)
     assert leaked == [], f"tools the directory requires absent are advertised: {leaked}"
 
 
@@ -149,11 +148,28 @@ async def test_directory_required_tool_is_uncallable_on_connector_over_http(
     """Hidden must also mean uncallable, or the listing is cosmetic."""
     monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
     async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
-        with pytest.raises(Exception, match="Unknown tool: 'sessions.phone.create'"):
-            await client.call_tool(
-                "sessions.phone.create",
-                {"body": {"to": "+12015551234", "agentId": "a"}},
-            )
+        with pytest.raises(Exception, match="Unknown tool: 'agents.deploy'"):
+            await client.call_tool("agents.deploy", {"agent_id": "a"})
+
+
+async def test_connector_profile_serves_outbound_calling_over_http(
+    http_base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Placing a call is the reason the connector is worth installing.
+
+    A directory surface that can read the transcript of a call it cannot place
+    is a viewer. `sessions.phone.create` is advertised and reachable; disclosure
+    is injected on the path (see test_ai_disclosure) so the callee is told.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "connector")
+    async with Client(StreamableHttpTransport(f"{http_base_url}/mcp", headers=HEADERS)) as client:
+        names = {tool.name for tool in await client.list_tools()}
+
+    assert "sessions.phone.create" in names, "the connector surface cannot place a call"
+    # The rest of the live-call group stays out: a browser session token is
+    # useless in a chat client, and test_call is two synthesized agents talking.
+    assert "sessions.create" not in names
+    assert "agents.test_call" not in names
 
 
 async def test_connector_deployment_restricts_the_bare_base_endpoint(
@@ -172,7 +188,7 @@ async def test_connector_deployment_restricts_the_bare_base_endpoint(
     ) as client:
         names = {tool.name for tool in await client.list_tools()}
 
-    leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+    leaked = sorted(DIRECTORY_WITHHELD_TOOL_NAMES & names)
     assert leaked == [], f"restricted deployment served them at bare /mcp: {leaked}"
     assert "audio.transcribe" in names, "the restricted base endpoint lost transcription"
 
@@ -200,7 +216,7 @@ async def test_no_query_parameter_can_widen_or_retarget_a_restricted_deployment(
             StreamableHttpTransport(f"{http_base_url}/mcp?profile={attempt}", headers=HEADERS)
         ) as client:
             names = {tool.name for tool in await client.list_tools()}
-        leaked = sorted(DIRECTORY_REQUIRED_ABSENT_TOOL_NAMES & names)
+        leaked = sorted(DIRECTORY_WITHHELD_TOOL_NAMES & names)
         assert leaked == [], f"?profile={attempt} widened a restricted deployment: {leaked}"
 
 
