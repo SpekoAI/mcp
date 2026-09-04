@@ -14480,8 +14480,7 @@
         "speko:billing"
       ],
       "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
+        "oauth-user"
       ],
       "idempotency": "required",
       "execution": "handoff",
@@ -14541,8 +14540,7 @@
         "speko:billing"
       ],
       "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
+        "oauth-user"
       ],
       "idempotency": "required",
       "execution": "handoff",
@@ -14602,8 +14600,7 @@
         "speko:billing"
       ],
       "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
+        "oauth-user"
       ],
       "idempotency": "required",
       "execution": "handoff",
@@ -15194,8 +15191,7 @@
         "speko:billing"
       ],
       "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
+        "oauth-user"
       ],
       "idempotency": "required",
       "execution": "sync",
@@ -15302,8 +15298,7 @@
         "speko:billing"
       ],
       "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
+        "oauth-user"
       ],
       "idempotency": "required",
       "execution": "sync",
