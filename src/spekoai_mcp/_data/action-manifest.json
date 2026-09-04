@@ -16553,7 +16553,7 @@
       },
       "effect": "write",
       "requiredScopes": [
-        "speko:compliance"
+        "speko:write"
       ],
       "allowedPrincipals": [
         "oauth-user",

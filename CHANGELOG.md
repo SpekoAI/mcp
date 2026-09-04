@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.17
+
+- `phone_numbers.kyb.submit` requires `speko:write`, not `speko:compliance`. It
+  was the only action in the 72-action catalog using that scope, so no
+  connector's OAuth grant carried it and the tool answered
+  `403 ACTION_SCOPE_DENIED` on every surface. Reproduced against
+  `chatgpt.speko.ai` with the exact scope set that connector requests
+  (`speko:read speko:write speko:execute`): `kyb.get` executed, `kyb.submit`
+  refused. A user who hit the declaration prompt could not get past it.
+
 ## 0.2.16
 
 - `phone_numbers.kyb.get` now says which declaration fields the PERSON has to
