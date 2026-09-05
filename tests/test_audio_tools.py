@@ -261,6 +261,245 @@ def test_empty_stream_yields_empty_transcript() -> None:
 # --- fetching the audio is not an SSRF primitive ---------------------------
 
 
+WAV = b"RIFF\x24\x00\x00\x00WAVEfmt " + b"\x00" * 32
+
+
+def _router_response(words: bool = True) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "text": "Your table is ready.",
+        "segments": [{"text": "Your table is ready.", "start_ms": 0, "end_ms": 1400}],
+        "route": {
+            "provider": "gemini",
+            "model": "gemini-3.5-transcribe",
+            "region": "us-east-1",
+            "attempt_id": "ratt_1",
+        },
+        "usage": {"duration_ms": 1400},
+    }
+    if words:
+        payload["words"] = [
+            {"text": "Your", "start_ms": 0, "end_ms": 300},
+            {"text": "table", "start_ms": 320, "end_ms": 700},
+        ]
+    return payload
+
+
+async def test_transcribe_prefers_the_router_for_wav_with_an_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return WAV, "audio/wav"
+
+    async def fake_router(
+        audio: bytes,
+        *,
+        request_payload: dict[str, Any],
+        token: str,
+        content_type: str = "audio/wav",
+    ) -> dict[str, Any]:
+        seen.update(audio=audio, request=request_payload, token=token)
+        return _router_response()
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the Platform endpoint must not be reached")
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_transcription", fake_router)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", unreachable)
+
+    out = await action_tools.transcribe_audio(
+        "https://storage.example.com/rec.wav",
+        language="uz",
+        keywords=["Speko"],
+        word_timestamps=True,
+    )
+
+    assert seen["audio"] == WAV
+    assert seen["token"] == "sk_live_test"
+    # Automatic routing, not a pin: the Router filters candidates on the
+    # capability itself and lands on a model that can answer.
+    assert seen["request"]["routing"] == {"mode": "auto", "objective": "balanced"}
+    assert seen["request"]["language"] == "uz"
+    assert seen["request"]["options"] == {"keywords": ["Speko"], "word_timestamps": True}
+    assert out.structured_content == {
+        "text": "Your table is ready.",
+        "language": "uz",
+        "provider": "gemini",
+        "model": "gemini-3.5-transcribe",
+        "words": [
+            {"text": "Your", "start_ms": 0, "end_ms": 300},
+            {"text": "table", "start_ms": 320, "end_ms": 700},
+        ],
+    }
+
+
+async def test_transcribe_stays_on_platform_for_a_container_the_router_cannot_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A call recording is Ogg/Opus and the Router answers 415 for it."""
+    seen: dict[str, Any] = {}
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a non-WAV upload must never reach the Router")
+
+    async def fake_post(
+        path: str,
+        payload: bytes,
+        *,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> SpekoRawResponse:
+        seen.update(path=path, content_type=content_type)
+        return SpekoRawResponse(
+            content=b'event: done\ndata: {"text": "Your table is ready."}\n\n',
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_transcription", unreachable)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    out = await action_tools.transcribe_audio("https://storage.example.com/rec.mp3")
+
+    assert seen["path"] == "/v1/transcribe"
+    assert seen["content_type"] == "audio/mpeg"
+    assert out.structured_content["text"] == "Your table is ready."
+
+
+async def test_transcribe_stays_on_platform_without_a_speko_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An OAuth-delegated session holds no credential the Router accepts."""
+    called: dict[str, Any] = {}
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return WAV, "audio/wav"
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a session without an API key must not reach the Router")
+
+    async def fake_post(
+        path: str,
+        payload: bytes,
+        *,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> SpekoRawResponse:
+        called["path"] = path
+        return SpekoRawResponse(
+            content=b'event: done\ndata: {"text": "ok"}\n\n',
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_router_transcription", unreachable)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    await action_tools.transcribe_audio("https://storage.example.com/rec.wav")
+
+    assert called["path"] == "/v1/transcribe"
+
+
+@pytest.mark.parametrize(
+    ("code", "falls_back"),
+    [
+        ("unsupported_media", True),
+        ("capability_unsupported", True),
+        ("authentication_failed", True),
+        ("provider_error", False),
+        ("request_timeout", False),
+    ],
+)
+async def test_router_refusals_fall_back_only_when_platform_can_serve_them(
+    monkeypatch: pytest.MonkeyPatch, code: str, falls_back: bool
+) -> None:
+    """A provider failure is a real failure — retrying it bills the audio twice."""
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return WAV, "audio/wav"
+
+    async def failing_router(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        raise http_client.SpekoApiError(400, f"{code}: refused", code=code)
+
+    async def fake_post(
+        path: str,
+        payload: bytes,
+        *,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> SpekoRawResponse:
+        return SpekoRawResponse(
+            content=b'event: done\ndata: {"text": "fallback"}\n\n',
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_transcription", failing_router)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    if falls_back:
+        out = await action_tools.transcribe_audio("https://storage.example.com/rec.wav")
+        assert out.structured_content["text"] == "fallback"
+    else:
+        with pytest.raises(http_client.SpekoApiError):
+            await action_tools.transcribe_audio("https://storage.example.com/rec.wav")
+
+
+async def test_platform_word_timestamps_pin_the_capable_model_and_arrive_in_ms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unpinned, Platform answers 422: it demotes rather than selects."""
+    seen: dict[str, Any] = {}
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def fake_post(
+        path: str,
+        payload: bytes,
+        *,
+        content_type: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> SpekoRawResponse:
+        seen["headers"] = extra_headers
+        return SpekoRawResponse(
+            content=(
+                b'event: done\ndata: {"text": "Salom dunyo", "provider": "gemini", '
+                b'"model": "gemini-3.5-transcribe", "words": ['
+                b'{"text": "Salom", "start": 0.12, "end": 0.48}, '
+                b'{"text": "dunyo", "start": 0.51, "end": 1}]}\n\n'
+            ),
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    out = await action_tools.transcribe_audio(
+        "https://storage.example.com/rec.mp3", language="uz", word_timestamps=True
+    )
+
+    assert json.loads(seen["headers"]["X-Speko-Stt-Options"]) == {"wordTimestamps": True}
+    assert json.loads(seen["headers"]["X-Speko-Constraints"]) == {
+        "allowedProviders": {"stt": ["gemini:gemini-3.5-transcribe"]}
+    }
+    assert out.structured_content["words"] == [
+        {"text": "Salom", "start_ms": 120, "end_ms": 480},
+        {"text": "dunyo", "start_ms": 510, "end_ms": 1000},
+    ]
+    assert out.structured_content["provider"] == "gemini"
+
+
 async def test_transcribe_refuses_non_https_urls() -> None:
     for url in ("http://example.com/a.mp3", "file:///etc/passwd", "s3://bucket/a.mp3"):
         with pytest.raises(ToolError, match="https"):

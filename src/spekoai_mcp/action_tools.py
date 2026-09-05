@@ -288,6 +288,33 @@ async def synthesize_speech(
     )
 
 
+# Router refusals the Platform endpoint can still serve. Everything else — a
+# provider error, a timeout, a rate limit — is a real failure and is raised
+# rather than retried on a second backend, which would transcribe and bill the
+# same audio twice.
+_ROUTER_FALLBACK_CODES = frozenset(
+    {
+        "unsupported_media",
+        "capability_unsupported",
+        "authentication_failed",
+        "invalid_request",
+        "no_eligible_route",
+    }
+)
+
+# Platform routing DEMOTES candidates that cannot serve a canonical parameter
+# rather than SELECTING one that can, so an unpinned `wordTimestamps` request
+# answers 422 no_capable_provider even though a capable model exists. This is
+# the only model carrying the mapping today; the Router needs no equivalent,
+# because its automatic routing filters on the capability itself.
+_WORD_TIMESTAMP_STT_PIN = "gemini:gemini-3.5-transcribe"
+
+
+def _is_wav(audio: bytes) -> bool:
+    """Whether the bytes are a RIFF/WAVE container."""
+    return len(audio) >= 12 and audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
+
+
 async def transcribe_audio(
     audio_url: Annotated[
         str,
@@ -307,17 +334,117 @@ async def transcribe_audio(
         list[str] | None,
         Field(description="Domain terms to bias recognition, up to 200."),
     ] = None,
+    word_timestamps: Annotated[
+        bool,
+        Field(
+            description=(
+                "Return per-word start/end timings alongside the transcript, "
+                "for subtitles and alignment. Adds a `words` array of "
+                "{text, start_ms, end_ms}."
+            )
+        ),
+    ] = False,
 ) -> ToolResult:
     """Transcribe audio to text.
 
     Speech to text only: no audio is generated and none is returned.
     """
     audio, content_type = await _fetch_audio(audio_url)
+    router_token = http_client.router_bearer_token()
 
+    # The Router is the current transcription product, and its automatic
+    # routing picks a model that can serve what was asked for. Two things keep
+    # a request on the Platform endpoint instead, and both are properties of
+    # the request rather than preferences: the Router takes WAV/PCM only, so a
+    # call recording (Ogg/Opus) answers 415, and it authenticates Speko API
+    # keys only, so an OAuth-delegated MCP session has no credential for it.
+    if router_token and _is_wav(audio):
+        try:
+            return await _transcribe_via_router(
+                audio,
+                token=router_token,
+                language=language,
+                keywords=keywords,
+                word_timestamps=word_timestamps,
+            )
+        except http_client.SpekoApiError as exc:
+            if exc.code not in _ROUTER_FALLBACK_CODES:
+                raise
+
+    return await _transcribe_via_platform(
+        audio,
+        content_type=content_type,
+        language=language,
+        keywords=keywords,
+        word_timestamps=word_timestamps,
+    )
+
+
+async def _transcribe_via_router(
+    audio: bytes,
+    *,
+    token: str,
+    language: str,
+    keywords: list[str] | None,
+    word_timestamps: bool,
+) -> ToolResult:
+    """Transcribe through the Router's batch endpoint."""
+    options: dict[str, Any] = {}
+    if keywords:
+        options["keywords"] = keywords[:100]
+    if word_timestamps:
+        options["word_timestamps"] = True
+
+    request_payload: dict[str, Any] = {
+        "routing": {"mode": "auto", "objective": "balanced"},
+        "language": language,
+    }
+    if options:
+        request_payload["options"] = options
+
+    response = await http_client.post_router_transcription(
+        audio, request_payload=request_payload, token=token
+    )
+    text = (response.get("text") or "").strip()
+    route = response.get("route") if isinstance(response.get("route"), dict) else {}
+    payload: dict[str, Any] = {
+        "text": text,
+        "language": language,
+        "provider": route.get("provider"),
+        "model": route.get("model"),
+    }
+    words = response.get("words")
+    if isinstance(words, list) and words:
+        payload["words"] = words
+    return result(payload, text=text or "No speech detected.")
+
+
+async def _transcribe_via_platform(
+    audio: bytes,
+    *,
+    content_type: str,
+    language: str,
+    keywords: list[str] | None,
+    word_timestamps: bool,
+) -> ToolResult:
+    """Transcribe through the Platform one-shot endpoint.
+
+    Reached when the Router cannot serve the request: a container it does not
+    decode, or a session with no Speko API key to authenticate with.
+    """
     intent: dict[str, Any] = {"language": language}
     headers = {"X-Speko-Intent": json.dumps(intent)}
+
+    stt_options: dict[str, Any] = {}
     if keywords:
-        headers["X-Speko-Stt-Options"] = json.dumps({"keywords": keywords[:200]})
+        stt_options["keywords"] = keywords[:200]
+    if word_timestamps:
+        stt_options["wordTimestamps"] = True
+        headers["X-Speko-Constraints"] = json.dumps(
+            {"allowedProviders": {"stt": [_WORD_TIMESTAMP_STT_PIN]}}
+        )
+    if stt_options:
+        headers["X-Speko-Stt-Options"] = json.dumps(stt_options)
 
     raw = await http_client.post_speko_api_bytes(
         "/v1/transcribe",
@@ -325,8 +452,32 @@ async def transcribe_audio(
         content_type=content_type,
         extra_headers=headers,
     )
-    text = _transcript_from_sse(raw.content.decode("utf-8", errors="replace"))
-    return result({"text": text, "language": language}, text=text or "No speech detected.")
+    stream = raw.content.decode("utf-8", errors="replace")
+    text = _transcript_from_sse(stream)
+    payload: dict[str, Any] = {"text": text, "language": language}
+    done = _done_frame_from_sse(stream)
+    provider, model = done.get("provider"), done.get("model")
+    if isinstance(provider, str) and provider:
+        payload["provider"] = provider
+    if isinstance(model, str) and model:
+        payload["model"] = model
+    words = done.get("words")
+    if isinstance(words, list) and words:
+        # Platform publishes word timings in SECONDS; the Router and this tool
+        # publish milliseconds, so one shape reaches the caller either way.
+        payload["words"] = [
+            {
+                "text": word.get("text"),
+                "start_ms": round(float(word["start"]) * 1000),
+                "end_ms": round(float(word["end"]) * 1000),
+                **({"speaker": word["speaker"]} if word.get("speaker") else {}),
+            }
+            for word in words
+            if isinstance(word, dict)
+            and word.get("start") is not None
+            and word.get("end") is not None
+        ]
+    return result(payload, text=text or "No speech detected.")
 
 
 # The caller chooses this URL, and the fetch runs from inside our network, so
@@ -454,6 +605,19 @@ def _transcript_from_sse(stream: str) -> str:
             if isinstance(piece, str) and piece.strip():
                 finals.append(piece.strip())
     return " ".join(finals).strip()
+
+
+def _done_frame_from_sse(stream: str) -> dict[str, Any]:
+    """The `done` frame's payload, or an empty dict when the stream had none.
+
+    Read separately from {@link _transcript_from_sse} so the transcript's
+    assembly rules — done.text wins, trailing finals are the fallback — stay in
+    one place and are not re-derived here.
+    """
+    for name, payload in _parse_sse(stream):
+        if name == "done":
+            return payload
+    return {}
 
 
 def _parse_sse(stream: str) -> list[tuple[str, dict[str, Any]]]:

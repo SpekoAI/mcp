@@ -177,6 +177,11 @@ JWT bound to the Platform API; it never forwards the client-presented MCP token.
 Configuration:
 
 - `SPEKOAI_API_URL` — Platform API origin, default `https://api.speko.dev`;
+- `SPEKOAI_ROUTER_URL` — Speko Router origin, default `https://router.speko.dev`.
+  `audio.transcribe` prefers the Router and falls back to the Platform endpoint
+  when the Router cannot serve the request: it decodes WAV/PCM only, so a
+  call recording in another container stays on Platform, and it authenticates
+  Speko API keys only, so an OAuth-delegated session does too;
 - `SPEKOAI_OAUTH_ISSUER` — Better Auth issuer, for example
   `https://platform.speko.ai/api/auth`;
 - `SPEKOAI_MCP_BASE_URL` — public MCP origin used to derive the exact resource

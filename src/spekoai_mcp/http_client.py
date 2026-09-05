@@ -8,6 +8,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, urlencode
+from uuid import uuid4
 
 import httpx
 from fastmcp.server.dependencies import get_access_token
@@ -15,6 +16,7 @@ from fastmcp.server.dependencies import get_access_token
 from spekoai_mcp.delegation import DelegationError, platform_bearer_token
 
 DEFAULT_API_BASE = "https://api.speko.dev"
+DEFAULT_ROUTER_BASE = "https://router.speko.dev"
 
 _TEST_TRANSPORT: httpx.AsyncBaseTransport | None = None
 _CURRENT_ACTION_ID: ContextVar[str | None] = ContextVar("speko_mcp_action_id", default=None)
@@ -37,11 +39,22 @@ class SpekoAuthError(RuntimeError):
 class SpekoApiError(RuntimeError):
     """Clean exception for upstream API failures."""
 
-    def __init__(self, status_code: int, message: str, *, trace_id: str | None = None) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        *,
+        trace_id: str | None = None,
+        code: str | None = None,
+    ) -> None:
         super().__init__(f"Speko API returned {status_code}: {message}")
         self.status_code = status_code
         self.message = message
         self.trace_id = trace_id
+        # The upstream's machine-readable error code when it published one, so
+        # a caller can branch on WHY a request was refused rather than parsing
+        # the human message. None when the body carried no code.
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -57,6 +70,29 @@ def get_api_base() -> str:
         or os.environ.get("SPEKOAI_BASE_URL")
         or DEFAULT_API_BASE
     ).rstrip("/")
+
+
+def get_router_base() -> str:
+    return (
+        os.environ.get("SPEKOAI_ROUTER_URL")
+        or os.environ.get("SPEKO_ROUTER_URL")
+        or DEFAULT_ROUTER_BASE
+    ).rstrip("/")
+
+
+def router_bearer_token() -> str | None:
+    """The caller's own Speko API key, or None when this session has none.
+
+    The Router takes opaque Speko API keys and nothing else: its control plane
+    resolves a `sk_live_` key through Platform's `/v1/auth/api-key-context`,
+    which deliberately refuses dashboard sessions and OAuth-delegated users so
+    they can never be used as service credentials. An MCP session authenticated
+    with OAuth therefore holds no credential the Router will accept — it
+    presents a short-lived delegation JWT minted for the Platform audience —
+    and its work has to stay on the Platform endpoint.
+    """
+    token = getattr(get_access_token(), "token", None)
+    return token if isinstance(token, str) and token.startswith("sk_") else None
 
 
 def path_segment(value: str | int) -> str:
@@ -359,6 +395,77 @@ async def post_speko_api_bytes(
         content=resp.content,
         content_type=resp.headers.get("content-type", "application/octet-stream"),
     )
+
+
+def _router_user_agent() -> str:
+    """A non-empty User-Agent. The Router answers a request without one 403."""
+    client_ua = _CURRENT_CLIENT_UA.get()
+    return f"spekoai-mcp ({client_ua})" if client_ua else "spekoai-mcp"
+
+
+def _router_error_code(resp: httpx.Response) -> str | None:
+    """The Router's `error.code`, or Platform's bare string `error`."""
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        code = error.get("code")
+        return code if isinstance(code, str) and code else None
+    return error if isinstance(error, str) and error else None
+
+
+async def post_router_transcription(
+    audio: bytes,
+    *,
+    request_payload: dict[str, Any],
+    token: str,
+    content_type: str = "audio/wav",
+) -> dict[str, Any]:
+    """POST one batch transcription to the Router and return its JSON.
+
+    Three parts of this envelope are load-bearing and each fails in a way that
+    names something else: `Idempotency-Key` is mandatory on every Router path
+    (a missing one is a 400 raised before the body is read), a `User-Agent` must
+    be present (a missing one is a bare 403 that explains nothing), and the two
+    multipart parts have to be named `request` and `audio`.
+    """
+    base = get_router_base()
+    url = f"{base}/v1/stt/transcriptions"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": uuid4().hex,
+        "User-Agent": _router_user_agent(),
+        "Accept": "application/json",
+    }
+    files = {
+        "request": (None, json.dumps(request_payload), "application/json"),
+        "audio": ("audio.wav", audio, content_type),
+    }
+    try:
+        async with httpx.AsyncClient(
+            timeout=120.0,
+            follow_redirects=True,
+            transport=_TEST_TRANSPORT,
+        ) as client:
+            response = await client.post(url, headers=headers, files=files)
+    except httpx.HTTPError as exc:
+        raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
+    if response.status_code >= 400:
+        message, trace_id = _error_details(response)
+        raise SpekoApiError(
+            response.status_code,
+            message,
+            trace_id=trace_id,
+            code=_router_error_code(response),
+        )
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise SpekoApiError(
+            response.status_code, "The Speko Router returned an unexpected response."
+        )
+    return payload
 
 
 def tool_error_message(exc: Exception, *, next_step: str) -> str:
