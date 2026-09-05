@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.18
+
+- `audio.transcribe` sends audio to the Speko Router
+  (`POST router.speko.dev/v1/stt/transcriptions`) instead of the
+  first-generation Platform endpoint, and takes a `word_timestamps` option that
+  returns `words: [{text, start_ms, end_ms}]` for subtitles and alignment.
+- Two properties of a request keep it on the Platform endpoint, both measured
+  rather than assumed: the Router decodes WAV/PCM only, so a call recording in
+  another container (Ogg/Opus answers `415 unsupported_media`) stays where it
+  works; and the Router authenticates Speko API keys only, so a session holding
+  an OAuth delegation token stays there too. A Router refusal Platform can
+  serve falls back; a provider error or timeout is raised rather than retried
+  on a second backend that would bill the same audio twice.
+- Word timings leave the tool in milliseconds whichever surface served them.
+
 ## 0.2.17
 
 - `phone_numbers.kyb.submit` requires `speko:write`, not `speko:compliance`. It
