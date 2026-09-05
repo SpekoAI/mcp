@@ -6822,6 +6822,9 @@
                         "profanityFilter": {
                           "type": "boolean"
                         },
+                        "wordTimestamps": {
+                          "type": "boolean"
+                        },
                         "providerOptions": {
                           "$ref": "#/$defs/__schema0"
                         }
@@ -7619,6 +7622,9 @@
                         "type": "boolean"
                       },
                       "profanityFilter": {
+                        "type": "boolean"
+                      },
+                      "wordTimestamps": {
                         "type": "boolean"
                       },
                       "providerOptions": {
@@ -8588,6 +8594,9 @@
                             "type": "boolean"
                           },
                           "profanityFilter": {
+                            "type": "boolean"
+                          },
+                          "wordTimestamps": {
                             "type": "boolean"
                           },
                           "providerOptions": {
