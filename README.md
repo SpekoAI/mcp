@@ -178,10 +178,14 @@ Configuration:
 
 - `SPEKOAI_API_URL` — Platform API origin, default `https://api.speko.dev`;
 - `SPEKOAI_ROUTER_URL` — Speko Router origin, default `https://router.speko.dev`.
-  `audio.transcribe` prefers the Router and falls back to the Platform endpoint
-  when the Router cannot serve the request: it decodes WAV/PCM only, so a
-  call recording in another container stays on Platform, and it authenticates
-  Speko API keys only, so an OAuth-delegated session does too;
+  `audio.transcribe` and `audio.synthesize` prefer the Router and fall back to
+  the Platform endpoint when the Router cannot serve the request. Both fall back
+  for a session with no Speko API key, because the Router authenticates those
+  and not the OAuth delegation token. `audio.transcribe` also falls back for any
+  container but WAV/PCM, which the Router does not decode. `audio.synthesize`
+  falls back when the body names something the Router's speech body cannot say:
+  `speed`, `instructions`, `spokenForm`, a bare `model`, an `intent.region`, or
+  more than one allowed provider;
 - `SPEKOAI_OAUTH_ISSUER` — Better Auth issuer, for example
   `https://platform.speko.ai/api/auth`;
 - `SPEKOAI_MCP_BASE_URL` — public MCP origin used to derive the exact resource

@@ -63,6 +63,16 @@ class SpekoRawResponse:
     content_type: str
 
 
+@dataclass(frozen=True)
+class RouterAudioResponse:
+    """Raw audio plus the route the Router reported serving it."""
+
+    content: bytes
+    content_type: str
+    provider: str | None
+    model: str | None
+
+
 def get_api_base() -> str:
     return (
         os.environ.get("SPEKOAI_API_URL")
@@ -466,6 +476,50 @@ async def post_router_transcription(
             response.status_code, "The Speko Router returned an unexpected response."
         )
     return payload
+
+
+async def post_router_speech(
+    request_payload: dict[str, Any],
+    *,
+    token: str,
+) -> RouterAudioResponse:
+    """POST one synthesis to the Router and return the audio it streams back.
+
+    The response is a bare audio stream, so the route comes back in headers
+    rather than a JSON envelope. `Idempotency-Key` and a non-empty `User-Agent`
+    are as mandatory here as on every other Router path.
+    """
+    base = get_router_base()
+    url = f"{base}/v1/tts/speech"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Idempotency-Key": uuid4().hex,
+        "User-Agent": _router_user_agent(),
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(
+            timeout=120.0,
+            follow_redirects=True,
+            transport=_TEST_TRANSPORT,
+        ) as client:
+            response = await client.post(url, headers=headers, json=request_payload)
+    except httpx.HTTPError as exc:
+        raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
+    if response.status_code >= 400:
+        message, trace_id = _error_details(response)
+        raise SpekoApiError(
+            response.status_code,
+            message,
+            trace_id=trace_id,
+            code=_router_error_code(response),
+        )
+    return RouterAudioResponse(
+        content=response.content,
+        content_type=response.headers.get("content-type", "application/octet-stream"),
+        provider=response.headers.get("speko-provider"),
+        model=response.headers.get("speko-model"),
+    )
 
 
 def tool_error_message(exc: Exception, *, next_step: str) -> str:

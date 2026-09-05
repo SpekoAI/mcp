@@ -161,6 +161,170 @@ async def test_synthesize_rejects_an_empty_response(monkeypatch: pytest.MonkeyPa
         await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
 
 
+PCM = b"\x00\x01" * 64
+
+
+async def test_synthesize_prefers_the_router_with_an_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def fake_router(
+        request_payload: dict[str, Any], *, token: str
+    ) -> http_client.RouterAudioResponse:
+        seen.update(payload=request_payload, token=token)
+        return http_client.RouterAudioResponse(
+            content=PCM,
+            content_type="application/octet-stream",
+            provider="inworld",
+            model="inworld-tts-2",
+        )
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the Platform endpoint must not be reached")
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", fake_router)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", unreachable)
+
+    out = await action_tools.synthesize_speech(
+        {
+            "text": "Your table is ready.",
+            "intent": {"language": "es-MX", "optimizeFor": "accuracy"},
+            "voice": "Aoede",
+            "sampleRate": 24000,
+        }
+    )
+
+    assert seen["token"] == "sk_live_test"
+    assert seen["payload"] == {
+        # Platform's `accuracy` is the Router's `quality`.
+        "routing": {"mode": "auto", "objective": "quality"},
+        "input": "Your table is ready.",
+        "audio": {"encoding": "pcm_s16le", "sample_rate_hz": 24000, "channels": 1},
+        "voice": "Aoede",
+        "language": "es-MX",
+    }
+    # The Router labels the stream application/octet-stream; the tool reports
+    # the format the request asked for and got, so a client can play it.
+    assert out.structured_content["content_type"] == "audio/pcm;rate=24000"
+    assert out.structured_content["provider"] == "inworld"
+    assert out.structured_content["model"] == "inworld-tts-2"
+    assert base64.b64decode(out.structured_content["audio_base64"]) == PCM
+
+
+async def test_synthesize_maps_a_single_pin_to_explicit_routing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def fake_router(
+        request_payload: dict[str, Any], *, token: str
+    ) -> http_client.RouterAudioResponse:
+        seen["payload"] = request_payload
+        return http_client.RouterAudioResponse(PCM, "application/octet-stream", None, None)
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", fake_router)
+
+    await action_tools.synthesize_speech(
+        {
+            "text": "hi",
+            "intent": {"language": "en"},
+            "constraints": {"allowedProviders": {"tts": ["cartesia:sonic-3.5"]}},
+        }
+    )
+
+    assert seen["payload"]["routing"] == {
+        "mode": "explicit",
+        "provider": "cartesia",
+        "model": "sonic-3.5",
+    }
+    # Unstated sample rate still has to reach the Router: its body requires one.
+    assert seen["payload"]["audio"]["sample_rate_hz"] == 24000
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        ({"text": "hi", "intent": {"language": "en"}, "speed": 1.2}, "speed"),
+        ({"text": "hi", "intent": {"language": "en"}, "spokenForm": True}, "spokenForm"),
+        ({"text": "hi", "intent": {"language": "en"}, "instructions": "warmly"}, "instructions"),
+        ({"text": "hi", "intent": {"language": "en"}, "model": "sonic-2"}, "bare model id"),
+        ({"text": "hi", "intent": {"language": "en", "region": "us"}}, "intent.region"),
+        (
+            {
+                "text": "hi",
+                "intent": {"language": "en"},
+                "constraints": {"allowedProviders": {"tts": ["a:1", "b:2"]}},
+            },
+            "a candidate set",
+        ),
+    ],
+)
+async def test_synthesize_stays_on_platform_for_what_the_router_cannot_say(
+    monkeypatch: pytest.MonkeyPatch, body: dict[str, Any], why: str
+) -> None:
+    """Losing a knob silently is worse than using the older endpoint."""
+    seen: dict[str, Any] = {}
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(f"{why} has no Router equivalent and must not be dropped")
+
+    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+        seen["path"] = path
+        return SpekoRawResponse(content=MP3, content_type="audio/mpeg")
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", unreachable)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    await action_tools.synthesize_speech(body)
+
+    assert seen["path"] == "/v1/synthesize"
+
+
+async def test_synthesize_falls_back_when_the_router_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    async def failing_router(*args: Any, **kwargs: Any) -> Any:
+        raise http_client.SpekoApiError(400, "refused", code="capability_unsupported")
+
+    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+        seen["path"] = path
+        return SpekoRawResponse(content=MP3, content_type="audio/mpeg")
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", failing_router)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    assert seen["path"] == "/v1/synthesize"
+    assert out.structured_content["content_type"] == "audio/mpeg"
+
+
+async def test_synthesize_raises_a_router_provider_error_rather_than_retrying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retrying a provider failure on Platform synthesizes and bills twice."""
+
+    async def failing_router(*args: Any, **kwargs: Any) -> Any:
+        raise http_client.SpekoApiError(502, "upstream died", code="provider_error")
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a provider error must not fall back")
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", failing_router)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", unreachable)
+
+    with pytest.raises(http_client.SpekoApiError):
+        await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+
 # --- transcription ---------------------------------------------------------
 
 

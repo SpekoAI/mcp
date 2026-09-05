@@ -270,20 +270,145 @@ async def synthesize_speech(
 
     Routed across TTS providers by the intent. The audio is returned as base64
     with its content type and sample rate so a client can save or play it.
+
+    Served by the Speko Router when the request is one the Router's speech body
+    can express, and by the Platform endpoint otherwise — a request naming
+    `speed`, `instructions`, `spokenForm`, a bare `model` or more than one
+    allowed provider keeps the knob it asked for rather than losing it.
     """
+    router_token = http_client.router_bearer_token()
+    router_payload = _router_speech_payload(body) if router_token else None
+    if router_token and router_payload is not None:
+        try:
+            return await _synthesize_via_router(router_payload, token=router_token)
+        except http_client.SpekoApiError as exc:
+            if exc.code not in _ROUTER_FALLBACK_CODES:
+                raise
+
     raw = await http_client.call_speko_api_raw("POST", "/v1/synthesize", body=body)
     if not raw.content:
         raise ToolError("Speko synthesize returned an empty body.")
-    return result(
-        {
-            "audio_base64": base64.b64encode(raw.content).decode("ascii"),
-            "content_type": raw.content_type,
-            "size_bytes": len(raw.content),
-            "sample_rate": body.get("sampleRate"),
+    return _synthesis_result(
+        raw.content,
+        content_type=raw.content_type,
+        sample_rate=body.get("sampleRate"),
+    )
+
+
+# Everything the Router's POST /v1/tts/speech body can express. Its shape is
+# {routing, input, voice?, language?, audio}: narrower than the Platform body,
+# with no speed, no speaking-style instructions and no spoken-form
+# normalization. A request naming anything outside this set is served by
+# Platform rather than silently losing the knob it asked for.
+_ROUTER_SPEECH_FIELDS = frozenset({"text", "intent", "voice", "sampleRate", "constraints"})
+_ROUTER_SPEECH_INTENT_FIELDS = frozenset({"language", "optimizeFor"})
+
+# Platform calls the quality objective `accuracy`; the Router calls it
+# `quality`. The other three names are shared.
+_ROUTER_OBJECTIVES = {
+    "accuracy": "quality",
+    "quality": "quality",
+    "balanced": "balanced",
+    "latency": "latency",
+    "cost": "cost",
+}
+
+_DEFAULT_SPEECH_SAMPLE_RATE = 24000
+
+
+def _router_speech_payload(body: dict[str, Any]) -> dict[str, Any] | None:
+    """The Router body for this request, or None when it cannot express it."""
+    if not isinstance(body, dict) or not set(body).issubset(_ROUTER_SPEECH_FIELDS):
+        return None
+    text = body.get("text")
+    if not isinstance(text, str) or not text:
+        return None
+
+    intent = body.get("intent") or {}
+    if not isinstance(intent, dict) or not set(intent).issubset(_ROUTER_SPEECH_INTENT_FIELDS):
+        return None
+    objective = _ROUTER_OBJECTIVES.get(str(intent.get("optimizeFor") or "balanced"))
+    if objective is None:
+        return None
+
+    routing: dict[str, Any] = {"mode": "auto", "objective": objective}
+    constraints = body.get("constraints") or {}
+    if constraints:
+        if not isinstance(constraints, dict) or set(constraints) - {"allowedProviders"}:
+            return None
+        pins = (constraints.get("allowedProviders") or {}).get("tts") or []
+        # Explicit routing names ONE provider and model. A candidate set is
+        # something the Router body has no way to say, so it stays on Platform.
+        if len(pins) != 1 or not isinstance(pins[0], str) or pins[0].count(":") != 1:
+            return None
+        provider, model = pins[0].split(":")
+        routing = {"mode": "explicit", "provider": provider, "model": model}
+
+    sample_rate = body.get("sampleRate") or _DEFAULT_SPEECH_SAMPLE_RATE
+    if not isinstance(sample_rate, int):
+        return None
+
+    payload: dict[str, Any] = {
+        "routing": routing,
+        "input": text,
+        "audio": {
+            "encoding": "pcm_s16le",
+            "sample_rate_hz": sample_rate,
+            "channels": 1,
         },
+    }
+    voice = body.get("voice")
+    if isinstance(voice, str) and voice:
+        payload["voice"] = voice
+    language = intent.get("language")
+    if isinstance(language, str) and language:
+        payload["language"] = language
+    return payload
+
+
+async def _synthesize_via_router(
+    request_payload: dict[str, Any], *, token: str
+) -> ToolResult:
+    """Synthesize through the Router's speech endpoint."""
+    response = await http_client.post_router_speech(request_payload, token=token)
+    if not response.content:
+        raise ToolError("The Speko Router returned an empty audio body.")
+    sample_rate = request_payload["audio"]["sample_rate_hz"]
+    # The Router labels the stream application/octet-stream. It is the format
+    # this request asked for and got — headerless signed 16-bit PCM at the
+    # requested rate — and saying so is what lets a client play the bytes.
+    return _synthesis_result(
+        response.content,
+        content_type=f"audio/pcm;rate={sample_rate}",
+        sample_rate=sample_rate,
+        provider=response.provider,
+        model=response.model,
+    )
+
+
+def _synthesis_result(
+    audio: bytes,
+    *,
+    content_type: str,
+    sample_rate: Any,
+    provider: str | None = None,
+    model: str | None = None,
+) -> ToolResult:
+    payload: dict[str, Any] = {
+        "audio_base64": base64.b64encode(audio).decode("ascii"),
+        "content_type": content_type,
+        "size_bytes": len(audio),
+        "sample_rate": sample_rate,
+    }
+    if provider:
+        payload["provider"] = provider
+    if model:
+        payload["model"] = model
+    return result(
+        payload,
         # The payload is base64 audio; rendering it as text would flood the
         # model's context with megabytes of useless characters.
-        text=f"Synthesized {len(raw.content)} bytes of {raw.content_type}.",
+        text=f"Synthesized {len(audio)} bytes of {content_type}.",
         summary_only=True,
     )
 
