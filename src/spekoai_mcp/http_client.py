@@ -13,6 +13,7 @@ from uuid import uuid4
 import httpx
 from fastmcp.server.dependencies import get_access_token
 
+from spekoai_mcp.attribution import invocation_headers, mark_receiver
 from spekoai_mcp.delegation import DelegationError, platform_bearer_token
 
 DEFAULT_API_BASE = "https://api.speko.dev"
@@ -145,6 +146,10 @@ def reset_current_client_ua(token: Token[str | None]) -> None:
     _CURRENT_CLIENT_UA.reset(token)
 
 
+def current_client_ua() -> str | None:
+    return _CURRENT_CLIENT_UA.get()
+
+
 def _platform_headers(
     *,
     action_id: str | None = None,
@@ -175,6 +180,7 @@ def _platform_headers(
         headers["X-Speko-Action-Id"] = resolved_action_id
     if extra_headers:
         headers.update(extra_headers)
+    headers.update(invocation_headers())
     return headers
 
 
@@ -234,16 +240,18 @@ async def _call_speko_api(
 ) -> dict[str, Any]:
     api_base = get_api_base()
     url = f"{api_base}/{path.lstrip('/')}"
+    headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("platform")
             resp = await client.request(
                 method.upper(),
                 url,
-                headers=_platform_headers(),
+                headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -288,6 +296,7 @@ async def call_action(
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("platform")
             response = await client.request("POST", url, headers=headers, json=body)
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
@@ -307,16 +316,18 @@ async def call_speko_api_any(
 ) -> Any:
     api_base = get_api_base()
     url = f"{api_base}/{path.lstrip('/')}"
+    headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("platform")
             resp = await client.request(
                 method.upper(),
                 url,
-                headers=_platform_headers(),
+                headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -339,16 +350,18 @@ async def _call_speko_api_raw(
 ) -> SpekoRawResponse:
     api_base = get_api_base()
     url = f"{api_base}/{path.lstrip('/')}"
+    headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
             timeout=60.0,
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("platform")
             resp = await client.request(
                 method.upper(),
                 url,
-                headers=_platform_headers(),
+                headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
@@ -395,6 +408,7 @@ async def post_speko_api_bytes(
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("platform")
             resp = await client.post(url, headers=headers, content=payload)
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
@@ -448,6 +462,7 @@ async def post_router_transcription(
         "Idempotency-Key": uuid4().hex,
         "User-Agent": _router_user_agent(),
         "Accept": "application/json",
+        **invocation_headers(),
     }
     files = {
         "request": (None, json.dumps(request_payload), "application/json"),
@@ -459,6 +474,7 @@ async def post_router_transcription(
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("router_direct")
             response = await client.post(url, headers=headers, files=files)
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
@@ -496,6 +512,7 @@ async def post_router_speech(
         "Idempotency-Key": uuid4().hex,
         "User-Agent": _router_user_agent(),
         "Content-Type": "application/json",
+        **invocation_headers(),
     }
     try:
         async with httpx.AsyncClient(
@@ -503,6 +520,7 @@ async def post_router_speech(
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
+            mark_receiver("router_direct")
             response = await client.post(url, headers=headers, json=request_payload)
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc

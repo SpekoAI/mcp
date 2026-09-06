@@ -20,6 +20,12 @@ from starlette.types import Message as ASGIMessage
 from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
+from spekoai_mcp.attribution import (
+    InvocationAttributionMiddleware,
+    observed_host,
+    reset_current_host,
+    set_current_host,
+)
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.docs_tools import register_docs_tools
@@ -123,6 +129,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_resources(mcp)
     register_prompts(mcp)
     register_builder_tools(mcp)
+    mcp.add_middleware(InvocationAttributionMiddleware())
     mcp.add_middleware(ToolProfileMiddleware())
     return mcp
 
@@ -135,6 +142,7 @@ def create_public_server() -> FastMCP:
     )
     register_docs_tools(mcp)
     register_resources(mcp)
+    mcp.add_middleware(InvocationAttributionMiddleware(profile="public"))
     return mcp
 
 
@@ -215,9 +223,11 @@ class MCPProtocolGuard:
         # JSON-RPC body and the transport headers are gone. Reset in `finally`
         # so a ContextVar cannot leak across requests on a reused worker task.
         ua_token = set_current_client_ua(self._sanitized_user_agent(scope))
+        host_token = set_current_host(observed_host(scope.get("headers", [])))
         try:
             await self._dispatch(scope, receive, send)
         finally:
+            reset_current_host(host_token)
             reset_current_client_ua(ua_token)
 
     async def _dispatch(self, scope: Scope, receive: Receive, send: Send) -> None:

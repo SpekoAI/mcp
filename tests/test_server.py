@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -227,6 +228,7 @@ async def test_get_credit_balance_forwards_auth_and_payload(
 
     assert captured["method"] == "POST"
     assert captured["url"] == "https://api.speko.dev/v1/actions/credits.balance.get"
+    assert UUID(captured["headers"].pop("X-Speko-Invocation-Id")).version == 4
     assert captured["headers"] == {
         "Authorization": "Bearer sk_platform_test",
         "X-Speko-Source": "mcp",

@@ -14,6 +14,7 @@ Covers the three invariants of platform issue #1169 section 1:
 from __future__ import annotations
 
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastmcp.exceptions import NotFoundError
@@ -130,6 +131,7 @@ async def test_customer_gateway_tool_uses_generic_action_adapter(
 
     assert captured["method"] == "POST"
     assert captured["url"] == "https://api.speko.dev/v1/actions/gateway.overview.get"
+    assert UUID(captured["headers"].pop("X-Speko-Invocation-Id")).version == 4
     assert captured["headers"] == {
         "Authorization": "Bearer sk_platform_test",
         "X-Speko-Source": "mcp",
@@ -288,6 +290,7 @@ async def test_list_voices_relays_to_voices_endpoint(
     result = await create_server().call_tool("voices.list", {"provider": "cartesia"})
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.speko.dev/v1/voices?provider=cartesia"
+    assert UUID(captured["headers"].pop("X-Speko-Invocation-Id")).version == 4
     assert captured["headers"] == {
         "Authorization": "Bearer sk_platform_test",
         "X-Speko-Source": "mcp",

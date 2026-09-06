@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.21
+
+- Preserve separate invocation and downstream request identities across concurrent tools. Optional attribution receipts use a bounded background writer, retain completion time, and report dropped records without raw user agents, tool arguments, or results. Enable receipts with `ATTRIBUTION_ENABLED=true`.
+
 ## 0.2.20
 
 - audio.transcribe now converts Google Drive and Dropbox share links to direct downloads, refuses web pages (a private Drive file answers with the one sharing step to take instead of an empty transcript), reports an empty completed transcript as no_speech, and never echoes URLs or resolved addresses in errors or logs.
