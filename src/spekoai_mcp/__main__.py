@@ -27,6 +27,9 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # httpx logs every request URL at INFO; audio_url includes signed recording
+    # URLs whose query string is a credential.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     auth = build_auth(mcp_path=MCP_PATH)
     logger.info("spekoai-mcp: running OAuth/API-key protected stateless MCP at %s.", MCP_PATH)

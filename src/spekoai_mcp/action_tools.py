@@ -12,11 +12,12 @@ from __future__ import annotations
 import base64
 import ipaddress
 import json
+import logging
 import re
 import socket
 from functools import wraps
 from typing import Annotated, Any, Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import httpx
 from fastmcp import FastMCP
@@ -28,6 +29,8 @@ from pydantic import Field
 from spekoai_mcp import http_client
 from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
 from spekoai_mcp.tool_text import payload_text
+
+logger = logging.getLogger(__name__)
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 
@@ -440,14 +443,85 @@ def _is_wav(audio: bytes) -> bool:
     return len(audio) >= 12 and audio[:4] == b"RIFF" and audio[8:12] == b"WAVE"
 
 
+def _normalize_audio_url(url: str) -> str:
+    """Turn file shares into downloads without dropping their access keys."""
+    try:
+        httpx.URL(url)  # urllib silently strips control characters from malformed links.
+        parsed = urlparse(url)
+        if (
+            parsed.scheme != "https"
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port not in (None, 443)
+        ):
+            return url
+        host = parsed.hostname
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        if host in {"drive.google.com", "docs.google.com"} and not parsed.params:
+            file_id = None
+            match = re.fullmatch(
+                r"/file/d/([A-Za-z0-9_-]+)(?:/(?:view|edit|preview))?/?", parsed.path
+            )
+            if host == "drive.google.com" and match:
+                file_id = match.group(1)
+            elif parsed.path == "/uc" or (host == "drive.google.com" and parsed.path == "/open"):
+                file_id = next((value for key, value in query if key == "id"), None)
+            if file_id and re.fullmatch(r"[A-Za-z0-9_-]+", file_id):
+                # `resourcekey` is an access key and travels with the file. A link
+                # already in the `uc` download form keeps everything else too
+                # (`confirm`/`uuid` are Drive's own download tokens); share links
+                # drop their UI parameters (`usp=sharing`).
+                kept = {"resourcekey"} if parsed.path != "/uc" else None
+                download_query = [("export", "download"), ("id", file_id)]
+                download_query.extend(
+                    (key, value)
+                    for key, value in query
+                    if key not in {"export", "id"} and (kept is None or key in kept)
+                )
+                return "https://drive.google.com/uc?" + urlencode(download_query)
+        elif host in {"www.dropbox.com", "dropbox.com"} and parsed.path.startswith(
+            ("/s/", "/scl/fi/")
+        ):
+            download_query = [(key, "1" if key == "dl" else value) for key, value in query]
+            if not any(key == "dl" for key, _ in query):
+                download_query.append(("dl", "1"))
+            return parsed._replace(query=urlencode(download_query)).geturl()
+    except (httpx.InvalidURL, ValueError, TypeError):
+        # Invalid links still reach the fetch guard, which gives a safe error.
+        pass
+    return url
+
+
+def _reject_non_audio_link(url: str) -> None:
+    """Known document and folder links cannot turn into an audio download."""
+    try:
+        parsed = urlparse(url)
+        host, path = parsed.hostname, parsed.path
+    except ValueError:
+        return
+    if host == "docs.google.com" and path.startswith(
+        ("/document/", "/spreadsheets/", "/presentation/")
+    ):
+        raise ToolError(
+            "That link is a Google Docs document, not an audio file. "
+            "Send the link of the audio file itself."
+        )
+    if (host == "drive.google.com" and path.startswith("/drive/folders/")) or (
+        host in {"www.dropbox.com", "dropbox.com"} and path.startswith(("/sh/", "/scl/fo/"))
+    ):
+        raise ToolError("That link is a folder. Send the link of one audio file inside it.")
+
+
 async def transcribe_audio(
     audio_url: Annotated[
         str,
         Field(
             description=(
-                "HTTPS URL of the audio to transcribe. Signed recording URLs "
-                "from sessions.recording.get and calls.recording.get work "
-                "directly. The server fetches the bytes and forwards them."
+                "HTTPS URL of the audio file (mp3, wav, m4a, ogg, flac, webm; up to 25 MB) "
+                "that downloads without a sign-in. Google Drive and Dropbox share links "
+                "to a FILE are accepted and converted to direct downloads; in Drive the "
+                "file must be shared as 'Anyone with the link'. Signed recording URLs "
+                "from sessions.recording.get and calls.recording.get work directly."
             )
         ),
     ],
@@ -473,7 +547,11 @@ async def transcribe_audio(
     """Transcribe audio to text.
 
     Speech to text only: no audio is generated and none is returned.
+    Google Drive's "can't scan for viruses" confirmation pages are refused as
+    web pages; use a link that downloads the audio without a confirmation form.
     """
+    audio_url = _normalize_audio_url(audio_url)
+    _reject_non_audio_link(audio_url)
     audio, content_type = await _fetch_audio(audio_url)
     router_token = http_client.router_bearer_token()
 
@@ -530,7 +608,7 @@ async def _transcribe_via_router(
     response = await http_client.post_router_transcription(
         audio, request_payload=request_payload, token=token
     )
-    text = (response.get("text") or "").strip()
+    text = _completed_transcript(response.get("text"))
     route = response.get("route") if isinstance(response.get("route"), dict) else {}
     payload: dict[str, Any] = {
         "text": text,
@@ -541,6 +619,7 @@ async def _transcribe_via_router(
     words = response.get("words")
     if isinstance(words, list) and words:
         payload["words"] = words
+    _mark_no_speech(payload)
     return result(payload, text=text or "No speech detected.")
 
 
@@ -578,9 +657,11 @@ async def _transcribe_via_platform(
         extra_headers=headers,
     )
     stream = raw.content.decode("utf-8", errors="replace")
-    text = _transcript_from_sse(stream)
-    payload: dict[str, Any] = {"text": text, "language": language}
+    # Raises on an `error` frame first: a failure must never read as "incomplete".
+    _transcript_from_sse(stream)
     done = _done_frame_from_sse(stream)
+    text = _completed_transcript(done.get("text"))
+    payload: dict[str, Any] = {"text": text, "language": language}
     provider, model = done.get("provider"), done.get("model")
     if isinstance(provider, str) and provider:
         payload["provider"] = provider
@@ -602,7 +683,27 @@ async def _transcribe_via_platform(
             and word.get("start") is not None
             and word.get("end") is not None
         ]
+    _mark_no_speech(payload)
     return result(payload, text=text or "No speech detected.")
+
+
+def _completed_transcript(text: Any) -> str:
+    """Only an explicit completed text can distinguish silence from a failed response."""
+    if not isinstance(text, str):
+        raise ToolError("Speko returned an incomplete transcription response. Try again.")
+    return text.strip()
+
+
+def _mark_no_speech(payload: dict[str, Any]) -> None:
+    """Put silence guidance in the payload because that is what the model sees."""
+    if not payload["text"]:
+        for key in ("provider", "model"):
+            if payload.get(key) is None:
+                payload.pop(key, None)
+        payload["no_speech"] = True
+        payload["message"] = (
+            "No speech was recognized in the audio. Check the recording before trying again."
+        )
 
 
 # The caller chooses this URL, and the fetch runs from inside our network, so
@@ -613,34 +714,149 @@ async def _transcribe_via_platform(
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
 _MAX_REDIRECTS = 3
 
+DRIVE_MESSAGE = (
+    "Google requires access to this file, so Speko received Google's web page instead "
+    "of the audio. In Google Drive open Share, set General access to 'Anyone with the link', "
+    "then send the same link again."
+)
+_DOCUMENT_TYPES = {
+    "text/html": "html",
+    "application/xhtml+xml": "html",
+    "application/json": "json",
+    "application/xml": "xml",
+    "text/xml": "xml",
+}
+
+
+def _is_google_host(host: str | None) -> bool:
+    """Match domain boundaries so an unrelated host cannot get Drive guidance."""
+    return bool(
+        host
+        and (
+            host
+            in {
+                "accounts.google.com",
+                "drive.google.com",
+                "drive.usercontent.google.com",
+                "docs.google.com",
+            }
+            or host.endswith((".google.com", ".googleusercontent.com"))
+        )
+    )
+
+
+# Every signature is several specific bytes followed by a tag boundary, because a
+# lone `<`, `{` or `<html\x00` is legal raw PCM. JSON whitespace is ASCII only
+# (latin-1 `\s` would accept 0xA0) and keys are printable ASCII without quotes.
+_HTML_SIGNATURE = re.compile(rb"<(?:!doctype|html|head|body)(?=[ \t\r\n>/])", re.IGNORECASE)
+_XML_SIGNATURE = re.compile(rb"<(?:\?xml|svg)(?=[ \t\r\n>/])", re.IGNORECASE)
+# The prelude a document may open with before its signature: a UTF-8 BOM,
+# ASCII whitespace and complete markup comments, in any order, bounded so a
+# 25 MB body is not scanned end to end. A comment that does not close inside
+# the bound is left alone: raw PCM that starts with b"<!--" stays audio.
+_PRELUDE_SCAN_BYTES = 64 * 1024
+_PRELUDE_WHITESPACE = b" \t\r\n\v\f"
+
+
+def _strip_document_prelude(body: bytes) -> bytes:
+    """The first 1 KB after the prelude, for the signature match."""
+    start = 3 if body.startswith(b"\xef\xbb\xbf") else 0
+    end = min(len(body), _PRELUDE_SCAN_BYTES)
+    while start < end:
+        if body[start] in _PRELUDE_WHITESPACE:
+            start += 1
+            continue
+        if body.startswith(b"<!--", start):
+            close = body.find(b"-->", start + 4, end)
+            if close == -1:
+                break
+            start = close + 3
+            continue
+        break
+    return body[start : start + 1024]
+
+
+_JSON_SIGNATURE = re.compile(
+    rb'^(?:[\{\[][ \t\r\n]*\{?[ \t\r\n]*"[ !#-\[\]-~]{1,64}"[ \t\r\n]*:'
+    rb'|\[[ \t\r\n]*"[ !#-\[\]-~]{1,64}"[ \t\r\n]*[,\]])'
+)
+
+
+def _document_kind(content_type: str, body: bytes) -> str | None:
+    """Use complete signatures because a single punctuation byte can be PCM."""
+    main_type = content_type.split(";", 1)[0].strip().lower()
+    if main_type in _DOCUMENT_TYPES:
+        return _DOCUMENT_TYPES[main_type]
+    if main_type.endswith(("+json", "+xml")):
+        return main_type.rsplit("+", 1)[1]
+    # Strip the prelude before taking the window, so a page padded with
+    # kilobytes of whitespace or opened by a long comment does not walk past
+    # the sniff.
+    start = _strip_document_prelude(body)
+    if _HTML_SIGNATURE.match(start):
+        return "html"
+    if _XML_SIGNATURE.match(start):
+        return "xml"
+    if _JSON_SIGNATURE.match(start):
+        return "json"
+    return None
+
+
+def _looks_like_document(content_type: str, body: bytes) -> bool:
+    """Avoid sending web pages to speech providers even when mislabeled as audio."""
+    return _document_kind(content_type, body) is not None
+
+
+def _is_virus_confirmation(body: bytes) -> bool:
+    """A virus-scan confirmation is not an access failure, so sharing will not fix it."""
+    page = body.lower()
+    return b"virus scan warning" in page or bool(
+        re.search(
+            rb"can(?:(?:'|&#39;|&#x27;|&apos;|\xe2\x80\x99)t|not) scan "
+            rb"(?:this file )?for viruses",
+            page,
+        )
+    )
+
+
+def _warn_audio_rejection(host: str | None, reason: str) -> None:
+    # FastMCP additionally logs "Error calling tool 'audio.transcribe'" without
+    # the message; this WARNING is the line that carries host + reason.
+    logger.warning("audio.transcribe rejected %s: %s", host, reason)
+
 
 def _assert_public_address(address: str, *, source: str) -> None:
     """Refuse an address that is not globally routable."""
+    message = (
+        "audio_url resolves to a non-public address. "
+        "Pass a publicly reachable HTTPS URL, such as a signed recording URL."
+    )
     try:
         parsed = ipaddress.ip_address(address)
     except ValueError:  # not an address we can judge; treat as untrusted
-        raise ToolError(
-            f"{source} is not an IP address that can be validated: {address!r}"
-        ) from None
+        raise ToolError(message) from None
     if not parsed.is_global or parsed.is_multicast:
-        raise ToolError(
-            f"{source} is the non-public address {parsed}. "
-            "Pass a publicly reachable URL, such as a signed recording URL."
-        )
+        raise ToolError(message)
 
 
 def _assert_fetchable(url: str) -> None:
     """Reject anything that is not a public https endpoint."""
-    parsed = urlparse(url)
+    try:
+        parsed = httpx.URL(url)
+        host = parsed.host
+    except (httpx.InvalidURL, ValueError):
+        raise ToolError("audio_url must be a valid https:// URL.") from None
     if parsed.scheme != "https":
         raise ToolError(f"audio_url must be an https:// URL, got {parsed.scheme or 'no'} scheme.")
-    host = parsed.hostname
     if not host:
         raise ToolError("audio_url has no host.")
+    # httpx.host decodes IDNA to Unicode; raw_host is the ASCII name it connects
+    # to. Resolving Unicode instead can use Python's different, legacy IDNA rules.
+    host = parsed.raw_host.decode("ascii")
     try:
         resolved = socket.getaddrinfo(host, parsed.port or 443, proto=socket.IPPROTO_TCP)
-    except OSError as exc:
-        raise ToolError(f"Unable to resolve {host}: {exc}") from exc
+    except OSError:
+        raise ToolError("Unable to resolve the host of audio_url.") from None
     for info in resolved:
         _assert_public_address(info[4][0], source="audio_url")
 
@@ -671,35 +887,67 @@ async def _fetch_audio(url: str) -> tuple[bytes, str]:
     async with httpx.AsyncClient(timeout=60.0, follow_redirects=False) as client:
         for _ in range(_MAX_REDIRECTS + 1):
             _assert_fetchable(current)
+            # From the URL httpx validated: urllib can raise with the userinfo in
+            # its message, and that text would reach the model and the logs.
+            final_host = httpx.URL(current).host
             try:
                 async with client.stream("GET", current) as response:
                     _assert_connected_peer_is_public(response)
                     if response.is_redirect:
                         location = response.headers.get("location")
                         if not location:
-                            raise ToolError(f"{current} redirected without a Location header.")
+                            _warn_audio_rejection(final_host, "redirect_without_location")
+                            raise ToolError(f"{final_host} redirected without a Location header.")
                         # Re-validated at the top of the next iteration.
                         current = str(httpx.URL(current).join(location))
                         continue
-                    response.raise_for_status()
+                    if response.status_code >= 400:
+                        _warn_audio_rejection(final_host, f"http_{response.status_code}")
+                        raise ToolError(
+                            DRIVE_MESSAGE
+                            if _is_google_host(final_host)
+                            else (
+                                f"The link answered HTTP {response.status_code} from {final_host}. "
+                                "Send a link that downloads the audio directly without a sign-in."
+                            )
+                        )
                     chunks: list[bytes] = []
                     size = 0
                     async for chunk in response.aiter_bytes():
                         size += len(chunk)
                         if size > _MAX_AUDIO_BYTES:
+                            _warn_audio_rejection(final_host, "too_large")
                             raise ToolError(
-                                f"Audio at {current} exceeds the "
+                                f"Audio at {final_host} exceeds the "
                                 f"{_MAX_AUDIO_BYTES // (1024 * 1024)} MB limit."
                             )
                         chunks.append(chunk)
                     if not size:
-                        raise ToolError(f"Audio at {current} is empty.")
-                    return (
-                        b"".join(chunks),
-                        response.headers.get("content-type") or "application/octet-stream",
+                        _warn_audio_rejection(final_host, "empty_body")
+                        raise ToolError(f"Audio at {final_host} is empty.")
+                    body = b"".join(chunks)
+                    content_type = (
+                        response.headers.get("content-type") or "application/octet-stream"
                     )
-            except httpx.HTTPError as exc:
-                raise ToolError(f"Unable to fetch audio from {current}: {exc}") from exc
+                    if _looks_like_document(content_type, body):
+                        main_type = content_type.split(";", 1)[0].strip().lower()
+                        reason = main_type if main_type in _DOCUMENT_TYPES else "sniffed"
+                        _warn_audio_rejection(final_host, f"document:{reason}")
+                        # Google's "can't scan for viruses" page needs a confirmation
+                        # form, not wider access. Report a web page and never submit it.
+                        if _is_google_host(final_host) and not _is_virus_confirmation(body):
+                            raise ToolError(DRIVE_MESSAGE)
+                        kind = _document_kind(content_type, body)
+                        raise ToolError(
+                            f"The link returned a web page ({kind}) from {final_host}, "
+                            "not an audio file. Send a link that downloads the audio directly "
+                            "(mp3, wav, m4a, ogg, flac, webm) without a sign-in."
+                        )
+                    return body, content_type
+            except (httpx.HTTPError, httpx.InvalidURL) as exc:
+                _warn_audio_rejection(final_host, f"fetch_error:{type(exc).__name__}")
+                raise ToolError(f"Unable to fetch audio from {final_host}.") from None
+    _warn_audio_rejection(httpx.URL(current).host, "too_many_redirects")
     raise ToolError(f"audio_url exceeded {_MAX_REDIRECTS} redirects.")
 
 
@@ -719,8 +967,12 @@ def _transcript_from_sse(stream: str) -> str:
     finals: list[str] = []
     for name, payload in _parse_sse(stream):
         if name == "error":
-            detail = payload.get("error") or payload.get("code") or "unknown error"
-            raise ToolError(f"Transcription failed: {detail}")
+            # The free-text `error` can echo vendor bodies; the `code` is a fixed
+            # server enum (ALL_PROVIDERS_FAILED, INSUFFICIENT_CREDITS, ...) and safe.
+            code = payload.get("code")
+            safe = isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code) is not None
+            suffix = f" ({code})" if safe else ""
+            raise ToolError(f"Transcription failed{suffix}. Try again.")
         if name == "done":
             text = payload.get("text")
             if isinstance(text, str):
