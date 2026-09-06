@@ -1,0 +1,106 @@
+{
+  "artificial_analysis": [
+    {
+      "request_type": "llm",
+      "run_id": "seed_aa_2026_04_22",
+      "source_version": "aa-2026-04",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "openai",
+      "model_id": "gpt-4o",
+      "language": "en",
+      "mode": "streaming_sse",
+      "error_rate": 0.0,
+      "aa_index": 67,
+      "ttft_ms": 380,
+      "output_tokens_per_sec": 82,
+      "price_per_m_input_usd": 2.5,
+      "price_per_m_output_usd": 10.0
+    },
+    {
+      "request_type": "llm",
+      "run_id": "seed_aa_2026_04_22",
+      "source_version": "aa-2026-04",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "openai",
+      "model_id": "gpt-4o-mini",
+      "language": "en",
+      "mode": "streaming_sse",
+      "error_rate": 0.0,
+      "aa_index": 46,
+      "ttft_ms": 320,
+      "output_tokens_per_sec": 95,
+      "price_per_m_input_usd": 0.15,
+      "price_per_m_output_usd": 0.6
+    }
+  ],
+  "internal": [
+    {
+      "run_id": "seed_internal_2026_04_22",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "deepgram",
+      "model_id": "nova-3",
+      "language": "en",
+      "mode": "streaming_ws",
+      "error_rate": 0.0,
+      "request_type": "stt",
+      "metrics": {
+        "wer_p50": 0.078,
+        "wer_p95": 0.148,
+        "ttfp_p50_ms": 1284,
+        "ttfp_p95_ms": 2304,
+        "cost_per_min_usd": 0.0077
+      }
+    },
+    {
+      "run_id": "seed_internal_2026_04_22",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "assemblyai",
+      "model_id": "universal",
+      "language": "en",
+      "mode": "streaming_ws",
+      "error_rate": 0.0,
+      "request_type": "stt",
+      "metrics": {
+        "wer_p50": 0.064,
+        "wer_p95": 0.13,
+        "ttfp_p50_ms": 850,
+        "ttfp_p95_ms": 1600,
+        "cost_per_min_usd": 0.0065
+      }
+    },
+    {
+      "run_id": "seed_internal_2026_04_22",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "elevenlabs",
+      "model_id": "eleven_turbo_v2_5",
+      "language": "en",
+      "mode": "streaming_ws",
+      "error_rate": 0.0,
+      "request_type": "tts",
+      "metrics": {
+        "cer_p50": 0.018,
+        "cer_p95": 0.05,
+        "ttfb_p50_ms": 320,
+        "ttfb_p95_ms": 720,
+        "cost_per_1m_chars_usd": 30.0
+      }
+    },
+    {
+      "run_id": "seed_internal_2026_04_22",
+      "computed_at": "2026-04-22T00:00:00.000Z",
+      "provider_id": "cartesia",
+      "model_id": "sonic-2",
+      "language": "en",
+      "mode": "streaming_ws",
+      "error_rate": 0.0,
+      "request_type": "tts",
+      "metrics": {
+        "cer_p50": 0.021,
+        "cer_p95": 0.062,
+        "ttfb_p50_ms": 240,
+        "ttfb_p95_ms": 580,
+        "cost_per_1m_chars_usd": 25.0
+      }
+    }
+  ]
+}
