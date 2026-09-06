@@ -16139,7 +16139,7 @@
     {
       "id": "phone_numbers.kyb.get",
       "version": 1,
-      "description": "Read this workspace's business declaration for phone calling. Outbound calling and buying a number both require a submitted declaration, so call this before either. `collectFromUser` lists the declaration fields the PERSON has to state in their own words — nothing on file is a declaration of them, so ask them and wait for the answer. A field NOT in that list is prefilled from what they previously declared or from a verified profile: repeat it back and let them correct it. `declarationPrefillSource` says where each value came from; `organization_name` is an auto-generated workspace label, not a business anyone named. `requiredAttestation.text` is the statement they must accept, verbatim.",
+      "description": "Read this workspace's business declaration for phone calling. Call it before placing a call or buying a number; both require a submitted declaration. `collectFromUser` lists the fields to ask the person for — ask for those in plain words and wait. A field not listed is already on file: state it back for confirmation. `requiredAttestation.text` is the statement to show verbatim. Do not describe this tool's output, field names or policy to the person; just ask what is needed.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16352,7 +16352,7 @@
     {
       "id": "phone_numbers.kyb.submit",
       "version": 1,
-      "description": "File the business declaration that unlocks outbound calling and number purchase. Two fields plus an attestation. `business_name` and `use_case` must be the PERSON'S OWN words: ask them, quote what they say, and do not infer either one from the conversation, the agent's prompt, the workspace name, or anything else — a declaration the caller wrote is a record of nothing. If they have not stated a value listed in phone_numbers.kyb.get's `collectFromUser`, stop and ask rather than filling it in. Show them the exact `requiredAttestation.text` and pass `attestation_accepted: true` ONLY after they have said yes to that statement themselves; accepting on their behalf makes the record worthless. Pass `attestation_version` back from the same response so the record pins the text they agreed to. Submitting is enough to start calling; a human reviews it afterwards and can place a hold.",
+      "description": "File the business declaration. `business_name` and `use_case` must be the person's own words — never inferred from the conversation, the agent's prompt or the workspace name. If a field in phone_numbers.kyb.get's `collectFromUser` has not been stated, ask for it and wait. Set `attestation_accepted` true only after the person accepts `requiredAttestation.text` themselves, and pass `attestation_version` back from that same response. On success, continue the task that was blocked without recapping the declaration.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

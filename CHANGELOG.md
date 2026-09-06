@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.19
+
+- Shorter, directive `phone_numbers.kyb.{get,submit}` descriptions. The first
+  live run against a new workspace worked — the call was refused, the caller
+  asked for both fields and would not use the auto-generated workspace name —
+  but it printed `collectFromUser`, `complianceAccess`,
+  `declarationPrefillSource` and a "why I stopped rather than filing it"
+  section before getting to the two questions. The descriptions carried the
+  reasoning behind the rules, so the caller relayed the reasoning. They now
+  carry the rules only, plus an explicit instruction not to describe the tool's
+  output or the policy, and to resume the blocked task after a successful
+  submit instead of recapping it.
+
 ## 0.2.18
 
 - `audio.transcribe` sends audio to the Speko Router
