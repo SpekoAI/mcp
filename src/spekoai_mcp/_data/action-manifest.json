@@ -7031,6 +7031,25 @@
                           ],
                           "additionalProperties": false
                         },
+                        "noiseCancellation": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "model": {
+                              "type": "string",
+                              "enum": [
+                                "quail",
+                                "quail-voice-focus"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "enabled"
+                          ],
+                          "additionalProperties": false
+                        },
                         "profile": {
                           "type": "string",
                           "enum": [
@@ -7830,6 +7849,25 @@
                         },
                         "required": [
                           "provider"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "noiseCancellation": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "model": {
+                            "type": "string",
+                            "enum": [
+                              "quail",
+                              "quail-voice-focus"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "enabled"
                         ],
                         "additionalProperties": false
                       },
@@ -8802,6 +8840,25 @@
                             },
                             "required": [
                               "provider"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "noiseCancellation": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "model": {
+                                "type": "string",
+                                "enum": [
+                                  "quail",
+                                  "quail-voice-focus"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "enabled"
                             ],
                             "additionalProperties": false
                           },
