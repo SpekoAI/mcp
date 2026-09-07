@@ -6,7 +6,7 @@ import json
 import os
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import quote, urlencode
 from uuid import uuid4
 
@@ -37,6 +37,14 @@ class SpekoAuthError(RuntimeError):
     """Raised when a private MCP tool is called without MCP auth."""
 
 
+INSUFFICIENT_CREDITS_CODE = "INSUFFICIENT_CREDITS"
+
+# Where a workspace owner adds credit. The hosted dashboard, not the API host:
+# every out-of-credit message points here so the model has one concrete next
+# step to hand the user instead of "inspect the response details".
+BILLING_URL = "https://platform.speko.ai/settings/billing"
+
+
 class SpekoApiError(RuntimeError):
     """Clean exception for upstream API failures."""
 
@@ -47,6 +55,7 @@ class SpekoApiError(RuntimeError):
         *,
         trace_id: str | None = None,
         code: str | None = None,
+        balance_usd: float | None = None,
     ) -> None:
         super().__init__(f"Speko API returned {status_code}: {message}")
         self.status_code = status_code
@@ -56,6 +65,21 @@ class SpekoApiError(RuntimeError):
         # a caller can branch on WHY a request was refused rather than parsing
         # the human message. None when the body carried no code.
         self.code = code
+        # Platform's credit gates include the (non-positive) balance that
+        # tripped them; None for every other failure.
+        self.balance_usd = balance_usd
+
+    @property
+    def credit_exhausted(self) -> bool:
+        """True when Platform refused the request because the workspace is out of credit.
+
+        Every pre-flight credit gate answers 402 with ``code: INSUFFICIENT_CREDITS``.
+        A bare 402 without a code is treated the same way; a 402 that names a
+        different code (a proxied provider billing failure) is not.
+        """
+        if self.code is not None:
+            return self.code == INSUFFICIENT_CREDITS_CODE
+        return self.status_code == 402
 
 
 @dataclass(frozen=True)
@@ -184,13 +208,61 @@ def _platform_headers(
     return headers
 
 
+@dataclass(frozen=True)
+class _ApiErrorDetails:
+    message: str
+    trace_id: str | None
+    code: str | None = None
+    balance_usd: float | None = None
+
+
 def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
+    details = _parse_api_error(resp)
+    return details.message, details.trace_id
+
+
+def _error_code(payload: dict[str, Any]) -> str | None:
+    # REST routes: {error: "...", code: "INSUFFICIENT_CREDITS"}.
+    code = payload.get("code")
+    if isinstance(code, str) and code:
+        return code
+    # /v1/actions/*: {error: {code, message}}.
+    detail = payload.get("error")
+    if isinstance(detail, dict):
+        nested = detail.get("code")
+        if isinstance(nested, str) and nested:
+            return nested
+    return None
+
+
+def _balance_usd(payload: dict[str, Any]) -> float | None:
+    balance = payload.get("balanceUsd")
+    if isinstance(balance, (int, float)) and not isinstance(balance, bool):
+        return float(balance)
+    return None
+
+
+def _raise_api_error(resp: httpx.Response) -> NoReturn:
+    """Raise the ``SpekoApiError`` for a Platform ``>= 400`` response."""
+    details = _parse_api_error(resp)
+    raise SpekoApiError(
+        resp.status_code,
+        details.message,
+        trace_id=details.trace_id,
+        code=details.code,
+        balance_usd=details.balance_usd,
+    )
+
+
+def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
     trace_id = resp.headers.get("x-request-id") or resp.headers.get("x-trace-id")
     try:
         payload = resp.json()
     except ValueError:
-        return (resp.text.strip() or resp.reason_phrase)[:500], trace_id
+        return _ApiErrorDetails((resp.text.strip() or resp.reason_phrase)[:500], trace_id)
     if isinstance(payload, dict):
+        code = _error_code(payload)
+        balance_usd = _balance_usd(payload)
         trace = payload.get("trace_id") or payload.get("traceId")
         if isinstance(trace, str) and trace:
             trace_id = trace
@@ -203,13 +275,16 @@ def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
             nested_code = detail.get("code")
             if isinstance(nested_message, str) and nested_message:
                 prefix = f"{nested_code}: " if isinstance(nested_code, str) else ""
-                return f"{prefix}{nested_message}"[:500], trace_id
+                return _ApiErrorDetails(
+                    f"{prefix}{nested_message}"[:500], trace_id, code, balance_usd
+                )
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
             if issues:
-                return f"{detail}: {issues}"[:500], trace_id
-            return detail[:500], trace_id
-    return json.dumps(payload)[:500], trace_id
+                return _ApiErrorDetails(f"{detail}: {issues}"[:500], trace_id, code, balance_usd)
+            return _ApiErrorDetails(detail[:500], trace_id, code, balance_usd)
+        return _ApiErrorDetails(json.dumps(payload)[:500], trace_id, code, balance_usd)
+    return _ApiErrorDetails(json.dumps(payload)[:500], trace_id)
 
 
 def _validation_issue_summary(value: Any) -> str | None:
@@ -257,8 +332,7 @@ async def _call_speko_api(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if resp.status_code >= 400:
-        message, trace_id = _error_details(resp)
-        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+        _raise_api_error(resp)
     if not resp.content:
         return {}
     try:
@@ -301,8 +375,7 @@ async def call_action(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if response.status_code >= 400:
-        message, trace_id = _error_details(response)
-        raise SpekoApiError(response.status_code, message, trace_id=trace_id)
+        _raise_api_error(response)
     payload = response.json()
     if not isinstance(payload, dict):
         raise SpekoApiError(response.status_code, "Speko action returned an unexpected response.")
@@ -333,8 +406,7 @@ async def call_speko_api_any(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if resp.status_code >= 400:
-        message, trace_id = _error_details(resp)
-        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+        _raise_api_error(resp)
     if not resp.content:
         return {}
     try:
@@ -367,8 +439,7 @@ async def _call_speko_api_raw(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if resp.status_code >= 400:
-        message, trace_id = _error_details(resp)
-        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+        _raise_api_error(resp)
     return SpekoRawResponse(
         content=resp.content,
         content_type=resp.headers.get("content-type", "application/octet-stream"),
@@ -413,8 +484,7 @@ async def post_speko_api_bytes(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if resp.status_code >= 400:
-        message, trace_id = _error_details(resp)
-        raise SpekoApiError(resp.status_code, message, trace_id=trace_id)
+        _raise_api_error(resp)
     return SpekoRawResponse(
         content=resp.content,
         content_type=resp.headers.get("content-type", "application/octet-stream"),
@@ -428,12 +498,22 @@ def _router_user_agent() -> str:
 
 
 def _router_error_code(resp: httpx.Response) -> str | None:
-    """The Router's `error.code`, or Platform's bare string `error`."""
+    """The Router's `error.code`, or Platform's `code` / bare string `error`.
+
+    Platform's credit gates answer `{error: "...", code: "INSUFFICIENT_CREDITS"}`
+    when the Router relays them; that code has to win over the human string so
+    `credit_exhausted` recognises it.
+    """
     try:
         payload = resp.json()
     except ValueError:
         return None
-    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    top_level = payload.get("code")
+    if isinstance(top_level, str) and top_level:
+        return top_level
+    error = payload.get("error")
     if isinstance(error, dict):
         code = error.get("code")
         return code if isinstance(code, str) and code else None
@@ -479,12 +559,13 @@ async def post_router_transcription(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
     if response.status_code >= 400:
-        message, trace_id = _error_details(response)
+        details = _parse_api_error(response)
         raise SpekoApiError(
             response.status_code,
-            message,
-            trace_id=trace_id,
+            details.message,
+            trace_id=details.trace_id,
             code=_router_error_code(response),
+            balance_usd=details.balance_usd,
         )
     payload = response.json()
     if not isinstance(payload, dict):
@@ -525,12 +606,13 @@ async def post_router_speech(
     except httpx.HTTPError as exc:
         raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
     if response.status_code >= 400:
-        message, trace_id = _error_details(response)
+        details = _parse_api_error(response)
         raise SpekoApiError(
             response.status_code,
-            message,
-            trace_id=trace_id,
+            details.message,
+            trace_id=details.trace_id,
             code=_router_error_code(response),
+            balance_usd=details.balance_usd,
         )
     return RouterAudioResponse(
         content=response.content,
@@ -540,7 +622,28 @@ async def post_router_speech(
     )
 
 
+def credit_exhausted_message(exc: SpekoApiError) -> str:
+    """The one out-of-credit message every tool surface renders.
+
+    Written for the model to relay: it names the cause, the concrete remedy
+    (the billing page, who can act on it), and says plainly that retrying
+    without a top-up fails the same way, so the model does not loop.
+    """
+    balance = ""
+    if exc.balance_usd is not None:
+        balance = f" (balance ${exc.balance_usd:.2f})"
+    trace_id = exc.trace_id or "unavailable"
+    return (
+        f"This Speko workspace is out of credit{balance}, so the Speko API refused the request "
+        f"with 402 {INSUFFICIENT_CREDITS_CODE}. Tell the user to add credit at {BILLING_URL} "
+        "(a workspace owner or admin can top up or turn on auto top-up), then run this tool "
+        f"again. Retrying before credit is added fails the same way; trace_id={trace_id}"
+    )
+
+
 def tool_error_message(exc: Exception, *, next_step: str) -> str:
+    if isinstance(exc, SpekoApiError) and exc.credit_exhausted:
+        return credit_exhausted_message(exc)
     trace_id = getattr(exc, "trace_id", None) or "unavailable"
     return f"{exc}; trace_id={trace_id}; next_step={next_step}"
 

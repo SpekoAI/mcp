@@ -15,6 +15,7 @@ from pydantic import Field
 
 from spekoai_mcp import http_client
 from spekoai_mcp.action_manifest import action_entries
+from spekoai_mcp.credit_exhaustion import BALANCE_ACTION_ID, balance_result_text
 from spekoai_mcp.tool_text import payload_text
 
 
@@ -31,13 +32,11 @@ class ManifestActionTool(Tool):
             arguments,
             idempotency_key=idempotency_key,
         )
+        text = payload_text(payload, action=self.action_id)
+        if self.action_id == BALANCE_ACTION_ID:
+            text = balance_result_text(payload, text)
         return ToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=payload_text(payload, action=self.action_id),
-                )
-            ],
+            content=[TextContent(type="text", text=text)],
             structured_content=payload,
         )
 

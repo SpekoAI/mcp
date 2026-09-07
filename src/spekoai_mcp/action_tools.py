@@ -117,6 +117,10 @@ UPDATE_AGENT_NEXT_STEP = (
     "{'systemPrompt':'...'} or {'intent':{'language':'es'}}."
 )
 
+CREDIT_EXHAUSTED_NEXT_STEP = (
+    f"Ask the user to add credit at {http_client.BILLING_URL}, then run the tool again. "
+    "Do not retry before credit is added."
+)
 CREATE_AGENT_TOOL_NEXT_STEP = (
     "For create_agent_tool, pass a body like {'name':'lookup_order',"
     "'description':'Look up an order by id.',"
@@ -1218,6 +1222,8 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         )
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code in {401, 403}:
         return "Check authentication and retry the Speko MCP request."
+    if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
+        return CREDIT_EXHAUSTED_NEXT_STEP
     return "Retry the Speko MCP request or inspect the Speko API response details."
 
 

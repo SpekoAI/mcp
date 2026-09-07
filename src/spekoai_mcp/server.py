@@ -28,6 +28,7 @@ from spekoai_mcp.attribution import (
 )
 from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
+from spekoai_mcp.credit_exhaustion import CreditExhaustedMiddleware
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.generated_action_tools import register_generated_action_tools
 from spekoai_mcp.http_client import reset_current_client_ua, set_current_client_ua
@@ -131,6 +132,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_builder_tools(mcp)
     mcp.add_middleware(InvocationAttributionMiddleware())
     mcp.add_middleware(ToolProfileMiddleware())
+    mcp.add_middleware(CreditExhaustedMiddleware())
     return mcp
 
 
@@ -288,8 +290,7 @@ class MCPProtocolGuard:
         if start is not None and 200 <= start["status"] < 300 and legacy_candidate:
             user_agent = self._sanitized_user_agent(scope)
             logger.info(
-                "mcp_legacy_protocol_request_accepted "
-                "protocol_era=legacy user_agent=%r",
+                "mcp_legacy_protocol_request_accepted protocol_era=legacy user_agent=%r",
                 user_agent,
                 extra={
                     "event": "mcp_legacy_protocol_request_accepted",
