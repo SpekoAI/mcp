@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.22
+
+- One out-of-credit message for every tool and host. When Platform refuses a request with `402 INSUFFICIENT_CREDITS`, the tool error now names the balance, the billing page (platform.speko.ai/settings/billing), who can act, and says not to retry, instead of `next_step=Retry the Speko MCP request` or FastMCP's bare `Error calling tool ...`. `credits.balance.get` says the workspace is out of credit and names the billing page when the balance is at or below zero. `SpekoApiError` carries `balance_usd` next to `code`, and Platform bodies relayed by the Router are recognised.
+
 ## 0.2.21
 
 - Preserve separate invocation and downstream request identities across concurrent tools. Optional attribution receipts use a bounded background writer, retain completion time, and report dropped records without raw user agents, tool arguments, or results. Enable receipts with `ATTRIBUTION_ENABLED=true`.
