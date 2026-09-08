@@ -74,6 +74,22 @@ snippets, the test-call review path, and the limited `agents.create` and
 `agents.test_call` writes. Generated applications use Speko SDKs at runtime;
 they do not call MCP tools.
 
+### Replit profile
+
+Replit uses its own host:
+
+```text
+https://replit.speko.ai/mcp
+```
+
+It serves 28 tools in build-time order — `code_snippets.get`, the voice and
+model catalogs, docs search and stack preview come first, then agent, number
+and transcript reads, then the writes. It adds the two paths the builder
+profile omits: knowledge bases, so a voice FAQ has somewhere to keep the FAQ,
+and phone numbers, which is the next ask after a working in-app assistant.
+Gateway operations, evals, monitors, scenarios, billing, API keys, migrations
+and every destructive delete stay out.
+
 ### Assistant directory hosts
 
 Assistant directories are published on their own hosts, each shaped by that

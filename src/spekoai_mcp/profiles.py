@@ -13,6 +13,9 @@ Two further hosts are published in third-party assistant directories:
 (OpenAI's Plugin Directory). Each is shaped by that directory's policy, so
 they deliberately do not serve the same tool list.
 
+``replit.speko.ai`` is a fourth host, shaped by what a Replit builder actually
+does rather than by a directory policy — see ``REPLIT_PROFILE_TOOL_NAMES``.
+
 A profile can also be the DEPLOYMENT default, via
 ``SPEKOAI_MCP_DEFAULT_PROFILE`` selects the immutable surface for one
 deployment. Query parameters are deliberately ignored: a host is the policy
@@ -44,12 +47,19 @@ DEFAULT_PROFILE_ENV_VAR = "SPEKOAI_MCP_DEFAULT_PROFILE"
 BUILDER_PROFILE = "builder"
 CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
+REPLIT_PROFILE = "replit"
 CUSTOMER_PROFILE = "customer"
 
 # Every value SPEKOAI_MCP_DEFAULT_PROFILE will honour. Unknown non-empty values
 # fail closed instead of silently widening a deployment.
 KNOWN_PROFILES: frozenset[str] = frozenset(
-    {BUILDER_PROFILE, CONNECTOR_PROFILE, CHATGPT_PROFILE, CUSTOMER_PROFILE}
+    {
+        BUILDER_PROFILE,
+        CONNECTOR_PROFILE,
+        CHATGPT_PROFILE,
+        REPLIT_PROFILE,
+        CUSTOMER_PROFILE,
+    }
 )
 
 _MANIFEST_TOOL_NAMES = frozenset(entry["id"] for entry in action_entries())
@@ -58,6 +68,7 @@ _CUSTOMER_MANIFEST_TOOL_NAMES = manifest_tool_names(CUSTOMER_PROFILE)
 _BUILDER_MANIFEST_TOOL_NAMES = manifest_tool_names(BUILDER_PROFILE)
 _CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
 _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
+_REPLIT_MANIFEST_TOOL_NAMES = manifest_tool_names(REPLIT_PROFILE)
 
 # The `connector` profile is the surface published in assistant directories
 # (Anthropic's MCP Directory first).
@@ -315,6 +326,90 @@ BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "agents.test_call",
 ]
 
+# The Replit preset, published as `https://replit.speko.ai/mcp`.
+#
+# A separate profile from `builder`, not a reuse of it, for one measured
+# reason. On 2026-09-08 a Replit user typed "i wanna build a page which has in
+# app voice assistant to answer FAQ" and Replit Agent answered "I'll start with
+# browser-native voice so there's no API-key setup just to get the first
+# version working" — then shipped a page whose deployed bundle contains
+# `webkitSpeechRecognition`, `speechSynthesis`, five hardcoded answers and zero
+# calls to any voice provider. Agent never evaluated Speko. It ranked options
+# by SETUP COST.
+#
+# Two things follow, and this list is shaped by both.
+#
+# 1. ORDER IS LOAD-BEARING. The `builder` preset serves `agents.list` and
+#    `agents.get` early, and their output schemas alone are ~27.9k of a
+#    42.3k-character `tools/list` payload, which pushes `code_snippets.get` —
+#    the one tool that answers "build me a voice page" — past 38k. Here the
+#    build-time tools come FIRST and the account reads come after them, so the
+#    tool that answers the prompt is in the first few hundred characters.
+#
+# 2. THE PRESET HAS TO REACH THE SECOND QUESTION. `builder` has no phone
+#    tools and no knowledge-base tools, so a builder who ships a voice FAQ and
+#    then asks for a knowledge base or a phone number dead-ends. Both are the
+#    obvious next asks on this surface, so both are served.
+#
+# What stays out, and why: gateway ops, evals, monitors, scenarios, billing,
+# api keys, migrations and every destructive delete. Not because Replit
+# forbids them — Replit has no review gate at all — but because a focused tool
+# set is what a code-generating agent routes well over, and the measurement
+# above is what happens when it is not focused.
+#
+# Same referenced-tool rule as the other presets: every tool a KEPT tool's
+# description names must itself be kept. That pulls in `agents.preview_stacks`
+# (named by agents.create) and the agents.test_call review path (`calls.get`,
+# `sessions.transcript.get`, `calls.recording.get`). The one exception is the
+# same one: agents.create's mention of parse_external_config is a
+# migrations-only escape hatch, not a step in any Replit workflow.
+#
+# NOT in DIRECTORY_PROFILES, deliberately. Replit publishes no AI-disclosure
+# policy for integrations, and `apply_directory_disclosure` overwrites
+# `firstMessage` — which would silently replace a builder's own greeting on an
+# in-app session where nobody is being cold-called. `builder` is excluded for
+# the same reason. Revisit if Replit publishes a rule.
+#
+# Build-time first, reads next, writes last.
+REPLIT_PROFILE_TOOL_NAMES: list[str] = [
+    # Build time: what an agent needs while it is writing the app.
+    "code_snippets.get",
+    "voices.list",
+    "models.list",
+    "docs.search",
+    "agents.preview_stacks",
+    # Grounding the answers.
+    "knowledge_bases.list",
+    "knowledge_bases.get",
+    "knowledge_bases.documents.list",
+    "knowledge_bases.documents.get",
+    # Agent and number reads.
+    "agents.list",
+    "agents.get",
+    "phone_numbers.list",
+    "phone_numbers.kyb.get",
+    # Reviewing what was actually said.
+    "calls.get",
+    "sessions.transcript.get",
+    "calls.recording.get",
+    # One-shot audio. Replit bans neither generated speech nor transcription.
+    "audio.transcribe",
+    "audio.synthesize",
+    # Writes last.
+    "knowledge_bases.create",
+    "knowledge_bases.documents.create",
+    "knowledge_bases.documents.finalize",
+    "phone_numbers.kyb.submit",
+    "agents.create",
+    "agents.update",
+    "agents.deploy",
+    "agents.test_call",
+    "sessions.create",
+    "sessions.phone.create",
+]
+
+_REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFEST_TOOL_NAMES
+
 # Tools that exist ONLY in the builder profile. These are registered on
 # the shared server but must never leak into the default surface.
 BUILDER_ONLY_TOOL_NAMES: frozenset[str] = frozenset(
@@ -387,6 +482,8 @@ class ToolProfileMiddleware(Middleware):
       and refuse calls to anything else.
     - chatgpt profile: advertise exactly ``CHATGPT_PROFILE_TOOL_NAMES``
       and refuse calls to anything else.
+    - replit profile: advertise exactly ``REPLIT_PROFILE_TOOL_NAMES``
+      and refuse calls to anything else.
 
     Refusals raise the same ``NotFoundError("Unknown tool: ...")`` the
     FastMCP core raises for unregistered names, so a hidden tool is
@@ -413,32 +510,48 @@ class ToolProfileMiddleware(Middleware):
             # the two sanctioned writes last.
             filtered.sort(
                 key=lambda tool: (
-                    0,
-                    BUILDER_PROFILE_TOOL_NAMES.index(tool.name),
+                    (
+                        0,
+                        BUILDER_PROFILE_TOOL_NAMES.index(tool.name),
+                    )
+                    if tool.name in BUILDER_PROFILE_TOOL_NAMES
+                    else (1, tool.name)
                 )
-                if tool.name in BUILDER_PROFILE_TOOL_NAMES
-                else (1, tool.name)
             )
             return filtered
         if profile == CHATGPT_PROFILE:
             filtered = [tool for tool in tools if tool.name in _CHATGPT_PROFILE_TOOL_SET]
             filtered.sort(
                 key=lambda tool: (
-                    0,
-                    CHATGPT_PROFILE_TOOL_NAMES.index(tool.name),
+                    (
+                        0,
+                        CHATGPT_PROFILE_TOOL_NAMES.index(tool.name),
+                    )
+                    if tool.name in CHATGPT_PROFILE_TOOL_NAMES
+                    else (1, tool.name)
                 )
-                if tool.name in CHATGPT_PROFILE_TOOL_NAMES
-                else (1, tool.name)
+            )
+            return filtered
+        if profile == REPLIT_PROFILE:
+            filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
+            # Build-time tools first; the order is the whole point of this
+            # preset, so it is asserted in tests rather than left to registration.
+            filtered.sort(
+                key=lambda tool: (
+                    (
+                        0,
+                        REPLIT_PROFILE_TOOL_NAMES.index(tool.name),
+                    )
+                    if tool.name in REPLIT_PROFILE_TOOL_NAMES
+                    else (1, tool.name)
+                )
             )
             return filtered
         visible = [
             tool
             for tool in tools
             if tool.name not in BUILDER_ONLY_TOOL_NAMES
-            and (
-                tool.name not in _MANIFEST_TOOL_NAMES
-                or tool.name in _DEFAULT_MANIFEST_TOOL_NAMES
-            )
+            and (tool.name not in _MANIFEST_TOOL_NAMES or tool.name in _DEFAULT_MANIFEST_TOOL_NAMES)
         ]
         if profile == CONNECTOR_PROFILE:
             return [tool for tool in visible if not _is_connector_excluded(tool.name)]
@@ -459,6 +572,9 @@ class ToolProfileMiddleware(Middleware):
                 raise NotFoundError(f"Unknown tool: {name!r}")
         elif profile == CHATGPT_PROFILE:
             if name not in _CHATGPT_PROFILE_TOOL_SET:
+                raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == REPLIT_PROFILE:
+            if name not in _REPLIT_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
         elif name in BUILDER_ONLY_TOOL_NAMES or (
             name in _MANIFEST_TOOL_NAMES and name not in _DEFAULT_MANIFEST_TOOL_NAMES

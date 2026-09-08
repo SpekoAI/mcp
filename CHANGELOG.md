@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.23
+
+- A `replit` deployment profile, served at `https://replit.speko.ai/mcp`. Twenty-eight tools, ordered build-time first: `code_snippets.get` leads instead of arriving last, because on the `builder` preset the `agents.list` and `agents.get` output schemas are ~27.9k of a 42.3k-character `tools/list` payload and push the one tool that answers "build me a voice page" past 38k. Measured against a real Replit Agent build that answered "I'll start with browser-native voice so there's no API-key setup" and shipped a page with `webkitSpeechRecognition`, five hardcoded answers and zero calls to any voice provider. The preset also serves the knowledge-base and phone-number paths that `builder` omits, so a builder who ships a voice FAQ and then asks for a knowledge base or a number does not dead-end. Gateway ops, evals, monitors, scenarios, billing, api keys, migrations and every destructive delete stay out. Not a directory profile: `apply_directory_disclosure` overwrites `firstMessage`, and Replit publishes no disclosure rule, so a builder's own greeting is left alone.
+
 ## 0.2.22
 
 - One out-of-credit message for every tool and host. When Platform refuses a request with `402 INSUFFICIENT_CREDITS`, the tool error now names the balance, the billing page (platform.speko.ai/settings/billing), who can act, and says not to retry, instead of `next_step=Retry the Speko MCP request` or FastMCP's bare `Error calling tool ...`. `credits.balance.get` says the workspace is out of credit and names the billing page when the balance is at or below zero. `SpekoApiError` carries `balance_usd` next to `code`, and Platform bodies relayed by the Router are recognised.

@@ -306,6 +306,7 @@
                         "builder",
                         "connector",
                         "chatgpt",
+                        "replit",
                         "admin"
                       ]
                     }
@@ -7411,7 +7412,8 @@
         "customer",
         "builder",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -8393,7 +8395,8 @@
         "customer",
         "builder",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15776,7 +15779,8 @@
         "default",
         "customer",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16401,7 +16405,8 @@
         "default",
         "customer",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16631,7 +16636,8 @@
         "default",
         "customer",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16799,7 +16805,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16967,7 +16974,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17172,7 +17180,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17379,7 +17388,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17662,7 +17672,8 @@
         "customer",
         "builder",
         "connector",
-        "chatgpt"
+        "chatgpt",
+        "replit"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
