@@ -102,8 +102,8 @@ parameter, header, or account setting that widens it.
 https://anthropic.speko.ai/mcp
 ```
 
-**35 tools.** Reads across the account, speech-to-text, outbound calling, and
-the business declaration that unlocks it:
+Reads across the account, speech-to-text, outbound calling, and read-only phone
+compliance diagnostics:
 
 - account: `organization.get`, `credits.balance.get`, `credits.ledger.list`,
   `usage.summary.get`;
@@ -121,9 +121,8 @@ the business declaration that unlocks it:
 - audio: `audio.transcribe`;
 - calling: `sessions.phone.create` — one outbound call per tool call, with
   AI disclosure injected server side;
-- compliance: `phone_numbers.kyb.get`, `phone_numbers.kyb.submit` — the business
-  declaration (business name, intended use, attestation) required before any
-  outbound call and before buying a number;
+- compliance: `phone_numbers.kyb.get` — OAuth connector consent and declaration
+  submission happen automatically in the backend;
 - migration helpers: `migration.workspace.inspect`,
   `migration.external_config.parse`, `migration.session_config.build`,
   `migration.briefing.render`;

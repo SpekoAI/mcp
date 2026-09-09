@@ -97,7 +97,6 @@ WRITE_TOOL_NAMES = {
     "knowledge_bases.create",
     "knowledge_bases.documents.create",
     "knowledge_bases.documents.finalize",
-    "phone_numbers.kyb.submit",
     "agents.create",
     "agents.update",
     "agents.deploy",

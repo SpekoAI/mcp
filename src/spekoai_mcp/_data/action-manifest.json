@@ -15380,7 +15380,7 @@
     {
       "id": "phone_numbers.list",
       "version": 1,
-      "description": "List phone and SIP numbers owned by the current workspace. Buying a new number requires a business declaration — file it with phone_numbers.kyb.submit, which is two fields and an attestation and takes effect immediately. The purchase itself is a credit debit, not a card payment. The purchase tool is not exposed on every surface.",
+      "description": "List phone and SIP numbers owned by the current workspace. For OAuth connectors, the first outbound call automatically provisions a dedicated number from workspace credits when none exists. Manual dashboard/API users keep the explicit declaration and purchase flow.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16200,7 +16200,7 @@
     {
       "id": "phone_numbers.kyb.get",
       "version": 1,
-      "description": "Read this workspace's business declaration for phone calling. Call it before placing a call or buying a number; both require a submitted declaration. `collectFromUser` lists the fields to ask the person for — ask for those in plain words and wait. A field not listed is already on file: state it back for confirmation. `requiredAttestation.text` is the statement to show verbatim. Do not describe this tool's output, field names or policy to the person; just ask what is needed.",
+      "description": "Read this workspace's phone compliance status. OAuth connector workspaces submit automatically from the phone authorization accepted during sign-in; do not collect or submit declaration fields in chat. `submissionMode` identifies automatic OAuth, manual dashboard/API, or grandfathered migration handling.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16229,6 +16229,14 @@
                   "revoked"
                 ]
               },
+              "submissionMode": {
+                "type": "string",
+                "enum": [
+                  "automatic_oauth",
+                  "manual",
+                  "migration_exception"
+                ]
+              },
               "complianceAccess": {
                 "type": "string",
                 "enum": [
@@ -16239,60 +16247,6 @@
               },
               "attestationRequired": {
                 "type": "boolean"
-              },
-              "declarationPrefill": {
-                "type": "object",
-                "properties": {
-                  "businessName": {
-                    "type": "string"
-                  },
-                  "useCase": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "businessName",
-                  "useCase"
-                ],
-                "additionalProperties": false
-              },
-              "declarationPrefillSource": {
-                "type": "object",
-                "properties": {
-                  "businessName": {
-                    "type": "string",
-                    "enum": [
-                      "declared",
-                      "business_profile",
-                      "sms_10dlc",
-                      "organization_name",
-                      "none"
-                    ]
-                  },
-                  "useCase": {
-                    "type": "string",
-                    "enum": [
-                      "declared",
-                      "business_profile",
-                      "none"
-                    ]
-                  }
-                },
-                "required": [
-                  "businessName",
-                  "useCase"
-                ],
-                "additionalProperties": false
-              },
-              "collectFromUser": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "businessName",
-                    "useCase"
-                  ]
-                }
               },
               "requiredAttestation": {
                 "type": "object",
@@ -16321,11 +16275,9 @@
             },
             "required": [
               "status",
+              "submissionMode",
               "complianceAccess",
               "attestationRequired",
-              "declarationPrefill",
-              "declarationPrefillSource",
-              "collectFromUser",
               "requiredAttestation"
             ],
             "additionalProperties": false
@@ -16394,237 +16346,6 @@
       "effect": "read",
       "requiredScopes": [
         "speko:read"
-      ],
-      "allowedPrincipals": [
-        "oauth-user",
-        "api-key"
-      ],
-      "idempotency": "none",
-      "execution": "sync",
-      "profiles": [
-        "default",
-        "customer",
-        "connector",
-        "chatgpt",
-        "replit"
-      ],
-      "secretInputPaths": [],
-      "secretOutputPaths": []
-    },
-    {
-      "id": "phone_numbers.kyb.submit",
-      "version": 1,
-      "description": "File the business declaration. `business_name` and `use_case` must be the person's own words — never inferred from the conversation, the agent's prompt or the workspace name. If a field in phone_numbers.kyb.get's `collectFromUser` has not been stated, ask for it and wait. Set `attestation_accepted` true only after the person accepts `requiredAttestation.text` themselves, and pass `attestation_version` back from that same response. On success, continue the task that was blocked without recapping the declaration.",
-      "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "declaration": {
-            "type": "object",
-            "properties": {
-              "business_name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 180,
-                "description": "Legal or trading name of the business placing the calls."
-              },
-              "use_case": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 500,
-                "description": "What the business will use calling for, in one or two sentences."
-              }
-            },
-            "required": [
-              "business_name",
-              "use_case"
-            ],
-            "additionalProperties": false
-          },
-          "attestation_accepted": {
-            "type": "boolean",
-            "const": true,
-            "description": "True only when the person has read the attestation text and accepted it."
-          },
-          "attestation_version": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120,
-            "description": "The `requiredAttestation.version` returned by phone_numbers.kyb.get."
-          }
-        },
-        "required": [
-          "declaration",
-          "attestation_accepted",
-          "attestation_version"
-        ],
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "result"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string",
-                "enum": [
-                  "draft",
-                  "submitted",
-                  "approved",
-                  "rejected",
-                  "revoked"
-                ]
-              },
-              "declaration": {
-                "anyOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "businessName": {
-                        "type": "string"
-                      },
-                      "useCase": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "businessName",
-                      "useCase"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "attestationVersion": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "attestedAt": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "submittedAt": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "accessHoldAt": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "date-time",
-                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "status",
-              "declaration",
-              "attestationVersion",
-              "attestedAt",
-              "submittedAt",
-              "accessHoldAt"
-            ],
-            "additionalProperties": false
-          },
-          "warnings": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "code": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "message": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "code",
-                "message"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "resourceLinks": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "uri": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "title": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "mimeType": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "uri",
-                "title"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "resourceVersion": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "kind",
-          "data",
-          "warnings",
-          "resourceLinks"
-        ],
-        "additionalProperties": false
-      },
-      "effect": "write",
-      "requiredScopes": [
-        "speko:write"
       ],
       "allowedPrincipals": [
         "oauth-user",

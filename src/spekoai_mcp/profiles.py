@@ -270,7 +270,6 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
     "audio.transcribe",
     "audio.synthesize",
-    "phone_numbers.kyb.submit",
     "agents.create",
     "agents.test_call",
     "sessions.phone.create",
@@ -284,7 +283,6 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
 # fail, and a derived expectation could never do that.
 DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
-    "phone_numbers.kyb.submit",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
@@ -399,7 +397,6 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     "knowledge_bases.create",
     "knowledge_bases.documents.create",
     "knowledge_bases.documents.finalize",
-    "phone_numbers.kyb.submit",
     "agents.create",
     "agents.update",
     "agents.deploy",

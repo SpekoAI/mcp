@@ -1855,12 +1855,15 @@ async def create_phone_session(
                 "'agent'|'carrier'|'disabled' (default 'agent'), "
                 "timeoutSeconds?: int <=60}}), constraints "
                 "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
-                "metadata (object). Per-call fields win over agent defaults."
+                "metadata (object). Per-call fields win over agent defaults. "
+                "For OAuth connector users without a number, this first call "
+                "automatically buys a dedicated US number from workspace credits "
+                "and binds it when agentId is present. Do not collect KYB fields."
             )
         ),
     ],
 ) -> ToolResult:
-    """Create an outbound phone session."""
+    """Create an outbound phone session, auto-provisioning an OAuth workspace number if needed."""
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
@@ -1978,13 +1981,11 @@ async def search_available_phone_numbers(
 
     Searching is read-only and always works. BUYING one does not follow from it.
     `phone_numbers.create` debits the workspace's prepaid credits (setup plus the
-    first month; it is not a card payment or a checkout) and is gated on a
-    business declaration. A brand-new workspace has none, so credits alone are
-    never enough. Read `phone_numbers.kyb.get` and file it with
-    `phone_numbers.kyb.submit` — two fields and an attestation, right here — and
-    the purchase works immediately; approval is not required. The purchase tool
-    itself is absent from some surfaces, in which case the declaration still
-    applies and the number is bought in the dashboard.
+    first month; it is not a card payment or a checkout). OAuth connector users
+    normally do not need this search: their first outbound call automatically
+    purchases a dedicated US number after the phone authorization accepted at
+    sign-in. Manual dashboard/API callers retain the declaration and purchase
+    flow. Never collect or submit KYB fields in chat.
     """
     return await call_list(
         "GET",
