@@ -112,6 +112,16 @@ CLIENT_MATCHERS: tuple[tuple[re.Pattern[str], str, str], ...] = (
         "cline",
         "observed_client_marker",
     ),
+    # A Kilo Code request also names the editor it lives in, so a matcher placed
+    # after the `vscode` line would bury every Kilo user in the editor bucket —
+    # the same first-match-wins mistake that filed Codex under chatgpt. Mirrors
+    # packages/analytics/src/lib/attribution.ts; the ordering is asserted by
+    # tests/test_client_classification.py against that file.
+    (
+        re.compile(r"(?:^|[\s;(])kilo(?:-?code)?(?=[/\s;()]|$)", re.IGNORECASE),
+        "kilo",
+        "observed_client_marker",
+    ),
     (
         re.compile(
             r"(?:^|[\s;(])(?:vscode|visual-?studio-?code|code)(?=[/\s;()]|$)", re.IGNORECASE
