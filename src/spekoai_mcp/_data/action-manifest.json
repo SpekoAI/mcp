@@ -3761,6 +3761,127 @@
                       "type": "string",
                       "format": "date-time",
                       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+                    },
+                    "attribution": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "classifier_version": {
+                              "$ref": "#/$defs/__schema0"
+                            },
+                            "request_id": {
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            "execution_client": {
+                              "type": "string",
+                              "enum": [
+                                "claude_hosted",
+                                "chatgpt_codex",
+                                "chatgpt",
+                                "codex",
+                                "claude_code",
+                                "cursor",
+                                "other_oauth:hermes",
+                                "other_oauth:replit",
+                                "zapier",
+                                "n8n",
+                                "make",
+                                "gohighlevel",
+                                "sdk_python",
+                                "sdk_ts",
+                                "ai_sdk_provider",
+                                "pipecat",
+                                "mastra",
+                                "openclaw",
+                                "adapter_livekit",
+                                "mcp_relay",
+                                "windsurf",
+                                "zed",
+                                "opencode",
+                                "cline",
+                                "kilo",
+                                "vscode",
+                                "gemini_cli"
+                              ]
+                            },
+                            "client_evidence_class": {
+                              "type": "string",
+                              "const": "observed_client_marker"
+                            }
+                          },
+                          "required": [
+                            "classifier_version",
+                            "request_id",
+                            "execution_client",
+                            "client_evidence_class"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "classifier_version": {
+                              "$ref": "#/$defs/__schema0"
+                            },
+                            "request_id": {
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            "execution_client": {
+                              "type": "string",
+                              "enum": [
+                                "python_httpx",
+                                "python_other",
+                                "curl",
+                                "node",
+                                "bun",
+                                "go",
+                                "browser"
+                              ]
+                            },
+                            "client_evidence_class": {
+                              "type": "string",
+                              "const": "generic_runtime"
+                            }
+                          },
+                          "required": [
+                            "classifier_version",
+                            "request_id",
+                            "execution_client",
+                            "client_evidence_class"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "classifier_version": {
+                              "$ref": "#/$defs/__schema0"
+                            },
+                            "request_id": {
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            "execution_client": {
+                              "type": "string",
+                              "enum": [
+                                "unknown:missing_observation",
+                                "unknown:generic_marker"
+                              ]
+                            },
+                            "client_evidence_class": {
+                              "type": "string",
+                              "const": "unknown"
+                            }
+                          },
+                          "required": [
+                            "classifier_version",
+                            "request_id",
+                            "execution_client",
+                            "client_evidence_class"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -3838,7 +3959,19 @@
           "warnings",
           "resourceLinks"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "const": "execution-client-v1"
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 27,
+            "maxLength": 27,
+            "pattern": "^cp_[A-Za-z0-9_-]{24}$"
+          }
+        }
       },
       "effect": "read",
       "requiredScopes": [
