@@ -216,3 +216,63 @@ async def test_verifier_rejects_invalid_context_payload(
 
     monkeypatch.setattr(auth_module.httpx, "AsyncClient", FakeAsyncClient)
     assert await SpekoApiKeyVerifier().verify_token("sk_bad") is None
+
+
+def test_phone_scope_is_advertised_only_where_a_call_can_be_placed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`speko:phone` follows the calling tool, profile by profile.
+
+    Greptile caught the first cut advertising it globally: the `builder` preset
+    serves no calling tool, so a v0/Lovable/Bolt user would approve phone access
+    and then be routed through the attestation-and-pricing clickwrap -- which
+    `postLogin.shouldRedirect` keys off this scope -- for something that surface
+    cannot do.
+    """
+    from spekoai_mcp.auth import (
+        OAUTH_MCP_PHONE_SCOPE,
+        OAUTH_RESOURCE_SCOPES,
+        oauth_resource_scopes,
+    )
+    from spekoai_mcp.profiles import (
+        BUILDER_PROFILE,
+        CHATGPT_PROFILE,
+        CONNECTOR_PROFILE,
+        CUSTOMER_PROFILE,
+        DEFAULT_PROFILE_ENV_VAR,
+        PHONE_CALLING_TOOL_NAME,
+        REPLIT_PROFILE,
+        profile_serves_tool,
+    )
+
+    for profile in (
+        BUILDER_PROFILE,
+        CONNECTOR_PROFILE,
+        CHATGPT_PROFILE,
+        REPLIT_PROFILE,
+        CUSTOMER_PROFILE,
+        None,
+    ):
+        if profile is None:
+            monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+        else:
+            monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
+
+        can_dial = profile_serves_tool(PHONE_CALLING_TOOL_NAME, profile)
+        advertised = oauth_resource_scopes()
+
+        assert (OAUTH_MCP_PHONE_SCOPE in advertised) is can_dial, (
+            f"profile {profile!r} serves {PHONE_CALLING_TOOL_NAME}={can_dial} "
+            f"but advertises {OAUTH_MCP_PHONE_SCOPE}={OAUTH_MCP_PHONE_SCOPE in advertised}"
+        )
+        # Nothing else moves: the rest of the list is identical either way.
+        assert [s for s in advertised if s != OAUTH_MCP_PHONE_SCOPE] == [
+            s for s in OAUTH_RESOURCE_SCOPES if s != OAUTH_MCP_PHONE_SCOPE
+        ]
+
+    # The concrete expectation, so a refactor that makes the predicate
+    # vacuously true still fails here.
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, BUILDER_PROFILE)
+    assert OAUTH_MCP_PHONE_SCOPE not in oauth_resource_scopes()
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, CONNECTOR_PROFILE)
+    assert OAUTH_MCP_PHONE_SCOPE in oauth_resource_scopes()

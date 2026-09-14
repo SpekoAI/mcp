@@ -585,6 +585,43 @@ class ToolProfileMiddleware(Middleware):
         return await call_next(context)
 
 
+PHONE_CALLING_TOOL_NAME = "sessions.phone.create"
+
+
+def profile_serves_tool(name: str, profile: str | None) -> bool:
+    """Whether ``profile`` advertises ``name``.
+
+    Mirrors ``ToolProfileMiddleware.on_list_tools`` branch for branch, and is
+    asserted against it in tests, so a profile that gains or loses a tool
+    changes this answer with it rather than drifting from a second list.
+    """
+    if profile == CUSTOMER_PROFILE:
+        return name not in _MANIFEST_TOOL_NAMES or name in _CUSTOMER_MANIFEST_TOOL_NAMES
+    if profile == BUILDER_PROFILE:
+        return name in _BUILDER_PROFILE_TOOL_SET
+    if profile == CHATGPT_PROFILE:
+        return name in _CHATGPT_PROFILE_TOOL_SET
+    if profile == REPLIT_PROFILE:
+        return name in _REPLIT_PROFILE_TOOL_SET
+    visible = name not in BUILDER_ONLY_TOOL_NAMES and (
+        name not in _MANIFEST_TOOL_NAMES or name in _DEFAULT_MANIFEST_TOOL_NAMES
+    )
+    if profile == CONNECTOR_PROFILE:
+        return visible and not _is_connector_excluded(name)
+    return visible
+
+
+def profile_serves_phone_calls(profile: str | None) -> bool:
+    """Whether this deployment's surface can actually place a call.
+
+    Gates whether `speko:phone` is advertised. The `builder` preset serves no
+    calling tool, so advertising it there would ask a v0/Lovable/Bolt user to
+    approve phone access and then route them through the attestation and
+    pricing clickwrap for a capability that surface does not expose.
+    """
+    return profile_serves_tool(PHONE_CALLING_TOOL_NAME, profile)
+
+
 def _is_connector_excluded(name: str) -> bool:
     """True when a tool is hidden from the directory-published surface."""
     return name in CONNECTOR_EXCLUDED_TOOL_NAMES or name.startswith(CONNECTOR_EXCLUDED_PREFIXES)

@@ -22,12 +22,18 @@ from fastmcp.server.auth import (
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from fastmcp.utilities.logging import get_logger
 
+from spekoai_mcp.profiles import current_profile, profile_serves_phone_calls
+
 DEFAULT_MCP_PATH = "/mcp"
 DEFAULT_API_BASE_URL = "https://api.speko.dev"
 
 # These are initial resource scopes, not the complete authorization-server
 # scope catalog. In particular, offline_access belongs in Better Auth's AS
 # metadata but MUST NOT be advertised as a protected-resource requirement.
+OAUTH_MCP_PHONE_SCOPE = "speko:phone"
+
+# Every scope this server can ask for. What a given deployment actually
+# advertises is `oauth_resource_scopes()`, which is profile-aware.
 OAUTH_RESOURCE_SCOPES = [
     "openid",
     "profile",
@@ -38,7 +44,37 @@ OAUTH_RESOURCE_SCOPES = [
     "speko:billing",
     "speko:credentials",
     "speko:compliance",
+    # Advertised so the CLIENT requests it -- but only on a surface that can
+    # actually dial; see `oauth_resource_scopes()`. It was previously stamped
+    # onto the grant by the authorization server instead, which cannot work:
+    # when the user has no session -- the normal case for a fresh connector --
+    # Better Auth redirects to the login page using `ctx.request.url`, the raw
+    # inbound URL, so a scope injected into `ctx.query` by a before-hook is
+    # discarded microseconds later and never reaches the consent screen or the
+    # token.
+    #
+    # Requesting it does not grant phone access. Dialing is behind two
+    # independent gates (see apps/server/src/routes/sessions-phone.ts): this
+    # scope, and the workspace phone-consent row that records the attestation,
+    # terms version and disclosed prices. This list only decides what the user
+    # is asked to approve.
+    OAUTH_MCP_PHONE_SCOPE,
 ]
+
+
+def oauth_resource_scopes(profile: str | None = None) -> list[str]:
+    """The scopes THIS deployment advertises.
+
+    `speko:phone` is withheld from a surface that serves no calling tool. The
+    `builder` preset is one: advertising there would ask a v0/Lovable/Bolt user
+    to approve phone access and then send them through the attestation and
+    pricing clickwrap -- `postLogin.shouldRedirect` keys that screen off this
+    scope -- for tools that profile does not expose.
+    """
+    resolved = current_profile() if profile is None else profile
+    if profile_serves_phone_calls(resolved):
+        return list(OAUTH_RESOURCE_SCOPES)
+    return [scope for scope in OAUTH_RESOURCE_SCOPES if scope != OAUTH_MCP_PHONE_SCOPE]
 
 logger = get_logger(__name__)
 
@@ -124,12 +160,13 @@ def _oauth_auth_provider(*, issuer: str, base_url: str, mcp_path: str) -> Remote
         issuer=issuer,
         audience=protected_resource,
     )
+    advertised_scopes = oauth_resource_scopes()
     return RemoteAuthProvider(
         token_verifier=verifier,
         authorization_servers=[issuer],
         base_url=base_url,
-        scopes_supported=OAUTH_RESOURCE_SCOPES,
-        challenge_scopes=OAUTH_RESOURCE_SCOPES,
+        scopes_supported=advertised_scopes,
+        challenge_scopes=advertised_scopes,
         resource_name="Speko MCP",
     )
 
