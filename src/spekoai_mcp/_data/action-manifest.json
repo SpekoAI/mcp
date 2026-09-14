@@ -17341,6 +17341,46 @@
                         }
                       ]
                     },
+                    "sttProvider": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sttModel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ttsProvider": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "ttsModel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "eouMs": {
                       "anyOf": [
                         {
@@ -17434,6 +17474,10 @@
                     "endedAt",
                     "provider",
                     "model",
+                    "sttProvider",
+                    "sttModel",
+                    "ttsProvider",
+                    "ttsModel",
                     "eouMs",
                     "llmTtftMs",
                     "ttsTtfbMs",
