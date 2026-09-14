@@ -13,6 +13,9 @@ from spekoai_mcp.action_tools import (
     ACTION_TOOL_NAMES,
     DISCLOSURE_OPENER,
     DISCLOSURE_RULE,
+    PHONE_NUMBER_CONSENT_REQUIRED_CODE,
+    PHONE_NUMBER_SCOPE_REQUIRED_CODE,
+    next_step_for_error,
 )
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.profiles import (
@@ -430,6 +433,42 @@ def test_error_details_include_validation_issues() -> None:
     assert trace_id == "req_123"
     assert message == (
         "Invalid request: intent: Expected object, received string; systemPrompt: Required"
+    )
+
+
+def test_phone_scope_and_consent_403_map_to_distinct_next_steps() -> None:
+    # These two 403s used to share one code and fall into the generic
+    # "check authentication and retry" branch, giving the agent no way to tell
+    # a dead-end (must reconnect) from a fixable state (must accept consent).
+    scope_missing = http_client.SpekoApiError(
+        403,
+        "Reconnect required",
+        trace_id="t1",
+        code=PHONE_NUMBER_SCOPE_REQUIRED_CODE,
+    )
+    consent_missing = http_client.SpekoApiError(
+        403,
+        "Consent required",
+        trace_id="t2",
+        code=PHONE_NUMBER_CONSENT_REQUIRED_CODE,
+    )
+
+    scope_step = next_step_for_error(scope_missing, path="/v1/sessions/phone")
+    consent_step = next_step_for_error(consent_missing, path="/v1/sessions/phone")
+
+    assert scope_step != consent_step
+    assert scope_step != "Check authentication and retry the Speko MCP request."
+    assert consent_step != "Check authentication and retry the Speko MCP request."
+    assert "reconnect" in scope_step.lower()
+    assert "consent" in consent_step.lower()
+
+
+def test_unrecognized_403_falls_back_to_generic_auth_message() -> None:
+    other = http_client.SpekoApiError(403, "Forbidden", trace_id="t3", code="SOME_OTHER_CODE")
+
+    assert (
+        next_step_for_error(other, path="/v1/sessions/phone")
+        == "Check authentication and retry the Speko MCP request."
     )
 
 

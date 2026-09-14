@@ -121,6 +121,26 @@ CREDIT_EXHAUSTED_NEXT_STEP = (
     f"Ask the user to add credit at {http_client.BILLING_URL}, then run the tool again. "
     "Do not retry before credit is added."
 )
+
+# These two 403s used to share one code and one generic "check auth and retry" message,
+# which sent an agent into a blind retry loop with no way to actually resolve either
+# failure. They need different remediation: a scope-missing token can only be repaired
+# by a full reconnect (a refresh never adds the phone scope), while a missing consent
+# just needs the workspace's consent screen accepted - no reconnect required.
+PHONE_NUMBER_SCOPE_REQUIRED_CODE = "PHONE_NUMBER_SCOPE_REQUIRED"
+PHONE_NUMBER_CONSENT_REQUIRED_CODE = "PHONE_NUMBER_CONSENT_REQUIRED"
+
+PHONE_NUMBER_AUTH_NEXT_STEPS: dict[str, str] = {
+    PHONE_NUMBER_SCOPE_REQUIRED_CODE: (
+        "Tell the user this connector was authorized before phone calling was enabled "
+        "and must be fully disconnected and reconnected (not just refreshed) to grant "
+        "phone-calling permission. Do not retry the call until that is done."
+    ),
+    PHONE_NUMBER_CONSENT_REQUIRED_CODE: (
+        "Tell the user to accept the phone-use authorization for this workspace, shown "
+        "on the connector's consent screen, then retry."
+    ),
+}
 CREATE_AGENT_TOOL_NEXT_STEP = (
     "For create_agent_tool, pass a body like {'name':'lookup_order',"
     "'description':'Look up an order by id.',"
@@ -1221,6 +1241,9 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
             "Fix the request body using the validation details, then retry the Speko MCP request."
         )
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code in {401, 403}:
+        auth_next_step = PHONE_NUMBER_AUTH_NEXT_STEPS.get(getattr(exc, "code", None) or "")
+        if auth_next_step is not None:
+            return auth_next_step
         return "Check authentication and retry the Speko MCP request."
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP
@@ -1863,7 +1886,13 @@ async def create_phone_session(
         ),
     ],
 ) -> ToolResult:
-    """Create an outbound phone session, auto-provisioning an OAuth workspace number if needed."""
+    """Create an outbound phone session, auto-provisioning an OAuth workspace number if needed.
+
+    A 403 with code PHONE_NUMBER_SCOPE_REQUIRED means this connection predates phone
+    calling and needs a full reconnect (a token refresh cannot add the permission). A
+    403 with code PHONE_NUMBER_CONSENT_REQUIRED means the workspace needs to accept the
+    phone-use consent screen instead - no reconnect needed.
+    """
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
