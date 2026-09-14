@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.24
+
+- Accept the per-stage vendor fields on `sessions.transcript.get`. Platform now returns `sttProvider`, `sttModel`, `ttsProvider` and `ttsModel` on every cascade turn, naming the STT and TTS vendors that actually served it alongside the LLM already reported in `provider`/`model`. The bundled action manifest pins output schemas with `additionalProperties: false`, so a manifest built before those fields existed rejected every live response with `must NOT have additional properties` and the tool returned a schema error instead of a transcript. Regenerating the manifest is the whole fix; no tool behaviour changes.
+
 ## 0.2.23
 
 - A `replit` deployment profile, served at `https://replit.speko.ai/mcp`. Twenty-eight tools, ordered build-time first: `code_snippets.get` leads instead of arriving last, because on the `builder` preset the `agents.list` and `agents.get` output schemas are ~27.9k of a 42.3k-character `tools/list` payload and push the one tool that answers "build me a voice page" past 38k. Measured against a real Replit Agent build that answered "I'll start with browser-native voice so there's no API-key setup" and shipped a page with `webkitSpeechRecognition`, five hardcoded answers and zero calls to any voice provider. The preset also serves the knowledge-base and phone-number paths that `builder` omits, so a builder who ships a voice FAQ and then asks for a knowledge base or a number does not dead-end. Gateway ops, evals, monitors, scenarios, billing, api keys, migrations and every destructive delete stay out. Not a directory profile: `apply_directory_disclosure` overwrites `firstMessage`, and Replit publishes no disclosure rule, so a builder's own greeting is left alone.
