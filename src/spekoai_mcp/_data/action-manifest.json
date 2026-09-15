@@ -5,7 +5,7 @@
     {
       "id": "capabilities.search",
       "version": 1,
-      "description": "Search the actions available to the current principal and MCP profile.",
+      "description": "Search the actions available to the current principal and MCP profile. An empty query (the default) returns everything visible, up to limit. Filter by effect to find only \"read\", \"write\", \"destructive\" and so on. Each result is a summary; pass its id to capabilities.describe for the full input and output schema.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -178,7 +178,7 @@
     {
       "id": "capabilities.describe",
       "version": 1,
-      "description": "Return the exact schemas and authorization policy for one available action.",
+      "description": "Return the exact input schema, output schema and authorization policy for one action, by id. The natural second call after capabilities.search, when a summary is not enough to construct the arguments.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -427,7 +427,7 @@
     {
       "id": "operations.list",
       "version": 1,
-      "description": "List recent durable action executions in the current workspace.",
+      "description": "List recent durable action executions in the current workspace: the operations that run async rather than returning inline, in \"claimed\", \"queued\", \"running\", \"succeeded\", \"failed\" or \"cancelled\" status. Filter by actionId or status. Pass an id to operations.get for the full step-by-step detail.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -756,7 +756,7 @@
     {
       "id": "operations.get",
       "version": 1,
-      "description": "Read a durable action operation owned by the current workspace.",
+      "description": "Read one durable action operation by id, including its steps array (each with its own status and optional progress) and, once failed, an error object with a code, message and whether it is retryable. Poll this or use operations.wait to watch it settle.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1056,7 +1056,7 @@
     {
       "id": "operations.wait",
       "version": 1,
-      "description": "Wait briefly for a durable operation to change or reach a terminal state.",
+      "description": "Wait briefly for a durable operation to change or reach a terminal state, up to timeoutMs (0 to 30000, default 10000). Returns as soon as the operation moves, or once the timeout elapses, whichever comes first. Returns the same shape as operations.get either way.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1363,7 +1363,7 @@
     {
       "id": "operations.cancel",
       "version": 1,
-      "description": "Request cancellation of a cancellable operation in the current workspace.",
+      "description": "Request cancellation of a cancellable operation. This is a request, not a guarantee: an operation past its cancellable point keeps running. Requires speko:execute, unlike the speko:read reads in this group. Check operations.get or operations.wait afterward to see whether it actually reached \"cancelled\".",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1441,7 +1441,7 @@
     {
       "id": "agent_access.overview",
       "version": 1,
-      "description": "List OAuth grants and API-key grants for the current workspace control plane.",
+      "description": "List OAuth client grants and product API keys for the current workspace control plane. oauthGrants carry the scopes each connected client holds; apiKeys carry a revoked flag and lastUsedAt (null if never used). Pass an oauthGrants id to agent_access.oauth_grant.revoke to remove one. OAuth-user principals only.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1644,7 +1644,7 @@
     {
       "id": "agent_access.oauth_grant.revoke",
       "version": 1,
-      "description": "Revoke one OAuth client grant for the current user and workspace.",
+      "description": "Revoke one OAuth client grant for the current user and workspace. consentId is the id field from agent_access.overview's oauthGrants array, not the client id. Requires speko:credentials, a scope not used elsewhere on this surface.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1765,7 +1765,7 @@
     {
       "id": "organization.get",
       "version": 1,
-      "description": "Get the current workspace and its enabled customer capabilities.",
+      "description": "Get the current workspace and its capability flags: features.buyPhoneNumbers, sms10dlc, smsMessaging, imessageIntegration, agentDuplication and others, each as an {enabled} object. retrievalProvider and imessageProvider are null when the corresponding integration is not configured.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2002,7 +2002,7 @@
     {
       "id": "credits.balance.get",
       "version": 1,
-      "description": "Get the current workspace prepaid credit balance.",
+      "description": "Get the current workspace prepaid credit balance in USD, as of updatedAt. Requires the speko:billing scope, unlike most reads on this surface.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2122,7 +2122,7 @@
     {
       "id": "credits.ledger.list",
       "version": 1,
-      "description": "List recent credit movements for the current workspace.",
+      "description": "List recent credit movements for the current workspace, newest first. Filter with kind as a comma-separated list of \"grant\", \"debit\", \"topup\", \"refund\" and \"adjustment\". Page with the returned nextCursor; it is null on the last page. provider, sessionId and stripePaymentIntentId are populated only on the entry kinds that produced them.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2340,7 +2340,7 @@
     {
       "id": "usage.summary.get",
       "version": 1,
-      "description": "Get workspace usage, managed cost, and current balance for an optional period.",
+      "description": "Get workspace usage, managed cost and current balance. from_ and to bound the window; omit both for all-time. breakdown lists cost per provider and metric, with keySource \"BYOK\" or \"MANAGED\" showing whether the workspace supplied its own provider key for that line.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2525,7 +2525,7 @@
     {
       "id": "api_keys.list",
       "version": 1,
-      "description": "List product API keys in the current workspace without exposing secret values.",
+      "description": "List product API keys in the current workspace, each with its scopes, revocation state, and resourceVersion. resourceVersion is literally \"active\" or \"revoked\", not an incrementing version, so it stays valid for api_keys.revoke as long as the key remains active; there is no need to re-read it immediately before revoking.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -2689,7 +2689,7 @@
     {
       "id": "api_keys.create",
       "version": 1,
-      "description": "Create a product API key and return its secret exactly once.",
+      "description": "Create a product API key and return its secret in `key` exactly once; it is never retrievable again, so store it immediately. `scopes` is 1 to 6 values from speko:read, write, execute, billing, credentials, compliance, and the key can only do what those scopes allow. `routing_policy`, if set, pins this key to a specific stt/llm/tts provider chain and objective instead of the workspace default; omit it to inherit the default. Available to any workspace member, unlike other credential actions on this surface which require an admin.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3052,7 +3052,7 @@
     {
       "id": "api_keys.revoke",
       "version": 1,
-      "description": "Revoke a product API key if its resource version still matches.",
+      "description": "Revoke one product API key. `expected_resource_version` must be \"active\", the only value an unrevoked key ever has; it does not need a fresh read from api_keys.list first, since the value cannot go stale while the key stays active. Concurrent revokes are safe: only one succeeds, the other is refused. Revocation cannot be undone.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3181,7 +3181,7 @@
     {
       "id": "gateway.overview.get",
       "version": 1,
-      "description": "Get the current workspace Gateway overview.",
+      "description": "Get one snapshot of the current workspace Gateway: session counts (total, last 24h, active), 24h error count, active key count, workload and instance counts, and settled spend in micros. Each figure has its own detail action when the summary number is not enough: gateway.workloads.list, gateway.instances.list, gateway.activity.list, gateway.usage.get.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3344,7 +3344,7 @@
     {
       "id": "gateway.workloads.list",
       "version": 1,
-      "description": "List Gateway workloads in the current workspace.",
+      "description": "List Gateway workloads in the current workspace, each identified by type and id, with its total and active session counts and when it was last seen.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3485,7 +3485,7 @@
     {
       "id": "gateway.instances.list",
       "version": 1,
-      "description": "List Gateway runtime instances in the current workspace.",
+      "description": "List Gateway runtime instances in the current workspace, each with its active and pending session counts, capacity, and whether it is online, draining, or already offline. `draining: true` means the instance is finishing its current sessions and refusing new ones ahead of a planned shutdown. `offlineAt` is null while online and set once it drops off.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3691,7 +3691,7 @@
     {
       "id": "gateway.activity.list",
       "version": 1,
-      "description": "List recent Gateway activity for the current workspace.",
+      "description": "List recent Gateway activity events for the current workspace, newest first, optionally filtered to one workload, one instance, or one event_type. Each row carries the provider and session/attempt ids. `attribution`, when present, names which client made the request under a fixed evidence classification. A malformed attribution on an otherwise-valid event silently drops to undefined rather than failing the row, so an absent attribution does not mean the event is invalid.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -3992,7 +3992,7 @@
     {
       "id": "gateway.usage.get",
       "version": 1,
-      "description": "Get aggregated Gateway usage for the current workspace.",
+      "description": "Get aggregated Gateway usage for the current workspace, broken down by provider: spend in micros of the given currency, session count, and the metering source behind the number when more than one exists.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4130,7 +4130,7 @@
     {
       "id": "gateway.legacy_keys.list",
       "version": 1,
-      "description": "List legacy Runtime API keys during the migration window.",
+      "description": "List legacy Runtime API keys still valid during the migration window, each with its expiry, revocation state, and resourceVersion. `legacyAcceptUntil`, when present, is the workspace-level deprecation cutoff date for these keys, set by the Runtime service rather than this action. gateway.legacy_keys.revoke needs the resourceVersion from this list as a concurrency token.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4312,7 +4312,7 @@
     {
       "id": "gateway.legacy_keys.revoke",
       "version": 1,
-      "description": "Revoke a legacy Runtime API key if its active-state version still matches.",
+      "description": "Revoke one legacy Runtime API key. `expected_resource_version` must match the key's current resourceVersion from gateway.legacy_keys.list; a stale value is refused rather than revoking blind, so read the key immediately before revoking. Revocation cannot be undone.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4439,7 +4439,7 @@
     {
       "id": "gateway.models.list",
       "version": 1,
-      "description": "List Relay models, routability, benchmarks, and routing policy.",
+      "description": "List Relay models with their provider, kind (stt, tts, llm, or s2s), routability, and benchmark and ranking data for the given objective and language. Filtering by `language` narrows to models that actually serve it; omit both filters to see the full catalog and every language it covers. gateway.relay.tts_preview.create and other Relay-routed actions expect a (provider, model, voice) combination taken from this list, not guessed.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4670,7 +4670,7 @@
     {
       "id": "gateway.relay.activity.list",
       "version": 1,
-      "description": "List recent Relay requests and failover attempts.",
+      "description": "List recent Relay requests, newest first, each with its full attempt chain: every provider tried, in order, with an outcome of served, failed, or superseded. `superseded` marks an attempt that a later, faster attempt beat rather than one that errored, so counting it as a failure overstates the failover rate. `routing_mode` is auto when Relay chose the chain and explicit when the caller pinned it.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4888,7 +4888,7 @@
     {
       "id": "gateway.relay.usage.get",
       "version": 1,
-      "description": "Get Relay usage for a bounded recent window.",
+      "description": "Get Relay usage summed over a bounded recent window (1 to 2160 hours, default 168, one week), with total requests, failures, and failovers, the same three broken out as a time series, and again split by kind and by model. Failures and failovers are reported as separate counters, not combined into one rate.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5119,7 +5119,7 @@
     {
       "id": "gateway.relay.credit.get",
       "version": 1,
-      "description": "Get the Runtime credit snapshot used by Relay admission.",
+      "description": "Get the Runtime credit snapshot Relay uses to admit new requests: available balance in micros, open reserved micros not yet settled, and unexported settled micros not yet reflected in the platform balance. `source` is \"platform\" when the balance comes from the platform ledger and \"runtime_default\" when Runtime is using its own fallback figure instead.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5263,7 +5263,7 @@
     {
       "id": "gateway.provider_credentials.list",
       "version": 1,
-      "description": "List configured Relay provider credentials without exposing stored values.",
+      "description": "List Relay provider credentials for the current workspace without exposing stored key values; only the last four characters, if configured, are shown. `resource_version`, present when configured, is the concurrency token gateway.provider_credentials.replace and .delete require.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5400,7 +5400,7 @@
     {
       "id": "gateway.provider_credentials.replace",
       "version": 1,
-      "description": "Create or conditionally replace a Relay provider credential.",
+      "description": "Create a Relay provider credential, or replace the existing one for that provider. `expected_resource_version` defaults to null, meaning no credential is expected to exist yet; set it to the current resource_version from gateway.provider_credentials.list to replace one that does, and the request is refused if the stored value has moved on since. The submitted `api_key` is never echoed back; only its last four characters appear afterward in gateway.provider_credentials.list.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5559,7 +5559,7 @@
     {
       "id": "gateway.provider_credentials.delete",
       "version": 1,
-      "description": "Delete a Relay provider credential if its resource version still matches.",
+      "description": "Delete a Relay provider credential. `expected_resource_version` must match the current resource_version from gateway.provider_credentials.list; a stale value is refused rather than deleting blind, so read the credential immediately before deleting rather than reusing an earlier version.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5686,7 +5686,7 @@
     {
       "id": "gateway.profiler.conversations.list",
       "version": 1,
-      "description": "List recent Gateway profiler conversations.",
+      "description": "List recent Gateway profiler conversations, each with its turn counts (total, evaluated, good) and good_turn_rate when evaluation has run, plus how it ended: hangup, transfer, error, shutdown, or unknown. gateway.profiler.conversations.get returns one conversation's full turn-by-turn detail; gateway.profiler.turn_trace.get goes one level deeper into a single turn.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -5881,7 +5881,7 @@
     {
       "id": "gateway.profiler.conversations.get",
       "version": 1,
-      "description": "Get one profiler conversation and its assembled turns.",
+      "description": "Get one profiler conversation with every turn assembled: latency breakdown (ear-to-mouth, endpointing, LLM time to first token, tool time, TTS time to first audio), barge-in and overspeech timing, and a `confidence` of complete, degraded, or minimal reflecting how many of the expected markers actually arrived. `violations` and `missing_markers` name specifics when confidence is not complete. gateway.profiler.turn_trace.get returns the raw event trace behind one turn when this summary is not enough.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -6251,7 +6251,7 @@
     {
       "id": "gateway.profiler.turn_trace.get",
       "version": 1,
-      "description": "Get the raw marker trace for one profiler turn.",
+      "description": "Get the raw, ordered event trace behind one profiler turn: every marker event with its type, sequence number, and millisecond timestamp, alongside the same turn summary gateway.profiler.conversations.get already returns. Use this when a turn's `confidence` is degraded or minimal and the summary alone does not explain which marker was missing or out of order.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -6587,7 +6587,7 @@
     {
       "id": "gateway.relay.tts_preview.create",
       "version": 1,
-      "description": "Create a bounded Relay TTS preview and return a short-lived audio resource link.",
+      "description": "Create a bounded Relay TTS preview and return a short-lived audio resource link. The voice id is not cross-checked against the chosen provider before synthesis. An id that belongs to a different vendor (for example an OpenAI voice name passed with provider: \"azure\") can be accepted and still fail or return silence instead of erroring up front. See gateway.models.list for a language's available provider and model pairs; prefer a voice already listed under the chosen provider.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -6738,7 +6738,7 @@
     {
       "id": "agents.list",
       "version": 1,
-      "description": "List agents in the current workspace without their full system prompts.",
+      "description": "List agents in the current workspace without their full system prompts. Each item includes voice, turnHandling and runMode as currently stored. Use agents.get for one agent when the full system prompt is also needed.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -7554,7 +7554,7 @@
     {
       "id": "agents.get",
       "version": 1,
-      "description": "Get one agent and its complete editable configuration.",
+      "description": "Get one agent and its complete editable configuration, including voice, turnHandling (profile, dtmfToolDescription, amdPrompt) and system prompt. Read this before diagnosing a silent call or a missing keypad response. Voice is not validated against what the TTS provider owns. The keypad tool only arms when turnHandling.profile is \"ivr\" or AMD detects a machine mid-call.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -8537,7 +8537,7 @@
     {
       "id": "agents.duplicate",
       "version": 1,
-      "description": "Duplicate an agent and its copyable tools, knowledge, evaluations, version, and graph.",
+      "description": "Duplicate an agent and its copyable tools, knowledge, evaluations, version, and graph. The copy carries the source voice and turnHandling settings forward unchanged. Check the returned warnings array. TOOL_AUTH_REQUIRED means a copied tool is registered on the new agent but needs its credentials or auth headers reconnected, so a duplicated agent can show a tool as present while it silently fails until that happens. WEBHOOK_AUTH_REQUIRED is a separate case: it applies to lifecycle webhooks (preCall, postCall, status, analysis, recording), not tools, and those are copied already disabled rather than left silently broken, so each one needs its auth fixed and then re-enabled by hand. INTEGRATION_DISCONNECTED and GRAPH_NOT_COPIED name the other two things that did not carry over.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -14628,7 +14628,7 @@
     {
       "id": "billing.checkout.create",
       "version": 1,
-      "description": "Create a short-lived Stripe Checkout handoff for adding workspace credits.",
+      "description": "Create a short-lived Stripe Checkout handoff for adding workspace credits. Returns a url, its purpose, and an expiresAt timestamp; the caller opens the url to complete payment, this action does not itself move any money. amount_usd is a whole dollar figure between 5 and 10,000. Requires a human OAuth principal, not an API key.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -14697,7 +14697,7 @@
     {
       "id": "billing.portal.create",
       "version": 1,
-      "description": "Create a short-lived Stripe Billing Portal handoff for the workspace.",
+      "description": "Create a short-lived Stripe Billing Portal handoff for the workspace. Returns a url, its purpose, and an expiresAt timestamp; the portal itself lets the account owner manage payment methods and view invoices on Stripe. Requires a human OAuth principal, not an API key.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -14757,7 +14757,7 @@
     {
       "id": "billing.auto_topup.setup",
       "version": 1,
-      "description": "Create a short-lived Stripe handoff for authorizing an auto-top-up card.",
+      "description": "Create a short-lived Stripe handoff for authorizing an auto-top-up card. Returns a url, its purpose, and an expiresAt timestamp; completing it on Stripe attaches a payment method without itself enabling auto-top-up. Call billing.auto_topup.update afterward with enabled true plus a threshold and amount to turn charging on. Requires a human OAuth principal, not an API key.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -14817,7 +14817,7 @@
     {
       "id": "billing.invoices.list",
       "version": 1,
-      "description": "List recent Stripe invoices for the current workspace.",
+      "description": "List recent Stripe invoices for the current workspace, newest first. limit caps the page size at 100 and defaults to 25. Each invoice reports amountPaid and amountDue in the smallest currency unit, plus nullable hostedInvoiceUrl and invoicePdf links once Stripe has generated them.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -15025,7 +15025,7 @@
     {
       "id": "billing.auto_topup.get",
       "version": 1,
-      "description": "Get automatic credit top-up configuration and payment-method status.",
+      "description": "Get the current automatic credit top-up configuration and payment-method status. hasPaymentMethod and the nested paymentMethod fields cover the card Stripe has on file, separate from whether auto-top-up is enabled. A nonzero failureCount with pausedAt and lastFailureReason set means a top-up attempt failed and charging is paused. Call billing.auto_topup.resume to clear that once the underlying issue is fixed, or billing.auto_topup.update to reconfigure a new threshold or amount.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -15269,7 +15269,7 @@
     {
       "id": "billing.auto_topup.update",
       "version": 1,
-      "description": "Replace the automatic credit top-up configuration for the workspace.",
+      "description": "Replace the automatic credit top-up configuration for the workspace. This is a whole-object replace, not a patch. enabled, thresholdCents, and amountCents must all be sent together even to change only one of them, and thresholdCents must be strictly less than amountCents or the call is rejected. Requires a human OAuth principal, not an API key.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -15406,7 +15406,7 @@
     {
       "id": "billing.auto_topup.resume",
       "version": 1,
-      "description": "Clear a paused auto-top-up failure state so charging may resume.",
+      "description": "Clear a paused auto-top-up failure state so charging may resume, without changing the threshold or amount on file. Check billing.auto_topup.get first to confirm pausedAt is actually set; calling this when auto-top-up was never paused is a no-op. Requires a human OAuth principal, not an API key.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -15921,7 +15921,7 @@
     {
       "id": "phone_numbers.get",
       "version": 1,
-      "description": "Get one phone or SIP number owned by the current workspace.",
+      "description": "Get one phone or SIP number owned by the current workspace. setupStatus.status is \"ready\" only when inboundReady, outboundReady and agentReady are all true; check the setupStatus.issues array for what is still missing. A number can also carry suspendedAt with a suspensionReason of \"billing\" or \"compliance\", which blocks calls independently of setupStatus. Use phone_numbers.list to find a number id first.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16499,7 +16499,7 @@
     {
       "id": "knowledge_bases.list",
       "version": 1,
-      "description": "List visible knowledge bases, optionally filtered to one agent.",
+      "description": "List visible knowledge bases, optionally filtered to one agent with agent_id. Each entry carries documentCount and chunkCount as current totals, not a snapshot from creation. Use knowledge_bases.documents.list on a specific base to see why those counts are what they are.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16668,7 +16668,7 @@
     {
       "id": "knowledge_bases.get",
       "version": 1,
-      "description": "Get one knowledge base owned by the current workspace.",
+      "description": "Get one knowledge base owned by the current workspace, including its embeddingModel and current documentCount and chunkCount. Use knowledge_bases.list to find a base id first.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -16837,7 +16837,7 @@
     {
       "id": "knowledge_bases.documents.list",
       "version": 1,
-      "description": "List documents in a workspace knowledge base.",
+      "description": "List documents in a workspace knowledge base, each with an ingestion status of \"pending\", \"processing\", \"ready\" or \"failed\", and its own chunkCount. Use knowledge_bases.documents.get on a \"failed\" entry to read its errorMessage.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -17043,7 +17043,7 @@
     {
       "id": "knowledge_bases.documents.get",
       "version": 1,
-      "description": "Get one document from a workspace knowledge base.",
+      "description": "Get one document from a workspace knowledge base. status is one of \"pending\", \"processing\", \"ready\" or \"failed\"; errorMessage is set on \"failed\" and ingestedAt stays null until the document reaches \"ready\". Use knowledge_bases.documents.list to find a document id first.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -17251,7 +17251,7 @@
     {
       "id": "sessions.transcript.get",
       "version": 1,
-      "description": "Get the ordered transcript and per-turn latency for a workspace session.",
+      "description": "Get the ordered transcript and per-turn latency for a workspace session, including any tool calls made mid-call (toolCalls, by name and args) and a latencyStatus per turn (\"partial\"|\"complete\"|\"interrupted\"|\"error\"). Use this to confirm whether a keypad press (send_dtmf) was invoked, or whether a turn with no agent text and an \"error\" latency status points to a synthesis failure rather than the callee hanging up.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

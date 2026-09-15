@@ -1499,7 +1499,15 @@ async def create_agent(
                 "use-case string. The stack tiers available for a given description, "
                 "and their stt/llm/tts components, are reported by preview_stacks. "
                 "Migrated agents supply agent_create_payload from "
-                "parse_external_config, which already carries an intent."
+                "parse_external_config, which already carries an intent. "
+                "Optional turnHandling ({profile?: 'conversational'|'ivr', "
+                "dtmfToolDescription?: string, onMachine?: 'leave_message'|..., "
+                "amdPrompt?: string, ...}). Setting profile to 'ivr' arms the "
+                "agent's keypad tool (send_dtmf) for the whole call. Without it, "
+                "the keypad tool only arms when answering-machine detection "
+                "classifies the call as an automated menu mid-call. If AMD does "
+                "not flag the call as a phone tree, the agent has no way to "
+                "press keys and can only speak them."
             )
         ),
     ],
@@ -1553,7 +1561,13 @@ async def update_agent(
                 "office-ambience needs ~5-10 to be audible, crowded-room "
                 "distorts past ~1.6}}|null), speechNormalization "
                 "({pronunciationDictionary?: {term: spoken}, "
-                "textReplacements?: {from: to}}|null), webhooks "
+                "textReplacements?: {from: to}}|null), turnHandling "
+                "({profile?: 'conversational'|'ivr', dtmfToolDescription?: "
+                "string, onMachine?: 'leave_message'|..., amdPrompt?: "
+                "string, ...}|null; setting profile to 'ivr' arms the "
+                "agent's keypad tool (send_dtmf) for the whole call, "
+                "otherwise it only arms when answering-machine detection "
+                "classifies the call as an automated menu mid-call), webhooks "
                 "({preCall?|postCall?|status?|analysis?|recording?: {url: "
                 "string, headers?: object, timeoutMs?: 100-8000}|null}|null)."
             )
@@ -1583,7 +1597,10 @@ async def delete_agent(
 async def list_agent_tools(
     agent_id: Annotated[str, Field(description="Agent id.")],
 ) -> ToolResult:
-    """List tools registered on an agent."""
+    """List tools registered on an agent, most recently created first. A
+    call already in progress does not see a tool registered after it
+    started. If a call reports an unknown tool, confirm it is listed here,
+    then start a new call."""
     return await call_list(
         "GET",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools",
@@ -1612,7 +1629,8 @@ async def create_agent_tool(
         ),
     ],
 ) -> ToolResult:
-    """Create a tool on an agent."""
+    """Register a new tool on an agent. A call already in progress will not
+    see it; a new call will, once list_agent_tools shows it registered."""
     validate_create_agent_tool_body(body)
     return await call(
         "POST",
@@ -1626,7 +1644,7 @@ async def get_agent_tool(
     agent_id: Annotated[str, Field(description="Agent id.")],
     tool_id: Annotated[str, Field(description="Tool id.")],
 ) -> ToolResult:
-    """Get one agent tool."""
+    """Get one agent tool by id, as currently stored in the registry."""
     return await call(
         "GET",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
@@ -1650,7 +1668,8 @@ async def update_agent_tool(
         ),
     ],
 ) -> ToolResult:
-    """Update one agent tool."""
+    """Update one agent tool's description, parameters, or source. A call
+    already in progress keeps using the version it started with."""
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
@@ -1663,7 +1682,8 @@ async def delete_agent_tool(
     agent_id: Annotated[str, Field(description="Agent id.")],
     tool_id: Annotated[str, Field(description="Tool id.")],
 ) -> ToolResult:
-    """Delete one agent tool."""
+    """Delete one agent tool. A call already in progress may keep using it
+    until the call ends; new calls stop seeing it immediately."""
     return await call(
         "DELETE",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
@@ -1881,17 +1901,40 @@ async def create_phone_session(
                 "metadata (object). Per-call fields win over agent defaults. "
                 "For OAuth connector users without a number, this first call "
                 "automatically buys a dedicated US number from workspace credits "
-                "and binds it when agentId is present. Do not collect KYB fields."
+                "and binds it when agentId is present. Do not collect KYB fields. "
+                "Leave `voice` unset unless it is a value already configured on "
+                "the target agent. An unowned or misspelled voice id is accepted "
+                "here but can fail silently downstream."
             )
         ),
     ],
 ) -> ToolResult:
-    """Create an outbound phone session, auto-provisioning an OAuth workspace number if needed.
+    """Create an outbound phone session, dialing `body.to` from an owned or
+    auto-provisioned number.
+
+    This tool has the highest error rate on this surface. Read the failure
+    modes below before retrying. A rejected call returns one of these codes
+    in the error body: AGENT_NOT_FOUND (agentId not in this workspace),
+    PHONE_NUMBER_CONSENT_REQUIRED (the connector's phone-use authorization
+    needs reacceptance), PHONE_NUMBER_KYB_ACCESS_SUSPENDED (compliance
+    review pending, retrying will not help; check phone_numbers.kyb.get for
+    status), PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED, _PENDING, and
+    _FAILED (auto-provisioning a number failed or needs credit; see the
+    returned balance and price fields), and INSUFFICIENT_CREDITS. A 2xx
+    response does not mean the call was answered. No-answer, voicemail, and
+    carrier rejection all settle normally and appear afterward in get_call
+    or sessions.transcript.get, not as a tool error here.
 
     A 403 with code PHONE_NUMBER_SCOPE_REQUIRED means this connection predates phone
     calling and needs a full reconnect (a token refresh cannot add the permission). A
     403 with code PHONE_NUMBER_CONSENT_REQUIRED means the workspace needs to accept the
     phone-use consent screen instead - no reconnect needed.
+
+    `body.voice`, if set, is not validated against what the selected TTS
+    provider owns before dialing. An unrecognized or foreign voice id can
+    produce a dead-air leg with no error. Omit `voice` unless it came from
+    this agent's own configuration; there is no voice-lookup tool on this
+    profile.
     """
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
