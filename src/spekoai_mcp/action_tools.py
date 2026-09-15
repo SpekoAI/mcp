@@ -10,6 +10,7 @@ schemas change; an LLM client only sees these descriptions.
 from __future__ import annotations
 
 import base64
+import copy
 import ipaddress
 import json
 import logging
@@ -91,6 +92,85 @@ def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
     """
     if current_profile() in DIRECTORY_PROFILES:
         apply_ai_disclosure(body)
+    return body
+
+
+# --- Directory speech-native pin ---------------------------------------------
+#
+# ⚠️ TEMPORARY — set 2026-09-15, remove when the routed cascade is the answer
+# again for directory traffic. This is an operator decision, not a measurement:
+# agents CREATED through a published directory host are made speech-native on
+# OpenAI GPT-Live instead of getting the tier's STT→LLM→TTS stack pinned in at
+# create time (`resolveDefaultStackAllowlists`, routes/agents.ts).
+#
+# `openai:gpt-live-1` is the one S2S model a PHONE leg can host: every other
+# realtime model in the catalog is provider-direct (the client receives an
+# ephemeral credential and talks to the vendor itself), which a SIP participant
+# cannot do, and GPT-Live mints no client secret at all so the worker hosts it.
+# See services/phone-s2s.ts, where it is already DEFAULT_PHONE_S2S_MODEL for a
+# speech-native agent that pins nothing. The pin is written out anyway so this
+# choice survives a change to that default, and so the persisted agent says
+# which model it runs rather than inheriting one.
+#
+# SCOPE, and it is narrower than "directory calls":
+#   - `agents.create` is the only create surface on a directory profile, and it
+#     exists only on `chatgpt`. The `connector` surface withholds it.
+#   - `sessions.phone.create` carries no run-mode field — a phone leg goes
+#     speech-native because the AGENT row says `runMode: 's2s'`
+#     (outbound-phone-session.ts). So a directory call reaches GPT-Live only
+#     when it dials an agent created here; a call to an agent created in the
+#     dashboard or before this change keeps that agent's own run mode.
+# Covering the rest means an inline run mode on POST /v1/sessions/phone, which
+# is a server change and deliberately not in this one.
+#
+# THE RUNTIME HOLE, and why it is answered after the fact rather than before.
+# `runtime` is an ORG-level managed setting resolved server side from a feature
+# flag (`resolveManagedAgentRuntime`), and POST /v1/agents overwrites whatever
+# the body said with it. A body that simply omits `runtime` — the normal case —
+# therefore tells us nothing: an org on the Pipecat runtime would have this pin
+# stamped in and then be refused, `400 INCOMPATIBLE_RUNTIME_MODE`, for a create
+# that was valid before the pin existed. The relay cannot read that flag (no
+# endpoint publishes it; listing agents returns it per row and says nothing at
+# all for an org with none), so `create_agent` sends the pinned body and, on
+# exactly that code, retries ONCE with the pre-pin body and logs that it did.
+# A create that was valid without the pin stays valid with it.
+DIRECTORY_S2S_PIN = "openai:gpt-live-1"
+
+#: Platform's code for "this run mode cannot run on this org's runtime".
+INCOMPATIBLE_RUNTIME_CODE = "INCOMPATIBLE_RUNTIME_MODE"
+
+
+def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
+    """Force the GPT-Live run mode into an agent-create body on directory hosts.
+
+    Mutates and returns ``body``, like :func:`apply_ai_disclosure`, and is
+    idempotent. A pin the caller supplied is REPLACED: this is the platform's
+    answer for directory traffic, not a default the caller opts out of.
+
+    One escape hatch, and it is a server contract rather than a preference:
+    `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
+    (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a pin
+    must never turn a valid create into a 4xx.
+    """
+    if current_profile() not in DIRECTORY_PROFILES:
+        return body
+    if body.get("runtime") == "pipecat":
+        return body
+
+    body["runMode"] = "s2s"
+    prefs = body.get("stackPreferences")
+    if not isinstance(prefs, dict):
+        prefs = {}
+    allowed = prefs.get("allowedProviders")
+    if not isinstance(allowed, dict):
+        allowed = {}
+    # Only the s2s slot is rewritten. Cascade pins the caller sent are left in
+    # the row untouched: the server skips cascade stack-filling for a
+    # speech-native agent, and they are what the agent falls back to if this
+    # pin is ever lifted.
+    allowed["s2s"] = [DIRECTORY_S2S_PIN]
+    prefs["allowedProviders"] = allowed
+    body["stackPreferences"] = prefs
     return body
 
 
@@ -1519,7 +1599,29 @@ async def create_agent(
     components for a given description are reported by preview_stacks."""
     validate_create_agent_body(body)
     apply_directory_disclosure(body)
-    return await call("POST", "/v1/agents", body=body, text="Created agent.")
+    unpinned = copy.deepcopy(body)
+    apply_directory_s2s_pin(body)
+    if body == unpinned:
+        return await call("POST", "/v1/agents", body=body, text="Created agent.")
+
+    try:
+        payload = await http_client.call_speko_api("POST", "/v1/agents", body)
+    except http_client.SpekoApiError as exc:
+        if exc.code != INCOMPATIBLE_RUNTIME_CODE:
+            raise tool_error(exc, next_step=next_step_for_error(exc, path="/v1/agents")) from exc
+        # The org's managed runtime cannot host GPT-Live. Create the agent the
+        # caller actually asked for rather than failing on our own pin. Logged,
+        # not surfaced: the result payload is Platform's agent row and stays
+        # byte-identical to an unpinned create.
+        logger.info(
+            "directory s2s pin dropped: managed runtime refused %s (%s)",
+            DIRECTORY_S2S_PIN,
+            INCOMPATIBLE_RUNTIME_CODE,
+        )
+        return await call("POST", "/v1/agents", body=unpinned, text="Created agent.")
+    except http_client.SpekoAuthError as exc:
+        raise tool_error(exc, next_step=next_step_for_error(exc, path="/v1/agents")) from exc
+    return result(payload, text="Created agent.")
 
 
 async def get_agent(
