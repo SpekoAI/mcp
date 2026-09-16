@@ -17,6 +17,7 @@ from fastmcp.exceptions import ToolError
 import spekoai_mcp.action_tools as action_tools
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import (
+    DIRECTORY_S2S_LANGUAGES,
     DIRECTORY_S2S_PIN,
     INCOMPATIBLE_RUNTIME_CODE,
     apply_directory_s2s_pin,
@@ -72,6 +73,52 @@ def test_pin_applies_on_every_directory_profile(
     body = apply_directory_s2s_pin(_base_body())
     assert body["runMode"] == "s2s"
     assert body["stackPreferences"]["allowedProviders"]["s2s"] == [DIRECTORY_S2S_PIN]
+
+
+def _body_in(language: str) -> dict[str, object]:
+    body = _base_body()
+    body["intent"] = {"language": language}
+    return body
+
+
+@pytest.mark.parametrize("language", ["hi", "es", "de", "ja", "zh", "ar"])
+def test_language_the_s2s_catalog_cannot_serve_keeps_the_cascade(
+    monkeypatch: pytest.MonkeyPatch, language: str
+) -> None:
+    """The pin chooses between two WORKING stacks, never a stack with no leg.
+
+    `GET /v1/models` -> `languages.s2s` is `en fil nb`. Pinning a Hindi agent
+    to GPT-Live leaves it with no s2s leg and no STT/LLM/TTS knobs to repair
+    it, because a speech-native agent has no cascade stack to configure.
+    """
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
+    body = apply_directory_s2s_pin(_body_in(language))
+    assert "runMode" not in body, f"{language} has no s2s leg; it must stay cascade"
+    assert "stackPreferences" not in body
+
+
+@pytest.mark.parametrize("language", ["en", "fil", "nb", "en-GB", "nb-NO", "EN"])
+def test_language_the_s2s_catalog_serves_still_gets_the_pin(
+    monkeypatch: pytest.MonkeyPatch, language: str
+) -> None:
+    """Matched on the primary subtag, case-insensitively: `en-GB` is `en`."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
+    body = apply_directory_s2s_pin(_body_in(language))
+    assert body["runMode"] == "s2s"
+    assert body["stackPreferences"]["allowedProviders"]["s2s"] == [DIRECTORY_S2S_PIN]
+
+
+def test_a_body_with_no_language_keeps_the_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Platform defaults an absent language to English, which s2s serves."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
+    body = _base_body()
+    del body["intent"]
+    assert apply_directory_s2s_pin(body)["runMode"] == "s2s"
+
+
+def test_the_served_language_set_is_the_catalog_s2s_list() -> None:
+    """Sourced from `GET /v1/models` -> `languages.s2s`, measured 2026-09-16."""
+    assert DIRECTORY_S2S_LANGUAGES == frozenset({"en", "fil", "nb"})
 
 
 def test_pin_is_the_one_phone_hostable_model() -> None:

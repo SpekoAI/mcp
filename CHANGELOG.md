@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.27
+
+- The directory GPT-Live pin now keeps the routed cascade for a language the S2S catalog does not serve. `GET /v1/models` reports `languages.s2s` as `en fil nb`; the pin applied to every language regardless, so an agent created on the ChatGPT surface in, say, Hindi was stamped `runMode: 's2s'` and pinned to a model with no leg for it. Speech-native agents have no STT/LLM/TTS stack, so the person could not repair it from settings either -- reported 2026-09-15 as "English is good but Hindi is not working properly, I tried changing the setting but the options are limited". The language is matched on its primary subtag, case-insensitively, so `en-GB` and `nb-NO` keep the pin and a body with no `intent.language` keeps it too (Platform defaults that to English).
+- The served-language set is hardcoded and dated beside the pin itself, not mirrored from the catalog: both are temporary and meant to be deleted together rather than grown into a Python copy of `packages/core/src/lib/types/api.ts`.
+
 ## 0.2.26
 
 - Agents created through a published directory host are now speech-native on OpenAI GPT-Live: `agents.create` stamps `runMode: 's2s'` and pins `openai:gpt-live-1` before the body reaches Platform, in place of the routed STT->LLM->TTS tier the server would otherwise write into `stackPreferences` at create time. Temporary and dated in the source (2026-09-15); the pin replaces a caller-supplied s2s model rather than deferring to it, because every other realtime model in the catalog is provider-direct and a SIP participant cannot fetch an ephemeral vendor credential -- GPT-Live is the one route a phone leg can host (`services/phone-s2s.ts`, where it is already the default for a speech-native agent that pins nothing).

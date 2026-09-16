@@ -136,8 +136,34 @@ def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
 # A create that was valid without the pin stays valid with it.
 DIRECTORY_S2S_PIN = "openai:gpt-live-1"
 
+#: Languages the S2S catalog serves, from `GET /v1/models` -> `languages.s2s`
+#: (measured 2026-09-16: `en fil nb`). The cascade catalog is far wider — 20
+#: LLM / 13 STT / 29 TTS routable candidates for `en` against 12 / 3 / 5 for
+#: `hi`, and a language outside this set has NO s2s leg at all.
+#:
+#: Dated and hardcoded on purpose, exactly like DIRECTORY_S2S_PIN above: the
+#: catalog lives in TypeScript (`packages/core/src/lib/types/api.ts`), this
+#: pin is a temporary operator decision, and both are meant to be deleted
+#: together rather than grown into a Python mirror of the catalog.
+DIRECTORY_S2S_LANGUAGES = frozenset({"en", "fil", "nb"})
+
 #: Platform's code for "this run mode cannot run on this org's runtime".
 INCOMPATIBLE_RUNTIME_CODE = "INCOMPATIBLE_RUNTIME_MODE"
+
+
+def _directory_s2s_serves(body: dict[str, Any]) -> bool:
+    """Whether the S2S catalog covers this body's language.
+
+    The language is matched on its PRIMARY SUBTAG, so `en-GB` and `nb-NO` are
+    served while `hi` is not. A body with no `intent.language` keeps the pin:
+    the platform defaults it to English, which s2s serves.
+    """
+    intent = body.get("intent")
+    language = intent.get("language") if isinstance(intent, dict) else None
+    if not isinstance(language, str) or not language.strip():
+        return True
+    primary = language.strip().lower().replace("_", "-").split("-", 1)[0]
+    return primary in DIRECTORY_S2S_LANGUAGES
 
 
 def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
@@ -147,14 +173,25 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     idempotent. A pin the caller supplied is REPLACED: this is the platform's
     answer for directory traffic, not a default the caller opts out of.
 
-    One escape hatch, and it is a server contract rather than a preference:
-    `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
-    (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a pin
-    must never turn a valid create into a 4xx.
+    Two escape hatches, and neither is a preference:
+
+    - `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
+      (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a
+      pin must never turn a valid create into a 4xx.
+    - A language the S2S catalog does not serve keeps the ROUTED CASCADE. The
+      pin is an operator preference between two working stacks; it is not a
+      licence to hand someone a stack that cannot speak their language. A
+      Hindi agent pinned to GPT-Live has no s2s leg, and no STT/LLM/TTS knobs
+      to fix it with either, because s2s has no stack to configure — which is
+      what "English is good but Hindi is not working properly, I tried
+      changing the setting but the options are limited" looks like from the
+      outside (reported 2026-09-15 through the ChatGPT directory listing).
     """
     if current_profile() not in DIRECTORY_PROFILES:
         return body
     if body.get("runtime") == "pipecat":
+        return body
+    if not _directory_s2s_serves(body):
         return body
 
     body["runMode"] = "s2s"
