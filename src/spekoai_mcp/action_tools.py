@@ -29,7 +29,7 @@ from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import http_client
-from spekoai_mcp.apps import AUDIO_PLAYER_APP
+from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META
 from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
 from spekoai_mcp.tool_text import payload_text
 
@@ -386,6 +386,12 @@ READ_ONLY_ACTION_TOOL_NAMES = {
 # the tool's text block, so binding one is additive.
 APP_CONFIG_BY_FUNCTION: dict[str, AppConfig] = {
     "synthesize_speech": AUDIO_PLAYER_APP,
+}
+
+# Extra `_meta` merged alongside the app binding, for hosts that read their own
+# key rather than the standard one.
+APP_META_BY_FUNCTION: dict[str, dict[str, str]] = {
+    "synthesize_speech": AUDIO_PLAYER_META,
 }
 
 DESTRUCTIVE_ACTION_TOOL_NAMES = {
@@ -1251,6 +1257,7 @@ def register_action_tools(mcp: FastMCP) -> None:
             name=public_name,
             title=title,
             app=APP_CONFIG_BY_FUNCTION.get(name),
+            meta=APP_META_BY_FUNCTION.get(name),
             output_schema=SPEKO_API_OUTPUT_SCHEMA,
             annotations=ToolAnnotations(
                 title=title,

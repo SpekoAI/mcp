@@ -36,6 +36,17 @@ AUDIO_PLAYER_URI = "ui://speko/audio-player.html"
 # rather than a separate app-only surface.
 AUDIO_PLAYER_APP = AppConfig(resource_uri=AUDIO_PLAYER_URI)
 
+# ChatGPT's own spelling of `_meta.ui.resourceUri`. Its docs call the key an
+# alias and claim the standard one is read too, but the live client disagrees:
+# on 2026-09-16 `openai-mcp/1.0.0 (Codex)` called `audio.synthesize` against
+# `chatgpt.speko.ai`, printed its "Rendered inline audio in chat" card, and
+# never issued the `resources/read` that rendering the widget requires. The
+# Apps SDK's own example tool sets both keys, so we set both. Harmless
+# elsewhere: a host that does not know the key ignores it.
+OPENAI_TEMPLATE_META_KEY = "openai/outputTemplate"
+
+AUDIO_PLAYER_META: dict[str, str] = {OPENAI_TEMPLATE_META_KEY: AUDIO_PLAYER_URI}
+
 
 def _read_app(filename: str) -> str:
     return (files(_APPS_PACKAGE) / filename).read_text(encoding="utf-8")

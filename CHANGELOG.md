@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.29
+
+- `audio.synthesize` now carries `_meta["openai/outputTemplate"]` alongside the standard `_meta.ui.resourceUri`, both pointing at `ui://speko/audio-player.html`. ChatGPT's Apps SDK reference calls its key an alias and says the standard one is read too; the live client disagrees. On 2026-09-16 `openai-mcp/1.0.0 (Codex)` called the tool against `chatgpt.speko.ai`, answered `200`, printed its "Rendered inline audio in chat" card, and never issued the `resources/read` that rendering the widget requires -- a single request for the whole turn. The Apps SDK's own example tool sets both keys, so 0.2.29 sets both.
+- A test asserts the two keys resolve to the same URI rather than merely both existing, because the failure this guards against is a widget moving and one pointer being left behind.
+- The extension handshake is a separate matter and is not what this release fixes. `initialize` negotiates `2025-11-25` -- the newest entry in the SDK's `HANDSHAKE_PROTOCOL_VERSIONS` -- while `io.modelcontextprotocol/ui` only rides on `capabilities.extensions`, which the SDK strips below the `2026-07-28` era. The 2026 protocol does not use the `initialize` handshake at all, so a host still performing one can never see an advertised extension, and a host that gates rendering on that advertisement will not render regardless of this key.
+
 ## 0.2.28
 
 - `audio.synthesize` now carries a bundled MCP App, `ui://speko/audio-player.html`, so a host that implements the extension renders a player for the audio instead of a byte count. The tool returns base64 on `structuredContent` plus a one-line acknowledgment -- `summary_only=True`, because rendering the payload as text would flood the model's context -- which meant the audio arrived and nobody could hear it. The app reads the same `structuredContent` off `ui/notifications/tool-result`.
