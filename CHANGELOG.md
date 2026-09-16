@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.28
+
+- `audio.synthesize` now carries a bundled MCP App, `ui://speko/audio-player.html`, so a host that implements the extension renders a player for the audio instead of a byte count. The tool returns base64 on `structuredContent` plus a one-line acknowledgment -- `summary_only=True`, because rendering the payload as text would flood the model's context -- which meant the audio arrived and nobody could hear it. The app reads the same `structuredContent` off `ui/notifications/tool-result`.
+- The endpoint serves `audio/pcm;rate=24000`: headerless samples no browser will play. The app builds the 44-byte RIFF header they are missing and hands the blob to `<audio>`; anything already in a container (mp3, wav, ogg) is passed through untouched. Verified against a real 91,200-byte synthesis -- Chrome decodes the wrapped WAV at 24 kHz and reports 1.9s, matching 91200 / (24000 x 2).
+- The HTML loads nothing from the network, so the resource declares no `csp` domains and no `permissions`; those gate camera, microphone, geolocation and clipboard, none of which playback needs. A test asserts the no-external-reference property rather than the metadata, because a `<script src>` added later would pass every metadata check and still be blocked in the iframe.
+- Binding is opt-in per tool through `APP_CONFIG_BY_FUNCTION`, and a host without the `io.modelcontextprotocol/ui` extension ignores `_meta.ui` and still receives the acknowledgment text, so a text-only client is unchanged. The app reaches the surfaces that serve the tool -- the default deployment and the `chatgpt` preset. The Anthropic `connector` preset withholds `audio.synthesize` under that directory's ban on AI-generated audio, so it is absent there for the same reason the tool is.
+
 ## 0.2.27
 
 - The directory GPT-Live pin now keeps the routed cascade for a language the S2S catalog does not serve. `GET /v1/models` reports `languages.s2s` as `en fil nb`; the pin applied to every language regardless, so an agent created on the ChatGPT surface in, say, Hindi was stamped `runMode: 's2s'` and pinned to a model with no leg for it. Speech-native agents have no STT/LLM/TTS stack, so the person could not repair it from settings either -- reported 2026-09-15 as "English is good but Hindi is not working properly, I tried changing the setting but the options are limited". The language is matched on its primary subtag, case-insensitively, so `en-GB` and `nb-NO` keep the pin and a body with no `intent.language` keeps it too (Platform defaults that to English).
