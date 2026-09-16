@@ -22,12 +22,14 @@ from urllib.parse import parse_qsl, urlencode, urlparse
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.apps import AppConfig
 from fastmcp.exceptions import ToolError
 from fastmcp.tools import ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
 from spekoai_mcp import http_client
+from spekoai_mcp.apps import AUDIO_PLAYER_APP
 from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
 from spekoai_mcp.tool_text import payload_text
 
@@ -377,6 +379,13 @@ READ_ONLY_ACTION_TOOL_NAMES = {
     "build_session_config",
     "parse_external_config",
     "render_briefing",
+}
+
+# Tools whose result is rendered by a bundled MCP App. A host without the
+# `io.modelcontextprotocol/ui` extension ignores the metadata and still gets
+# the tool's text block, so binding one is additive.
+APP_CONFIG_BY_FUNCTION: dict[str, AppConfig] = {
+    "synthesize_speech": AUDIO_PLAYER_APP,
 }
 
 DESTRUCTIVE_ACTION_TOOL_NAMES = {
@@ -1241,6 +1250,7 @@ def register_action_tools(mcp: FastMCP) -> None:
             attributed_tool,
             name=public_name,
             title=title,
+            app=APP_CONFIG_BY_FUNCTION.get(name),
             output_schema=SPEKO_API_OUTPUT_SCHEMA,
             annotations=ToolAnnotations(
                 title=title,

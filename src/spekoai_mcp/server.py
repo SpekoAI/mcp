@@ -20,6 +20,7 @@ from starlette.types import Message as ASGIMessage
 from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
+from spekoai_mcp.apps import register_apps
 from spekoai_mcp.attribution import (
     InvocationAttributionMiddleware,
     observed_host,
@@ -128,6 +129,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     register_generated_action_tools(mcp)
     register_docs_tools(mcp)
     register_resources(mcp)
+    register_apps(mcp)
     register_prompts(mcp)
     register_builder_tools(mcp)
     mcp.add_middleware(InvocationAttributionMiddleware())
