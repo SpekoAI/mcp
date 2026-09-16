@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speko audio</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --surface: #f7f8fa;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #17181b;
+        --fg: #f3f4f6;
+        --muted: #9ca3af;
+        --line: #2c2e33;
+        --accent: #7aa2ff;
+        --surface: #202126;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 14px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        justify-content: space-between;
+      }
+      .title {
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.01em;
+      }
+      audio {
+        width: 100%;
+        margin-top: 12px;
+        display: block;
+      }
+      .meta {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+      }
+      .dot::before {
+        content: "·";
+        margin: 0 6px;
+      }
+      a.download {
+        color: var(--accent);
+        font-size: 12px;
+        text-decoration: none;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 4px 9px;
+        white-space: nowrap;
+      }
+      a.download:hover {
+        border-color: var(--accent);
+      }
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .error {
+        color: #dc2626;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      :root[data-theme="dark"] .error {
+        color: #f87171;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="row">
+        <span class="title">Speko speech</span>
+        <a class="download" id="download" hidden download>Download</a>
+      </div>
+      <p class="status" id="status">Waiting for audio…</p>
+      <p class="error" id="error" hidden></p>
+      <audio id="player" controls preload="auto" hidden></audio>
+      <p class="meta" id="meta" hidden></p>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var PROTOCOL_VERSION = "2026-01-26";
+        var statusEl = document.getElementById("status");
+        var errorEl = document.getElementById("error");
+        var playerEl = document.getElementById("player");
+        var metaEl = document.getElementById("meta");
+        var downloadEl = document.getElementById("download");
+        var objectUrl = null;
+        var rendered = false;
+
+        function fail(message) {
+          statusEl.hidden = true;
+          errorEl.hidden = false;
+          errorEl.textContent = message;
+        }
+
+        function send(message) {
+          window.parent.postMessage(message, "*");
+        }
+
+        // --- decoding -------------------------------------------------
+
+        function bytesFromBase64(b64) {
+          var binary = atob(b64);
+          var out = new Uint8Array(binary.length);
+          for (var i = 0; i < binary.length; i += 1) {
+            out[i] = binary.charCodeAt(i);
+          }
+          return out;
+        }
+
+        // `audio/pcm;rate=24000` and `audio/l16;rate=16000` are headerless
+        // signed 16-bit little-endian mono — no browser plays them directly,
+        // so wrap the samples in the 44-byte RIFF/WAVE header they are
+        // missing. Everything else (mp3, wav, ogg) is already a container.
+        function isRawPcm(contentType) {
+          var base = contentType.split(";")[0].trim().toLowerCase();
+          return base === "audio/pcm" || base === "audio/l16" || base === "audio/x-raw";
+        }
+
+        function rateFromContentType(contentType, fallback) {
+          var match = /(?:^|;)\s*rate=(\d+)/i.exec(contentType || "");
+          var parsed = match ? parseInt(match[1], 10) : NaN;
+          if (!isNaN(parsed) && parsed > 0) return parsed;
+          var alt = parseInt(fallback, 10);
+          return !isNaN(alt) && alt > 0 ? alt : 24000;
+        }
+
+        function wavFromPcm(pcm, sampleRate) {
+          var channels = 1;
+          var bitsPerSample = 16;
+          var blockAlign = (channels * bitsPerSample) / 8;
+          var byteRate = sampleRate * blockAlign;
+          var header = new ArrayBuffer(44);
+          var view = new DataView(header);
+
+          function ascii(offset, text) {
+            for (var i = 0; i < text.length; i += 1) {
+              view.setUint8(offset + i, text.charCodeAt(i));
+            }
+          }
+
+          ascii(0, "RIFF");
+          view.setUint32(4, 36 + pcm.length, true);
+          ascii(8, "WAVE");
+          ascii(12, "fmt ");
+          view.setUint32(16, 16, true); // PCM chunk size
+          view.setUint16(20, 1, true); // format = PCM
+          view.setUint16(22, channels, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, byteRate, true);
+          view.setUint16(32, blockAlign, true);
+          view.setUint16(34, bitsPerSample, true);
+          ascii(36, "data");
+          view.setUint32(40, pcm.length, true);
+
+          return new Blob([header, pcm], { type: "audio/wav" });
+        }
+
+        function extensionFor(mimeType) {
+          var base = mimeType.split(";")[0].trim().toLowerCase();
+          var known = {
+            "audio/wav": "wav",
+            "audio/x-wav": "wav",
+            "audio/mpeg": "mp3",
+            "audio/mp3": "mp3",
+            "audio/ogg": "ogg",
+            "audio/opus": "opus",
+            "audio/webm": "webm",
+            "audio/flac": "flac",
+            "audio/aac": "aac",
+          };
+          return known[base] || "bin";
+        }
+
+        function formatBytes(bytes) {
+          if (typeof bytes !== "number" || !isFinite(bytes)) return null;
+          if (bytes < 1024) return bytes + " B";
+          if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+          return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        }
+
+        // --- rendering ------------------------------------------------
+
+        function render(payload) {
+          if (rendered) return;
+
+          var b64 = payload && payload.audio_base64;
+          if (typeof b64 !== "string" || b64.length === 0) {
+            fail("The tool returned no audio.");
+            return;
+          }
+
+          var contentType = payload.content_type || "audio/wav";
+          var bytes;
+          try {
+            bytes = bytesFromBase64(b64);
+          } catch (err) {
+            fail("Could not decode the audio payload: " + err.message);
+            return;
+          }
+
+          var blob;
+          var sampleRate = null;
+          if (isRawPcm(contentType)) {
+            sampleRate = rateFromContentType(contentType, payload.sample_rate);
+            blob = wavFromPcm(bytes, sampleRate);
+          } else {
+            blob = new Blob([bytes], { type: contentType });
+          }
+
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          objectUrl = URL.createObjectURL(blob);
+
+          playerEl.src = objectUrl;
+          playerEl.hidden = false;
+          statusEl.hidden = true;
+          rendered = true;
+
+          downloadEl.href = objectUrl;
+          downloadEl.download = "speko-speech." + extensionFor(blob.type);
+          downloadEl.hidden = false;
+
+          var parts = [];
+          if (payload.provider) parts.push(payload.provider);
+          if (payload.model) parts.push(payload.model);
+          if (sampleRate) {
+            parts.push(sampleRate / 1000 + " kHz");
+            // 16-bit mono: two bytes per sample.
+            parts.push((bytes.length / 2 / sampleRate).toFixed(1) + "s");
+          }
+          var size = formatBytes(
+            typeof payload.size_bytes === "number" ? payload.size_bytes : bytes.length
+          );
+          if (size) parts.push(size);
+
+          metaEl.innerHTML = "";
+          parts.forEach(function (part, index) {
+            var span = document.createElement("span");
+            if (index > 0) span.className = "dot";
+            span.appendChild(document.createTextNode(part));
+            metaEl.appendChild(span);
+          });
+          metaEl.hidden = parts.length === 0;
+        }
+
+        function applyTheme(hostContext) {
+          var theme = hostContext && hostContext.theme;
+          document.documentElement.setAttribute(
+            "data-theme",
+            theme === "dark" ? "dark" : "light"
+          );
+        }
+
+        // --- host handshake -------------------------------------------
+        // Listen before initializing: a host is free to push the tool result
+        // as soon as the frame loads, and a dropped notification leaves the
+        // widget spinning on "Waiting for audio…" forever.
+
+        var INITIALIZE_ID = 1;
+
+        window.addEventListener("message", function (event) {
+          if (event.source !== window.parent) return;
+          var message = event.data;
+          if (!message || message.jsonrpc !== "2.0") return;
+
+          if (message.id === INITIALIZE_ID && message.result) {
+            applyTheme(message.result.hostContext);
+            return;
+          }
+
+          if (message.method === "ui/notifications/tool-result") {
+            var params = message.params || {};
+            if (params.isError) {
+              var text = (params.content || [])
+                .filter(function (block) {
+                  return block && block.type === "text";
+                })
+                .map(function (block) {
+                  return block.text;
+                })
+                .join(" ");
+              fail(text || "Speech synthesis failed.");
+              return;
+            }
+            render(params.structuredContent);
+            return;
+          }
+
+          if (message.method === "ui/notifications/host-context-changed") {
+            applyTheme((message.params || {}).hostContext);
+          }
+        });
+
+        send({
+          jsonrpc: "2.0",
+          id: INITIALIZE_ID,
+          method: "ui/initialize",
+          params: {
+            capabilities: {},
+            clientInfo: { name: "speko-audio-player", version: "1.0.0" },
+            protocolVersion: PROTOCOL_VERSION,
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>
