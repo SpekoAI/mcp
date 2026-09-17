@@ -1,0 +1,975 @@
+{
+  "schema": "speko.routing.tts",
+  "schema_version": "0.1.0",
+  "generated_at": "2026-04-25",
+  "language_scope": [
+    "en"
+  ],
+  "scoring": {
+    "weights": {
+      "cer": 0.5,
+      "ttfb": 0.3,
+      "cost": 0.2,
+      "_note": "v0. Quality axis = round-trip CER (intelligibility), substituting for Speko Index until Matrix v1 ships. Naturalness intentionally NOT weighted \u2014 deferred until human-anchor study lands."
+    },
+    "normalization": {
+      "method": "min-max-inverted (cer, ttfb, cost \u2014 all lower=better)",
+      "formula": "norm(x) = (max - x) / (max - min); computed over the active candidate set after hard filters",
+      "cost_conversion": "Char-billed providers converted to $/min via 900 chars/min (\u2248150 wpm \u00d7 6 chars/word)."
+    },
+    "composite_formula": "composite = 0.50 * cer_norm + 0.30 * ttfb_norm + 0.20 * cost_norm",
+    "hard_filters": {
+      "streaming": {
+        "max_ttfb_p50_ms": 1500,
+        "exclude_warned": true,
+        "requires_streaming_protocol": true,
+        "requires_language": "en"
+      },
+      "batch": {
+        "exclude_warned": true,
+        "requires_language": "en"
+      }
+    },
+    "tiebreaker": "If composites are within 0.01, prefer lower TTFB for streaming and lower cost for batch.",
+    "deferred_axes": [
+      "naturalness (MOS / Arena Elo) \u2014 deferred until human-anchor study or Speko TTS Arena bootstrap",
+      "Speko Index from Matrix v1 \u2014 placeholder; will replace cer_norm as the quality signal once shipped"
+    ]
+  },
+  "providers": [
+    {
+      "id": "elevenlabs-v3-roger",
+      "canonical_id": "elevenlabs-v3",
+      "name": "ElevenLabs v3",
+      "model": "v3 (alpha)",
+      "voice_id": "Roger",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "http",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream",
+        "batch": "https://api.elevenlabs.io/v1/text-to-speech/{voice}"
+      },
+      "languages_count": 70,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.045,
+        "per_million_chars_usd": 375,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 2.163,
+        "round_trip_cer_ci95_pct": [
+          1.249,
+          3.197
+        ],
+        "round_trip_wer_pct": 4.253,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 1694,
+        "batch_ttfb_p95_ms": 2278,
+        "total_synth_p50_ms": 1746,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 1563,
+          "europe-west3": 671,
+          "asia-southeast1": 713
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": "Streams via HTTP-chunked /stream endpoint (verified 2026-04-25). The WebSocket /stream-input endpoint is not yet supported on this alpha model.",
+      "source_url": "https://elevenlabs.io/docs/models",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "streaming TTFB 1563ms > cutoff 1500ms"
+        },
+        "streaming.europe-west3": {
+          "composite": 0.5052,
+          "cer_norm": 0.8255,
+          "ttfb_norm": 0.3083,
+          "cost_norm": 0.0,
+          "ttfb_p50_ms_used": 671,
+          "cer_pct_used": 2.163,
+          "cost_per_min_used": 0.045,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.5099,
+          "cer_norm": 0.8255,
+          "ttfb_norm": 0.3239,
+          "cost_norm": 0.0,
+          "ttfb_p50_ms_used": 713,
+          "cer_pct_used": 2.163,
+          "cost_per_min_used": 0.045,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.5067,
+          "cer_norm": 0.8255,
+          "ttfb_norm": 0.3132,
+          "cost_norm": 0.0,
+          "ttfb_p50_ms_used": 1694,
+          "cer_pct_used": 2.163,
+          "cost_per_min_used": 0.045,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "elevenlabs-multilingual-v2-roger",
+      "canonical_id": "elevenlabs-multilingual-v2",
+      "name": "ElevenLabs",
+      "model": "Multilingual v2",
+      "voice_id": "Roger",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "ws",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://api.elevenlabs.io/v1/text-to-speech/{voice}/stream-input",
+        "batch": "https://api.elevenlabs.io/v1/text-to-speech/{voice}"
+      },
+      "languages_count": 29,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.03,
+        "per_million_chars_usd": 250,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 2.112,
+        "round_trip_cer_ci95_pct": [
+          1.197,
+          3.199
+        ],
+        "round_trip_wer_pct": 4.182,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 1427,
+        "batch_ttfb_p95_ms": 1712,
+        "total_synth_p50_ms": 1445,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 429,
+          "europe-west3": 406,
+          "asia-southeast1": 413
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": null,
+      "source_url": "https://elevenlabs.io/docs/models",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.5874,
+          "cer_norm": 0.8596,
+          "ttfb_norm": 0.5253,
+          "cost_norm": 0.0,
+          "ttfb_p50_ms_used": 429,
+          "cer_pct_used": 2.112,
+          "cost_per_min_used": 0.03,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.6907,
+          "cer_norm": 0.8596,
+          "ttfb_norm": 0.6404,
+          "cost_norm": 0.344,
+          "ttfb_p50_ms_used": 406,
+          "cer_pct_used": 2.112,
+          "cost_per_min_used": 0.03,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.6974,
+          "cer_norm": 0.8596,
+          "ttfb_norm": 0.6625,
+          "cost_norm": 0.344,
+          "ttfb_p50_ms_used": 413,
+          "cer_pct_used": 2.112,
+          "cost_per_min_used": 0.03,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.6361,
+          "cer_norm": 0.8596,
+          "ttfb_norm": 0.4584,
+          "cost_norm": 0.344,
+          "ttfb_p50_ms_used": 1427,
+          "cer_pct_used": 2.112,
+          "cost_per_min_used": 0.03,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "elevenlabs-flash-roger",
+      "canonical_id": "elevenlabs-flash",
+      "name": "ElevenLabs",
+      "model": "Flash v2.5",
+      "voice_id": "Roger",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "ws",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://api.elevenlabs.io/v1/text-to-speech/{voice}/stream-input",
+        "batch": "https://api.elevenlabs.io/v1/text-to-speech/{voice}"
+      },
+      "languages_count": 32,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.015,
+        "per_million_chars_usd": 125,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 2.718,
+        "round_trip_cer_ci95_pct": [
+          1.386,
+          4.423
+        ],
+        "round_trip_wer_pct": 5.026,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 431,
+        "batch_ttfb_p95_ms": 611,
+        "total_synth_p50_ms": 484,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 138,
+          "europe-west3": 119,
+          "asia-southeast1": 114
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": null,
+      "source_url": "https://elevenlabs.io/docs/models",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.6322,
+          "cer_norm": 0.4545,
+          "ttfb_norm": 1.0,
+          "cost_norm": 0.5245,
+          "ttfb_p50_ms_used": 138,
+          "cer_pct_used": 2.718,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.6649,
+          "cer_norm": 0.4545,
+          "ttfb_norm": 1.0,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 119,
+          "cer_pct_used": 2.718,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.6649,
+          "cer_norm": 0.4545,
+          "ttfb_norm": 1.0,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 114,
+          "cer_pct_used": 2.718,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.6649,
+          "cer_norm": 0.4545,
+          "ttfb_norm": 1.0,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 431,
+          "cer_pct_used": 2.718,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "openai-gpt4o-mini-tts-alloy",
+      "canonical_id": "openai-gpt4o-mini-tts",
+      "name": "OpenAI",
+      "model": "gpt-4o-mini-tts",
+      "voice_id": "alloy",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "http",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "https://api.openai.com/v1/audio/speech (HTTP-chunked)",
+        "batch": "https://api.openai.com/v1/audio/speech"
+      },
+      "languages_count": 50,
+      "billing_model": "per-token",
+      "cost_per_minute_usd": {
+        "value": 0.015,
+        "per_million_chars_usd": 0.6,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 1.991,
+        "round_trip_cer_ci95_pct": [
+          1.164,
+          2.95
+        ],
+        "round_trip_wer_pct": 4.319,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 940,
+        "batch_ttfb_p95_ms": 1305,
+        "total_synth_p50_ms": 1794,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 751,
+          "europe-west3": 917,
+          "asia-southeast1": 948
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": null,
+      "source_url": "https://platform.openai.com/docs/pricing",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.5751,
+          "cer_norm": 0.9405,
+          "ttfb_norm": 0.0,
+          "cost_norm": 0.5245,
+          "ttfb_p50_ms_used": 751,
+          "cer_pct_used": 1.991,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.6079,
+          "cer_norm": 0.9405,
+          "ttfb_norm": 0.0,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 917,
+          "cer_pct_used": 1.991,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.6255,
+          "cer_norm": 0.9405,
+          "ttfb_norm": 0.0587,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 948,
+          "cer_pct_used": 1.991,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.8248,
+          "cer_norm": 0.9405,
+          "ttfb_norm": 0.7232,
+          "cost_norm": 0.6881,
+          "ttfb_p50_ms_used": 940,
+          "cer_pct_used": 1.991,
+          "cost_per_min_used": 0.015,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "qwen3-tts-flash-chelsie",
+      "canonical_id": "qwen3-tts-flash",
+      "name": "Qwen",
+      "model": "qwen3-tts-flash",
+      "voice_id": "Chelsie",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "ws",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference",
+        "batch": "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+      },
+      "languages_count": 17,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.0014,
+        "per_million_chars_usd": 1.5,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 3.159,
+        "round_trip_cer_ci95_pct": [
+          2.001,
+          4.563
+        ],
+        "round_trip_wer_pct": 5.513,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 2270,
+        "batch_ttfb_p95_ms": 3146,
+        "total_synth_p50_ms": 2543,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 588,
+          "europe-west3": 604,
+          "asia-southeast1": 151
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": "REST is two-hop: API returns audio URL, client must GET it. Adds ~1.4s vs single-hop providers.",
+      "source_url": "https://www.alibabacloud.com/help/en/model-studio/qwen-tts-api",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.3597,
+          "cer_norm": 0.1598,
+          "ttfb_norm": 0.2659,
+          "cost_norm": 1.0,
+          "ttfb_p50_ms_used": 588,
+          "cer_pct_used": 3.159,
+          "cost_per_min_used": 0.0014,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.3975,
+          "cer_norm": 0.1598,
+          "ttfb_norm": 0.3922,
+          "cost_norm": 1.0,
+          "ttfb_p50_ms_used": 604,
+          "cer_pct_used": 3.159,
+          "cost_per_min_used": 0.0014,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.5674,
+          "cer_norm": 0.1598,
+          "ttfb_norm": 0.9582,
+          "cost_norm": 1.0,
+          "ttfb_p50_ms_used": 151,
+          "cer_pct_used": 3.159,
+          "cost_per_min_used": 0.0014,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.2799,
+          "cer_norm": 0.1598,
+          "ttfb_norm": 0.0,
+          "cost_norm": 1.0,
+          "ttfb_p50_ms_used": 2270,
+          "cer_pct_used": 3.159,
+          "cost_per_min_used": 0.0014,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "google-chirp3-hd-en-us-chirp3-hd-leda",
+      "canonical_id": "google-chirp3-hd",
+      "name": "Google Cloud",
+      "model": "Chirp 3 HD",
+      "voice_id": "en-US-Chirp3-HD-Leda",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "grpc",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "googleapis.com/text-to-speech/v1beta1.streamingSynthesize (gRPC)",
+        "batch": "https://texttospeech.googleapis.com/v1/text:synthesize"
+      },
+      "languages_count": 50,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.027,
+        "per_million_chars_usd": 30,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 3.398,
+        "round_trip_cer_ci95_pct": [
+          1.357,
+          6.492
+        ],
+        "round_trip_wer_pct": 4.916,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 1405,
+        "batch_ttfb_p95_ms": 2159,
+        "total_synth_p50_ms": 1449,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 152,
+          "europe-west3": 224,
+          "asia-southeast1": 244
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": null,
+      "source_url": "https://cloud.google.com/text-to-speech/pricing",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.3141,
+          "cer_norm": 0.0,
+          "ttfb_norm": 0.9772,
+          "cost_norm": 0.1049,
+          "ttfb_p50_ms_used": 152,
+          "cer_pct_used": 3.398,
+          "cost_per_min_used": 0.027,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.3431,
+          "cer_norm": 0.0,
+          "ttfb_norm": 0.8684,
+          "cost_norm": 0.4128,
+          "ttfb_p50_ms_used": 224,
+          "cer_pct_used": 3.398,
+          "cost_per_min_used": 0.027,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.3386,
+          "cer_norm": 0.0,
+          "ttfb_norm": 0.8533,
+          "cost_norm": 0.4128,
+          "ttfb_p50_ms_used": 244,
+          "cer_pct_used": 3.398,
+          "cost_per_min_used": 0.027,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.2237,
+          "cer_norm": 0.0,
+          "ttfb_norm": 0.4704,
+          "cost_norm": 0.4128,
+          "ttfb_p50_ms_used": 1405,
+          "cer_pct_used": 3.398,
+          "cost_per_min_used": 0.027,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-tts-kore",
+      "canonical_id": "gemini-3.1-flash-tts",
+      "name": "Gemini",
+      "model": "3.1-flash-tts-preview",
+      "voice_id": "Kore",
+      "status": "production",
+      "modes_supported": [
+        "batch"
+      ],
+      "protocols": {
+        "streaming": null,
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": null,
+        "batch": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+      },
+      "languages_count": 30,
+      "billing_model": "per-token",
+      "cost_per_minute_usd": {
+        "value": 0.009,
+        "per_million_chars_usd": 10,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 2.042,
+        "round_trip_cer_ci95_pct": [
+          1.197,
+          3.027
+        ],
+        "round_trip_wer_pct": 4.084,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 7014,
+        "batch_ttfb_p95_ms": 10563,
+        "total_synth_p50_ms": 7498,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": null
+      },
+      "warning": "Preview tier \u2014 TTFB anomalously high vs. flash class; use 2.5 for production.",
+      "observed_limitations": null,
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "no streaming endpoint"
+        },
+        "streaming.europe-west3": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "no streaming endpoint"
+        },
+        "streaming.asia-southeast1": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "no streaming endpoint"
+        },
+        "batch": {
+          "composite": null,
+          "passed_filter": false,
+          "filter_reason": "warned: Preview tier \u2014 TTFB anomalously high vs. flash class; use 2."
+        }
+      }
+    },
+    {
+      "id": "xai-grok-tts-eve",
+      "canonical_id": "xai-grok-tts",
+      "name": "xAI",
+      "model": "grok-tts",
+      "voice_id": "eve",
+      "status": "production",
+      "modes_supported": [
+        "batch",
+        "streaming"
+      ],
+      "protocols": {
+        "streaming": "ws",
+        "batch": "https"
+      },
+      "endpoints": {
+        "streaming": "wss://api.x.ai/v1/tts",
+        "batch": "https://api.x.ai/v1/tts"
+      },
+      "languages_count": 1,
+      "billing_model": "per-token",
+      "cost_per_minute_usd": {
+        "value": 0.0045,
+        "per_million_chars_usd": 5,
+        "conversion_note": "Char-billed providers: per-min computed from costPerMillionChars \u00d7 900 chars/min \u00f7 1M."
+      },
+      "english": {
+        "round_trip_cer_pct": 1.902,
+        "round_trip_cer_ci95_pct": [
+          1.123,
+          2.827
+        ],
+        "round_trip_wer_pct": 3.857,
+        "n_batch": 50,
+        "batch_ttfb_p50_ms": 817,
+        "batch_ttfb_p95_ms": 1127,
+        "total_synth_p50_ms": 2691,
+        "streaming_ttfb_p50_ms_by_region": {
+          "us-east4": 533,
+          "europe-west3": 717,
+          "asia-southeast1": 1000
+        },
+        "streaming_ttfb_p50_ms_flat": null,
+        "n_stream": 20
+      },
+      "warning": null,
+      "observed_limitations": null,
+      "source_url": "https://docs.x.ai/docs/tutorial-text-to-speech",
+      "scores": {
+        "streaming.us-east4": {
+          "composite": 0.785,
+          "cer_norm": 1.0,
+          "ttfb_norm": 0.3556,
+          "cost_norm": 0.8916,
+          "ttfb_p50_ms_used": 533,
+          "cer_pct_used": 1.902,
+          "cost_per_min_used": 0.0045,
+          "passed_filter": true
+        },
+        "streaming.europe-west3": {
+          "composite": 0.761,
+          "cer_norm": 1.0,
+          "ttfb_norm": 0.2506,
+          "cost_norm": 0.9289,
+          "ttfb_p50_ms_used": 717,
+          "cer_pct_used": 1.902,
+          "cost_per_min_used": 0.0045,
+          "passed_filter": true
+        },
+        "streaming.asia-southeast1": {
+          "composite": 0.6858,
+          "cer_norm": 1.0,
+          "ttfb_norm": 0.0,
+          "cost_norm": 0.9289,
+          "ttfb_p50_ms_used": 1000,
+          "cer_pct_used": 1.902,
+          "cost_per_min_used": 0.0045,
+          "passed_filter": true
+        },
+        "batch": {
+          "composite": 0.9228,
+          "cer_norm": 1.0,
+          "ttfb_norm": 0.7901,
+          "cost_norm": 0.9289,
+          "ttfb_p50_ms_used": 817,
+          "cer_pct_used": 1.902,
+          "cost_per_min_used": 0.0045,
+          "passed_filter": true
+        }
+      }
+    },
+    {
+      "id": "cartesia-sonic3",
+      "canonical_id": "cartesia-sonic3",
+      "name": "Cartesia",
+      "model": "Sonic-3",
+      "voice_id": null,
+      "status": "provisional",
+      "modes_supported": [],
+      "protocols": {},
+      "endpoints": {},
+      "languages_count": 42,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.006,
+        "per_million_chars_usd": null,
+        "conversion_note": "Provider-published rate; not measured by Speko."
+      },
+      "english": {
+        "round_trip_cer_pct": null,
+        "round_trip_wer_pct": null,
+        "n_batch": 0,
+        "batch_ttfb_p50_ms": null,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "n_stream": null
+      },
+      "warning": null,
+      "observed_limitations": "Adapter scaffolded (tts-cartesia.ts); no API key in .env yet.",
+      "source_url": "https://cartesia.ai/pricing",
+      "scores": {}
+    },
+    {
+      "id": "deepgram-aura2",
+      "canonical_id": "deepgram-aura2",
+      "name": "Deepgram",
+      "model": "Aura-2",
+      "voice_id": null,
+      "status": "provisional",
+      "modes_supported": [],
+      "protocols": {},
+      "endpoints": {},
+      "languages_count": 6000,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.018,
+        "per_million_chars_usd": null,
+        "conversion_note": "Provider-published rate; not measured by Speko."
+      },
+      "english": {
+        "round_trip_cer_pct": null,
+        "round_trip_wer_pct": null,
+        "n_batch": 0,
+        "batch_ttfb_p50_ms": null,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "n_stream": null
+      },
+      "warning": null,
+      "observed_limitations": "Not yet adapted; 2026-04-25 v0 build skipped.",
+      "source_url": "https://deepgram.com/pricing",
+      "scores": {}
+    },
+    {
+      "id": "rime-arcana",
+      "canonical_id": "rime-arcana",
+      "name": "Rime",
+      "model": "Arcana v3",
+      "voice_id": null,
+      "status": "provisional",
+      "modes_supported": [],
+      "protocols": {},
+      "endpoints": {},
+      "languages_count": 10,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.03,
+        "per_million_chars_usd": null,
+        "conversion_note": "Provider-published rate; not measured by Speko."
+      },
+      "english": {
+        "round_trip_cer_pct": null,
+        "round_trip_wer_pct": null,
+        "n_batch": 0,
+        "batch_ttfb_p50_ms": null,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "n_stream": null
+      },
+      "warning": null,
+      "observed_limitations": "Not yet adapted.",
+      "source_url": "https://rime.ai/pricing",
+      "scores": {}
+    },
+    {
+      "id": "azure-neural-tts",
+      "canonical_id": "azure-neural-tts",
+      "name": "Azure",
+      "model": "Neural TTS",
+      "voice_id": null,
+      "status": "provisional",
+      "modes_supported": [],
+      "protocols": {},
+      "endpoints": {},
+      "languages_count": 100,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.0125,
+        "per_million_chars_usd": null,
+        "conversion_note": "Provider-published rate; not measured by Speko."
+      },
+      "english": {
+        "round_trip_cer_pct": null,
+        "round_trip_wer_pct": null,
+        "n_batch": 0,
+        "batch_ttfb_p50_ms": null,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "n_stream": null
+      },
+      "warning": null,
+      "observed_limitations": "Not yet adapted.",
+      "source_url": "https://azure.microsoft.com/en-us/pricing/details/speech/",
+      "scores": {}
+    },
+    {
+      "id": "google-wavenet",
+      "canonical_id": "google-wavenet",
+      "name": "Google Cloud",
+      "model": "WaveNet",
+      "voice_id": null,
+      "status": "provisional",
+      "modes_supported": [],
+      "protocols": {},
+      "endpoints": {},
+      "languages_count": 40,
+      "billing_model": "per-character",
+      "cost_per_minute_usd": {
+        "value": 0.014,
+        "per_million_chars_usd": null,
+        "conversion_note": "Provider-published rate; not measured by Speko."
+      },
+      "english": {
+        "round_trip_cer_pct": null,
+        "round_trip_wer_pct": null,
+        "n_batch": 0,
+        "batch_ttfb_p50_ms": null,
+        "streaming_ttfb_p50_ms_by_region": null,
+        "n_stream": null
+      },
+      "warning": null,
+      "observed_limitations": "Older Google TTS model; Chirp 3 HD measured instead.",
+      "source_url": "https://cloud.google.com/text-to-speech/pricing",
+      "scores": {}
+    }
+  ],
+  "rankings": {
+    "streaming": {
+      "us-east4": {
+        "primary": "xai-grok-tts-eve",
+        "fallback_1": "elevenlabs-flash-roger",
+        "fallback_2": "elevenlabs-multilingual-v2-roger",
+        "ranked": [
+          "xai-grok-tts-eve",
+          "elevenlabs-flash-roger",
+          "elevenlabs-multilingual-v2-roger",
+          "openai-gpt4o-mini-tts-alloy",
+          "qwen3-tts-flash-chelsie",
+          "google-chirp3-hd-en-us-chirp3-hd-leda"
+        ]
+      },
+      "europe-west3": {
+        "primary": "xai-grok-tts-eve",
+        "fallback_1": "elevenlabs-multilingual-v2-roger",
+        "fallback_2": "elevenlabs-flash-roger",
+        "ranked": [
+          "xai-grok-tts-eve",
+          "elevenlabs-multilingual-v2-roger",
+          "elevenlabs-flash-roger",
+          "openai-gpt4o-mini-tts-alloy",
+          "elevenlabs-v3-roger",
+          "qwen3-tts-flash-chelsie",
+          "google-chirp3-hd-en-us-chirp3-hd-leda"
+        ]
+      },
+      "asia-southeast1": {
+        "primary": "elevenlabs-multilingual-v2-roger",
+        "fallback_1": "xai-grok-tts-eve",
+        "fallback_2": "elevenlabs-flash-roger",
+        "ranked": [
+          "elevenlabs-multilingual-v2-roger",
+          "xai-grok-tts-eve",
+          "elevenlabs-flash-roger",
+          "openai-gpt4o-mini-tts-alloy",
+          "qwen3-tts-flash-chelsie",
+          "elevenlabs-v3-roger",
+          "google-chirp3-hd-en-us-chirp3-hd-leda"
+        ]
+      }
+    },
+    "batch": {
+      "primary": "xai-grok-tts-eve",
+      "fallback_1": "openai-gpt4o-mini-tts-alloy",
+      "fallback_2": "elevenlabs-flash-roger",
+      "ranked": [
+        "xai-grok-tts-eve",
+        "openai-gpt4o-mini-tts-alloy",
+        "elevenlabs-flash-roger",
+        "elevenlabs-multilingual-v2-roger",
+        "elevenlabs-v3-roger",
+        "qwen3-tts-flash-chelsie",
+        "google-chirp3-hd-en-us-chirp3-hd-leda"
+      ]
+    }
+  },
+  "filtered_out": [
+    {
+      "id": "elevenlabs-v3-roger",
+      "mode": "streaming.us-east4",
+      "reason": "streaming TTFB 1563ms > cutoff 1500ms"
+    },
+    {
+      "id": "gemini-3.1-flash-tts-kore",
+      "mode": "streaming.us-east4",
+      "reason": "no streaming endpoint"
+    },
+    {
+      "id": "gemini-3.1-flash-tts-kore",
+      "mode": "streaming.europe-west3",
+      "reason": "no streaming endpoint"
+    },
+    {
+      "id": "gemini-3.1-flash-tts-kore",
+      "mode": "streaming.asia-southeast1",
+      "reason": "no streaming endpoint"
+    },
+    {
+      "id": "gemini-3.1-flash-tts-kore",
+      "mode": "batch",
+      "reason": "warned: Preview tier \u2014 TTFB anomalously high vs. flash class; use 2."
+    }
+  ]
+}
