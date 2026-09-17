@@ -16322,6 +16322,16 @@
                     "forwardingRequired": {
                       "type": "boolean"
                     },
+                    "forwardingSipUri": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "sipConnectionReady": {
                       "type": "boolean"
                     },
@@ -16338,6 +16348,7 @@
                     "outboundReady",
                     "agentReady",
                     "forwardingRequired",
+                    "forwardingSipUri",
                     "sipConnectionReady",
                     "issues"
                   ],
@@ -16737,6 +16748,16 @@
                   "forwardingRequired": {
                     "type": "boolean"
                   },
+                  "forwardingSipUri": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "sipConnectionReady": {
                     "type": "boolean"
                   },
@@ -16753,6 +16774,7 @@
                   "outboundReady",
                   "agentReady",
                   "forwardingRequired",
+                  "forwardingSipUri",
                   "sipConnectionReady",
                   "issues"
                 ],
