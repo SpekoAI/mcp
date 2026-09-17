@@ -17,9 +17,9 @@ from fastmcp.exceptions import ToolError
 import spekoai_mcp.action_tools as action_tools
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import (
-    DIRECTORY_S2S_LANGUAGES,
     DIRECTORY_S2S_PIN,
     INCOMPATIBLE_RUNTIME_CODE,
+    apply_directory_phone_s2s_pin,
     apply_directory_s2s_pin,
 )
 from spekoai_mcp.profiles import (
@@ -81,44 +81,153 @@ def _body_in(language: str) -> dict[str, object]:
     return body
 
 
-@pytest.mark.parametrize("language", ["hi", "es", "de", "ja", "zh", "ar"])
-def test_language_the_s2s_catalog_cannot_serve_keeps_the_cascade(
-    monkeypatch: pytest.MonkeyPatch, language: str
-) -> None:
-    """The pin chooses between two WORKING stacks, never a stack with no leg.
+@pytest.mark.parametrize("language", ["en", "hi", "es", "uz", "ja", "en-GB", "nb-NO"])
+def test_pin_applies_in_every_language(monkeypatch: pytest.MonkeyPatch, language: str) -> None:
+    """Reversal of #2693 (2026-09-17): no language guard.
 
-    `GET /v1/models` -> `languages.s2s` is `en fil nb`. Pinning a Hindi agent
-    to GPT-Live leaves it with no s2s leg and no STT/LLM/TTS knobs to repair
-    it, because a speech-native agent has no cascade stack to configure.
+    0.2.27 kept the routed cascade for a language outside the catalog's
+    `languages.s2s`. The operator decision is that directory traffic runs
+    GPT-Live in every language; a caller who wants the cascade dials an agent
+    saved that way.
     """
     monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
     body = apply_directory_s2s_pin(_body_in(language))
-    assert "runMode" not in body, f"{language} has no s2s leg; it must stay cascade"
-    assert "stackPreferences" not in body
-
-
-@pytest.mark.parametrize("language", ["en", "fil", "nb", "en-GB", "nb-NO", "EN"])
-def test_language_the_s2s_catalog_serves_still_gets_the_pin(
-    monkeypatch: pytest.MonkeyPatch, language: str
-) -> None:
-    """Matched on the primary subtag, case-insensitively: `en-GB` is `en`."""
-    monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
-    body = apply_directory_s2s_pin(_body_in(language))
-    assert body["runMode"] == "s2s"
+    assert body["runMode"] == "s2s", f"{language} must ride GPT-Live like every other language"
     assert body["stackPreferences"]["allowedProviders"]["s2s"] == [DIRECTORY_S2S_PIN]
 
 
-def test_a_body_with_no_language_keeps_the_pin(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Platform defaults an absent language to English, which s2s serves."""
+def test_a_body_with_no_language_gets_the_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
     body = _base_body()
     del body["intent"]
     assert apply_directory_s2s_pin(body)["runMode"] == "s2s"
 
 
-def test_the_served_language_set_is_the_catalog_s2s_list() -> None:
-    """Sourced from `GET /v1/models` -> `languages.s2s`, measured 2026-09-16."""
-    assert DIRECTORY_S2S_LANGUAGES == frozenset({"en", "fil", "nb"})
+def test_no_language_set_survives_the_reversal() -> None:
+    """The set was to be deleted together with the guard; it is."""
+    assert not hasattr(action_tools, "DIRECTORY_S2S_LANGUAGES")
+
+
+# --- Agentless phone calls -------------------------------------------------
+
+
+def _phone_body() -> dict[str, object]:
+    return {
+        "to": "+998901234567",
+        "intent": {"language": "uz"},
+        "systemPrompt": "You are Ava from Northside Clinic.",
+    }
+
+
+@pytest.mark.parametrize("profile", sorted(DIRECTORY_PROFILES))
+def test_agentless_phone_call_is_stamped_speech_native_on_every_directory_profile(
+    monkeypatch: pytest.MonkeyPatch, profile: str
+) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: profile)
+    body = apply_directory_phone_s2s_pin(_phone_body())
+    assert body["runMode"] == "s2s"
+
+
+def test_phone_call_naming_an_agent_keeps_that_agent_s_run_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The agent row decides; an agent created in the dashboard is the person's call."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CONNECTOR_PROFILE)
+    body = {"to": "+12015551234", "agentId": "agent_1"}
+    assert apply_directory_phone_s2s_pin(body) == {"to": "+12015551234", "agentId": "agent_1"}
+
+
+def test_phone_call_with_an_explicit_run_mode_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CONNECTOR_PROFILE)
+    body = _phone_body()
+    body["runMode"] = "cascade"
+    assert apply_directory_phone_s2s_pin(body)["runMode"] == "cascade"
+
+
+def test_phone_pin_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CONNECTOR_PROFILE)
+    once = apply_directory_phone_s2s_pin(_phone_body())
+    twice = apply_directory_phone_s2s_pin(dict(once))
+    assert once == twice
+
+
+def test_phone_pin_is_scoped_to_directory_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: "builder")
+    assert "runMode" not in apply_directory_phone_s2s_pin(_phone_body())
+
+
+@pytest.fixture
+def phone_api_mock(monkeypatch: pytest.MonkeyPatch):
+    """Capture what the relay actually sends to POST /v1/sessions/phone."""
+    calls: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "body": json.loads(request.content.decode("utf-8") or "{}"),
+            }
+        )
+        return httpx.Response(
+            200,
+            json={
+                "sessionId": "sess_1",
+                "callControlId": "sip_1",
+                "roomName": "speko_sess_1",
+                "status": "dialing",
+                "to": "+998901234567",
+                "from": "+12015550000",
+            },
+        )
+
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test-token")
+    )
+    http_client._TEST_TRANSPORT = httpx.MockTransport(handler)
+    try:
+        yield calls
+    finally:
+        http_client._TEST_TRANSPORT = None
+
+
+async def test_connector_agentless_phone_call_rides_gpt_live_on_the_wire(
+    phone_api_mock: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The body the connector's own dial puts on the wire says `runMode: 's2s'`.
+
+    2026-09-17: org 9b2baeb7's connector calls to Uzbekistan ran a routed
+    cascade (elevenlabs / baseten / soniox) because an agentless phone body
+    had no way to ask for GPT-Live. Now it does, and the relay asks.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, CONNECTOR_PROFILE)
+
+    await create_server().call_tool(
+        "sessions.phone.create",
+        {"body": {"to": "+998901234567", "intent": {"language": "uz"}}},
+    )
+
+    sent = [call for call in phone_api_mock if call["path"] == "/v1/sessions/phone"]
+    assert len(sent) == 1, phone_api_mock
+    assert sent[0]["body"]["runMode"] == "s2s"
+    assert "agentId" not in sent[0]["body"]
+
+
+async def test_connector_phone_call_to_an_agent_sends_no_run_mode(
+    phone_api_mock: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, CONNECTOR_PROFILE)
+
+    await create_server().call_tool(
+        "sessions.phone.create",
+        {"body": {"to": "+12015551234", "agentId": "agent_1"}},
+    )
+
+    sent = [call for call in phone_api_mock if call["path"] == "/v1/sessions/phone"]
+    assert len(sent) == 1, phone_api_mock
+    assert "runMode" not in sent[0]["body"]
 
 
 def test_pin_is_the_one_phone_hostable_model() -> None:

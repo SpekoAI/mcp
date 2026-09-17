@@ -114,16 +114,25 @@ def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
 # choice survives a change to that default, and so the persisted agent says
 # which model it runs rather than inheriting one.
 #
-# SCOPE, and it is narrower than "directory calls":
-#   - `agents.create` is the only create surface on a directory profile, and it
-#     exists only on `chatgpt`. The `connector` surface withholds it.
-#   - `sessions.phone.create` carries no run-mode field — a phone leg goes
-#     speech-native because the AGENT row says `runMode: 's2s'`
-#     (outbound-phone-session.ts). So a directory call reaches GPT-Live only
-#     when it dials an agent created here; a call to an agent created in the
-#     dashboard or before this change keeps that agent's own run mode.
-# Covering the rest means an inline run mode on POST /v1/sessions/phone, which
-# is a server change and deliberately not in this one.
+# SCOPE — two surfaces, one model:
+#   - `agents.create` (only on `chatgpt`; the `connector` surface withholds it)
+#     stamps the run mode and the pin onto the AGENT row, so every later call
+#     to that agent rides GPT-Live (outbound-phone-session.ts reads the row).
+#   - `sessions.phone.create` WITHOUT an `agentId` — the connector's own way of
+#     dialing, an `intent` body and nothing else — stamps `runMode: 's2s'` on
+#     the call (`apply_directory_phone_s2s_pin`). POST /v1/sessions/phone
+#     honours a per-call run mode since 2026-09-17; before that an agentless
+#     directory call could only ever be a routed cascade, which is what 2026-
+#     09-17's org 9b2baeb7 calls to Uzbekistan ran on (elevenlabs / baseten /
+#     soniox) while the person expected GPT-Live.
+#   A call that names an agent keeps that agent's own run mode: an agent
+#   created in the dashboard, or before the pin, is that person's decision.
+#
+# NO LANGUAGE GUARD (reversed 2026-09-17, was #2693). 0.2.27 kept the routed
+# cascade for a language `GET /v1/models` did not list under `languages.s2s`.
+# The operator decision is that directory traffic runs GPT-Live in every
+# language; the model speaks far more than the three the catalog advertises,
+# and a caller who wants the cascade can dial an agent saved that way.
 #
 # THE RUNTIME HOLE, and why it is answered after the fact rather than before.
 # `runtime` is an ORG-level managed setting resolved server side from a feature
@@ -138,34 +147,8 @@ def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
 # A create that was valid without the pin stays valid with it.
 DIRECTORY_S2S_PIN = "openai:gpt-live-1"
 
-#: Languages the S2S catalog serves, from `GET /v1/models` -> `languages.s2s`
-#: (measured 2026-09-16: `en fil nb`). The cascade catalog is far wider — 20
-#: LLM / 13 STT / 29 TTS routable candidates for `en` against 12 / 3 / 5 for
-#: `hi`, and a language outside this set has NO s2s leg at all.
-#:
-#: Dated and hardcoded on purpose, exactly like DIRECTORY_S2S_PIN above: the
-#: catalog lives in TypeScript (`packages/core/src/lib/types/api.ts`), this
-#: pin is a temporary operator decision, and both are meant to be deleted
-#: together rather than grown into a Python mirror of the catalog.
-DIRECTORY_S2S_LANGUAGES = frozenset({"en", "fil", "nb"})
-
 #: Platform's code for "this run mode cannot run on this org's runtime".
 INCOMPATIBLE_RUNTIME_CODE = "INCOMPATIBLE_RUNTIME_MODE"
-
-
-def _directory_s2s_serves(body: dict[str, Any]) -> bool:
-    """Whether the S2S catalog covers this body's language.
-
-    The language is matched on its PRIMARY SUBTAG, so `en-GB` and `nb-NO` are
-    served while `hi` is not. A body with no `intent.language` keeps the pin:
-    the platform defaults it to English, which s2s serves.
-    """
-    intent = body.get("intent")
-    language = intent.get("language") if isinstance(intent, dict) else None
-    if not isinstance(language, str) or not language.strip():
-        return True
-    primary = language.strip().lower().replace("_", "-").split("-", 1)[0]
-    return primary in DIRECTORY_S2S_LANGUAGES
 
 
 def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
@@ -175,25 +158,18 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     idempotent. A pin the caller supplied is REPLACED: this is the platform's
     answer for directory traffic, not a default the caller opts out of.
 
-    Two escape hatches, and neither is a preference:
+    One escape hatch, and it is a server contract rather than a preference:
+    `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
+    (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a pin
+    must never turn a valid create into a 4xx.
 
-    - `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
-      (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a
-      pin must never turn a valid create into a 4xx.
-    - A language the S2S catalog does not serve keeps the ROUTED CASCADE. The
-      pin is an operator preference between two working stacks; it is not a
-      licence to hand someone a stack that cannot speak their language. A
-      Hindi agent pinned to GPT-Live has no s2s leg, and no STT/LLM/TTS knobs
-      to fix it with either, because s2s has no stack to configure — which is
-      what "English is good but Hindi is not working properly, I tried
-      changing the setting but the options are limited" looks like from the
-      outside (reported 2026-09-15 through the ChatGPT directory listing).
+    The pin applies in every language. 0.2.27 (#2693) kept the routed cascade
+    for a language outside the catalog's `languages.s2s`; that guard was
+    reversed on 2026-09-17 — see the block comment above.
     """
     if current_profile() not in DIRECTORY_PROFILES:
         return body
     if body.get("runtime") == "pipecat":
-        return body
-    if not _directory_s2s_serves(body):
         return body
 
     body["runMode"] = "s2s"
@@ -210,6 +186,38 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     allowed["s2s"] = [DIRECTORY_S2S_PIN]
     prefs["allowedProviders"] = allowed
     body["stackPreferences"] = prefs
+    return body
+
+
+def apply_directory_phone_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
+    """Run an AGENTLESS directory phone call on GPT-Live.
+
+    `sessions.phone.create` with no `agentId` is the connector dialing on its
+    own — an `intent` and a prompt, no saved agent whose row could carry a run
+    mode. Stamp `runMode: 's2s'` so POST /v1/sessions/phone hosts the leg on
+    the worker's default speech-to-speech model (GPT-Live, the one pin above;
+    `DEFAULT_PHONE_S2S_MODEL` in services/phone-s2s.ts). Idempotent.
+
+    Left alone, and each is deliberate:
+
+    - A body that names an `agentId`: that agent's saved run mode is the
+      person's decision, whether they created it here or in the dashboard.
+    - A body that already says `runMode`: the caller chose. A model that
+      wants the cascade for one call can ask for it.
+    - Any profile outside the directory set.
+
+    Nothing here can turn a valid dial into a 4xx: an unhostable leg (no
+    OpenAI credential, worker unavailable, self-call) runs the cascade and
+    records `s2s.fallback` on the session — the same path a speech-native
+    agent takes.
+    """
+    if current_profile() not in DIRECTORY_PROFILES:
+        return body
+    if body.get("agentId"):
+        return body
+    if "runMode" in body:
+        return body
+    body["runMode"] = "s2s"
     return body
 
 
@@ -2054,7 +2062,10 @@ async def create_phone_session(
                 "string such as '+12015551234') plus either agentId "
                 "(string) or intent ({language: BCP-47 string, optimizeFor?: "
                 "'balanced'|'accuracy'|'latency'|'cost'}). Optional: from "
-                "(E.164 string; defaults to an owned phone number), voice "
+                "(E.164 string; defaults to an owned phone number), runMode "
+                "('cascade'|'s2s'; 's2s' hosts the call on the speech-to-speech "
+                "model GPT-Live instead of an STT/LLM/TTS cascade and wins over "
+                "the agent's saved run mode), voice "
                 "(string), systemPrompt (string), firstMessage (string), "
                 "llm ({temperature?: 0-2, maxTokens?: int}), ttsOptions "
                 "({sampleRate?: int, speed?: number, workload?: "
@@ -2110,6 +2121,7 @@ async def create_phone_session(
     """
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
+    apply_directory_phone_s2s_pin(body)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 
