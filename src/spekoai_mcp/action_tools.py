@@ -249,15 +249,23 @@ CREDIT_EXHAUSTED_NEXT_STEP = (
 PHONE_NUMBER_SCOPE_REQUIRED_CODE = "PHONE_NUMBER_SCOPE_REQUIRED"
 PHONE_NUMBER_CONSENT_REQUIRED_CODE = "PHONE_NUMBER_CONSENT_REQUIRED"
 
+# Both strings deliberately defer to the URL Platform put in the error message
+# instead of naming a destination themselves. Platform picks that URL from the
+# calling harness - the Claude directory page, the ChatGPT plugin page, or the
+# workspace phone-authorization page when it cannot name one - and a fixed
+# instruction here cannot know which applied. Saying "the connector's consent
+# screen" while the message names a settings URL hands the model two conflicting
+# destinations, which is what this previously did.
 PHONE_NUMBER_AUTH_NEXT_STEPS: dict[str, str] = {
     PHONE_NUMBER_SCOPE_REQUIRED_CODE: (
         "Tell the user this connector was authorized before phone calling was enabled "
-        "and must be fully disconnected and reconnected (not just refreshed) to grant "
-        "phone-calling permission. Do not retry the call until that is done."
+        "and must be reconnected - give them the link in the message above, which is "
+        "the page that can re-authorize it. A token refresh never adds this "
+        "permission. Do not retry the call until they confirm they have done it."
     ),
     PHONE_NUMBER_CONSENT_REQUIRED_CODE: (
-        "Tell the user to accept the phone-use authorization for this workspace, shown "
-        "on the connector's consent screen, then retry."
+        "Tell the user to accept the phone-use consent for this workspace at the link "
+        "in the message above, then retry. No reconnect is needed."
     ),
 }
 CREATE_AGENT_TOOL_NEXT_STEP = (

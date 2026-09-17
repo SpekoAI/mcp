@@ -463,6 +463,47 @@ def test_phone_scope_and_consent_403_map_to_distinct_next_steps() -> None:
     assert "consent" in consent_step.lower()
 
 
+def _error_response(payload: dict[str, Any]) -> httpx.Response:
+    return httpx.Response(
+        403, json=payload, request=httpx.Request("POST", "https://api.speko.dev/v1/sessions/phone")
+    )
+
+
+def test_platform_hint_reaches_the_model() -> None:
+    # Platform attaches `hint` to every coded error from the curated registry,
+    # and the parser used to read only `error`/`code` - so the one field written
+    # to tell a caller what to DO never reached an MCP user on any error.
+    details = http_client._parse_api_error(
+        _error_response(
+            {
+                "error": "This connection is not authorized for phone calling.",
+                "code": "PHONE_NUMBER_SCOPE_REQUIRED",
+                "hint": "Re-authorize the connector at the page named above.",
+            }
+        )
+    )
+
+    assert details.code == "PHONE_NUMBER_SCOPE_REQUIRED"
+    assert "Re-authorize the connector" in details.message
+
+
+def test_a_hint_the_message_already_states_is_not_repeated() -> None:
+    # The phone 403s name their URL inline, so a hint restating it would read
+    # the remedy to the user twice in one sentence.
+    hint = "Open https://platform.speko.ai/settings/phone-authorization to accept."
+    details = http_client._parse_api_error(
+        _error_response({"error": f"Not accepted yet. {hint}", "code": "X", "hint": hint})
+    )
+
+    assert details.message.count("settings/phone-authorization") == 1
+
+
+def test_an_error_without_a_hint_is_unchanged() -> None:
+    details = http_client._parse_api_error(_error_response({"error": "Nope.", "code": "X"}))
+
+    assert details.message == "Nope."
+
+
 def test_unrecognized_403_falls_back_to_generic_auth_message() -> None:
     other = http_client.SpekoApiError(403, "Forbidden", trace_id="t3", code="SOME_OTHER_CODE")
 

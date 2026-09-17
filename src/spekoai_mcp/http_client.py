@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, NoReturn
 from urllib.parse import quote, urlencode
 from uuid import uuid4
@@ -254,6 +254,30 @@ def _raise_api_error(resp: httpx.Response) -> NoReturn:
     )
 
 
+def _error_hint(payload: dict[str, Any]) -> str | None:
+    """Platform's remediation sentence for this error code, when it published one.
+
+    Every coded error response carries one: `middleware/enrich-errors.ts` adds
+    `hint` from the curated registry in `packages/core`. It was being dropped
+    here - the parser read only `error`/`message`/`detail`/`code` - so the one
+    field written specifically to tell a caller what to DO never reached an MCP
+    user, on any error, while reaching SDK and REST callers normally.
+    """
+    hint = payload.get("hint")
+    return hint if isinstance(hint, str) and hint else None
+
+
+def _with_hint(details: _ApiErrorDetails, hint: str | None) -> _ApiErrorDetails:
+    """Append `hint` to the message unless the message already says it.
+
+    A route that wrote the remedy into its own prose (the phone-authorization
+    403s name their URL inline) would otherwise read it twice.
+    """
+    if hint is None or hint in details.message:
+        return details
+    return replace(details, message=f"{details.message} {hint}"[:1000])
+
+
 def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
     trace_id = resp.headers.get("x-request-id") or resp.headers.get("x-trace-id")
     try:
@@ -263,6 +287,7 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
     if isinstance(payload, dict):
         code = _error_code(payload)
         balance_usd = _balance_usd(payload)
+        hint = _error_hint(payload)
         trace = payload.get("trace_id") or payload.get("traceId")
         if isinstance(trace, str) and trace:
             trace_id = trace
@@ -275,15 +300,19 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
             nested_code = detail.get("code")
             if isinstance(nested_message, str) and nested_message:
                 prefix = f"{nested_code}: " if isinstance(nested_code, str) else ""
-                return _ApiErrorDetails(
-                    f"{prefix}{nested_message}"[:500], trace_id, code, balance_usd
-                )
+                nested = f"{prefix}{nested_message}"[:500]
+                return _with_hint(_ApiErrorDetails(nested, trace_id, code, balance_usd), hint)
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
             if issues:
-                return _ApiErrorDetails(f"{detail}: {issues}"[:500], trace_id, code, balance_usd)
-            return _ApiErrorDetails(detail[:500], trace_id, code, balance_usd)
-        return _ApiErrorDetails(json.dumps(payload)[:500], trace_id, code, balance_usd)
+                return _with_hint(
+                    _ApiErrorDetails(f"{detail}: {issues}"[:500], trace_id, code, balance_usd),
+                    hint,
+                )
+            return _with_hint(_ApiErrorDetails(detail[:500], trace_id, code, balance_usd), hint)
+        return _with_hint(
+            _ApiErrorDetails(json.dumps(payload)[:500], trace_id, code, balance_usd), hint
+        )
     return _ApiErrorDetails(json.dumps(payload)[:500], trace_id)
 
 
