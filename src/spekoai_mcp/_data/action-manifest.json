@@ -7016,23 +7016,40 @@
                           "type": "object",
                           "properties": {
                             "clip": {
-                              "type": "string",
-                              "enum": [
-                                "office-ambience",
-                                "city-ambience",
-                                "forest-ambience",
-                                "crowded-room",
-                                "keyboard-typing",
-                                "keyboard-typing2"
-                              ]
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            "soundId": {
+                              "type": "string"
                             },
                             "volume": {
                               "type": "number"
                             }
                           },
-                          "required": [
-                            "clip"
-                          ],
+                          "additionalProperties": false
+                        },
+                        "toolSound": {
+                          "type": "object",
+                          "properties": {
+                            "clip": {
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            "soundId": {
+                              "type": "string"
+                            },
+                            "volume": {
+                              "type": "number"
+                            },
+                            "minDurationMs": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "startDelayMs": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
                           "additionalProperties": false
                         }
                       },
@@ -7269,19 +7286,19 @@
                       "type": "object",
                       "properties": {
                         "preCall": {
-                          "$ref": "#/$defs/__schema1"
+                          "$ref": "#/$defs/__schema2"
                         },
                         "postCall": {
-                          "$ref": "#/$defs/__schema1"
+                          "$ref": "#/$defs/__schema2"
                         },
                         "status": {
-                          "$ref": "#/$defs/__schema1"
+                          "$ref": "#/$defs/__schema2"
                         },
                         "analysis": {
-                          "$ref": "#/$defs/__schema1"
+                          "$ref": "#/$defs/__schema2"
                         },
                         "recording": {
-                          "$ref": "#/$defs/__schema1"
+                          "$ref": "#/$defs/__schema2"
                         }
                       },
                       "additionalProperties": false
@@ -7443,6 +7460,17 @@
             }
           },
           "__schema1": {
+            "type": "string",
+            "enum": [
+              "office-ambience",
+              "city-ambience",
+              "forest-ambience",
+              "crowded-room",
+              "keyboard-typing",
+              "keyboard-typing2"
+            ]
+          },
+          "__schema2": {
             "type": "object",
             "properties": {
               "url": {
@@ -7838,23 +7866,40 @@
                         "type": "object",
                         "properties": {
                           "clip": {
-                            "type": "string",
-                            "enum": [
-                              "office-ambience",
-                              "city-ambience",
-                              "forest-ambience",
-                              "crowded-room",
-                              "keyboard-typing",
-                              "keyboard-typing2"
-                            ]
+                            "$ref": "#/$defs/__schema1"
+                          },
+                          "soundId": {
+                            "type": "string"
                           },
                           "volume": {
                             "type": "number"
                           }
                         },
-                        "required": [
-                          "clip"
-                        ],
+                        "additionalProperties": false
+                      },
+                      "toolSound": {
+                        "type": "object",
+                        "properties": {
+                          "clip": {
+                            "$ref": "#/$defs/__schema1"
+                          },
+                          "soundId": {
+                            "type": "string"
+                          },
+                          "volume": {
+                            "type": "number"
+                          },
+                          "minDurationMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "startDelayMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          }
+                        },
                         "additionalProperties": false
                       }
                     },
@@ -8091,19 +8136,19 @@
                     "type": "object",
                     "properties": {
                       "preCall": {
-                        "$ref": "#/$defs/__schema1"
+                        "$ref": "#/$defs/__schema2"
                       },
                       "postCall": {
-                        "$ref": "#/$defs/__schema1"
+                        "$ref": "#/$defs/__schema2"
                       },
                       "status": {
-                        "$ref": "#/$defs/__schema1"
+                        "$ref": "#/$defs/__schema2"
                       },
                       "analysis": {
-                        "$ref": "#/$defs/__schema1"
+                        "$ref": "#/$defs/__schema2"
                       },
                       "recording": {
-                        "$ref": "#/$defs/__schema1"
+                        "$ref": "#/$defs/__schema2"
                       }
                     },
                     "additionalProperties": false
@@ -8426,6 +8471,17 @@
             }
           },
           "__schema1": {
+            "type": "string",
+            "enum": [
+              "office-ambience",
+              "city-ambience",
+              "forest-ambience",
+              "crowded-room",
+              "keyboard-typing",
+              "keyboard-typing2"
+            ]
+          },
+          "__schema2": {
             "type": "object",
             "properties": {
               "url": {
@@ -8830,23 +8886,40 @@
                             "type": "object",
                             "properties": {
                               "clip": {
-                                "type": "string",
-                                "enum": [
-                                  "office-ambience",
-                                  "city-ambience",
-                                  "forest-ambience",
-                                  "crowded-room",
-                                  "keyboard-typing",
-                                  "keyboard-typing2"
-                                ]
+                                "$ref": "#/$defs/__schema1"
+                              },
+                              "soundId": {
+                                "type": "string"
                               },
                               "volume": {
                                 "type": "number"
                               }
                             },
-                            "required": [
-                              "clip"
-                            ],
+                            "additionalProperties": false
+                          },
+                          "toolSound": {
+                            "type": "object",
+                            "properties": {
+                              "clip": {
+                                "$ref": "#/$defs/__schema1"
+                              },
+                              "soundId": {
+                                "type": "string"
+                              },
+                              "volume": {
+                                "type": "number"
+                              },
+                              "minDurationMs": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              "startDelayMs": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              }
+                            },
                             "additionalProperties": false
                           }
                         },
@@ -9083,19 +9156,19 @@
                         "type": "object",
                         "properties": {
                           "preCall": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           },
                           "postCall": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           },
                           "status": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           },
                           "analysis": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           },
                           "recording": {
-                            "$ref": "#/$defs/__schema1"
+                            "$ref": "#/$defs/__schema2"
                           }
                         },
                         "additionalProperties": false
@@ -9458,6 +9531,17 @@
             }
           },
           "__schema1": {
+            "type": "string",
+            "enum": [
+              "office-ambience",
+              "city-ambience",
+              "forest-ambience",
+              "crowded-room",
+              "keyboard-typing",
+              "keyboard-typing2"
+            ]
+          },
+          "__schema2": {
             "type": "object",
             "properties": {
               "url": {
@@ -9745,6 +9829,10 @@
                           ],
                           "additionalProperties": {}
                         }
+                      },
+                      "globalEdges": {
+                        "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
+                        "$ref": "#/$defs/__schema14"
                       }
                     },
                     "required": [
@@ -9841,9 +9929,18 @@
                   "entry",
                   "message",
                   "tool",
+                  "logic_split",
+                  "extract_variable",
+                  "press_digit",
+                  "code",
+                  "mcp",
+                  "subagent",
+                  "sms",
+                  "note",
                   "transfer",
                   "end"
-                ]
+                ],
+                "description": "Node kind. The worker walks entry / message / tool / note / transfer / end today; the others are authorable and saved, and the response names any the runtime cannot walk yet."
               },
               "label": {
                 "type": "string"
@@ -9928,26 +10025,40 @@
                 ]
               },
               "edgeOrder": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "description": "Edge ids in the order this node evaluates its branches.",
+                "$ref": "#/$defs/__schema5"
+              },
+              "digitSlot": {
+                "description": "`press_digit`: state key ([A-Za-z0-9_]+) the pressed digit lands in.",
+                "$ref": "#/$defs/__schema6"
+              },
+              "digitTimeoutMs": {
+                "description": "`press_digit`: how long to wait.",
+                "$ref": "#/$defs/__schema7"
+              },
+              "code": {
+                "description": "`code`: expression evaluated over the state store.",
+                "$ref": "#/$defs/__schema8"
+              },
+              "mcpServer": {
+                "description": "`mcp`: the connected server to call.",
+                "$ref": "#/$defs/__schema9"
+              },
+              "mcpTool": {
+                "description": "`mcp`: the tool on that server.",
+                "$ref": "#/$defs/__schema10"
+              },
+              "subagentId": {
+                "description": "`subagent`: the agent handed the turn.",
+                "$ref": "#/$defs/__schema11"
+              },
+              "smsBody": {
+                "description": "`sms`: the message sent mid-call.",
+                "$ref": "#/$defs/__schema12"
               },
               "position": {
-                "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ],
-                "additionalProperties": {}
+                "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
+                "$ref": "#/$defs/__schema13"
               }
             },
             "required": [
@@ -9971,6 +10082,112 @@
           },
           "__schema4": {
             "type": "string"
+          },
+          "__schema5": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema6": {
+            "type": "string"
+          },
+          "__schema7": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "__schema8": {
+            "type": "string"
+          },
+          "__schema9": {
+            "type": "string"
+          },
+          "__schema10": {
+            "type": "string"
+          },
+          "__schema11": {
+            "type": "string"
+          },
+          "__schema12": {
+            "type": "string"
+          },
+          "__schema13": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema14": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "condition": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "llm"
+                        },
+                        "when": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "when"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "expression"
+                        },
+                        "expr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "expr"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "to",
+                "condition"
+              ],
+              "additionalProperties": {}
+            }
           }
         }
       },
@@ -10129,6 +10346,10 @@
                   ],
                   "additionalProperties": {}
                 }
+              },
+              "globalEdges": {
+                "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
+                "$ref": "#/$defs/__schema14"
               }
             },
             "required": [
@@ -10159,9 +10380,18 @@
                   "entry",
                   "message",
                   "tool",
+                  "logic_split",
+                  "extract_variable",
+                  "press_digit",
+                  "code",
+                  "mcp",
+                  "subagent",
+                  "sms",
+                  "note",
                   "transfer",
                   "end"
-                ]
+                ],
+                "description": "Node kind. The worker walks entry / message / tool / note / transfer / end today; the others are authorable and saved, and the response names any the runtime cannot walk yet."
               },
               "label": {
                 "type": "string"
@@ -10246,26 +10476,40 @@
                 ]
               },
               "edgeOrder": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "description": "Edge ids in the order this node evaluates its branches.",
+                "$ref": "#/$defs/__schema5"
+              },
+              "digitSlot": {
+                "description": "`press_digit`: state key ([A-Za-z0-9_]+) the pressed digit lands in.",
+                "$ref": "#/$defs/__schema6"
+              },
+              "digitTimeoutMs": {
+                "description": "`press_digit`: how long to wait.",
+                "$ref": "#/$defs/__schema7"
+              },
+              "code": {
+                "description": "`code`: expression evaluated over the state store.",
+                "$ref": "#/$defs/__schema8"
+              },
+              "mcpServer": {
+                "description": "`mcp`: the connected server to call.",
+                "$ref": "#/$defs/__schema9"
+              },
+              "mcpTool": {
+                "description": "`mcp`: the tool on that server.",
+                "$ref": "#/$defs/__schema10"
+              },
+              "subagentId": {
+                "description": "`subagent`: the agent handed the turn.",
+                "$ref": "#/$defs/__schema11"
+              },
+              "smsBody": {
+                "description": "`sms`: the message sent mid-call.",
+                "$ref": "#/$defs/__schema12"
               },
               "position": {
-                "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ],
-                "additionalProperties": {}
+                "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
+                "$ref": "#/$defs/__schema13"
               }
             },
             "required": [
@@ -10289,6 +10533,112 @@
           },
           "__schema4": {
             "type": "string"
+          },
+          "__schema5": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema6": {
+            "type": "string"
+          },
+          "__schema7": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "__schema8": {
+            "type": "string"
+          },
+          "__schema9": {
+            "type": "string"
+          },
+          "__schema10": {
+            "type": "string"
+          },
+          "__schema11": {
+            "type": "string"
+          },
+          "__schema12": {
+            "type": "string"
+          },
+          "__schema13": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema14": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "condition": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "llm"
+                        },
+                        "when": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "when"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "expression"
+                        },
+                        "expr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "expr"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "to",
+                "condition"
+              ],
+              "additionalProperties": {}
+            }
           }
         }
       },
@@ -10441,6 +10791,10 @@
                       ],
                       "additionalProperties": {}
                     }
+                  },
+                  "globalEdges": {
+                    "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
+                    "$ref": "#/$defs/__schema14"
                   }
                 },
                 "required": [
@@ -10532,9 +10886,18 @@
                   "entry",
                   "message",
                   "tool",
+                  "logic_split",
+                  "extract_variable",
+                  "press_digit",
+                  "code",
+                  "mcp",
+                  "subagent",
+                  "sms",
+                  "note",
                   "transfer",
                   "end"
-                ]
+                ],
+                "description": "Node kind. The worker walks entry / message / tool / note / transfer / end today; the others are authorable and saved, and the response names any the runtime cannot walk yet."
               },
               "label": {
                 "type": "string"
@@ -10619,26 +10982,40 @@
                 ]
               },
               "edgeOrder": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "description": "Edge ids in the order this node evaluates its branches.",
+                "$ref": "#/$defs/__schema5"
+              },
+              "digitSlot": {
+                "description": "`press_digit`: state key ([A-Za-z0-9_]+) the pressed digit lands in.",
+                "$ref": "#/$defs/__schema6"
+              },
+              "digitTimeoutMs": {
+                "description": "`press_digit`: how long to wait.",
+                "$ref": "#/$defs/__schema7"
+              },
+              "code": {
+                "description": "`code`: expression evaluated over the state store.",
+                "$ref": "#/$defs/__schema8"
+              },
+              "mcpServer": {
+                "description": "`mcp`: the connected server to call.",
+                "$ref": "#/$defs/__schema9"
+              },
+              "mcpTool": {
+                "description": "`mcp`: the tool on that server.",
+                "$ref": "#/$defs/__schema10"
+              },
+              "subagentId": {
+                "description": "`subagent`: the agent handed the turn.",
+                "$ref": "#/$defs/__schema11"
+              },
+              "smsBody": {
+                "description": "`sms`: the message sent mid-call.",
+                "$ref": "#/$defs/__schema12"
               },
               "position": {
-                "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ],
-                "additionalProperties": {}
+                "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
+                "$ref": "#/$defs/__schema13"
               }
             },
             "required": [
@@ -10662,6 +11039,112 @@
           },
           "__schema4": {
             "type": "string"
+          },
+          "__schema5": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema6": {
+            "type": "string"
+          },
+          "__schema7": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "__schema8": {
+            "type": "string"
+          },
+          "__schema9": {
+            "type": "string"
+          },
+          "__schema10": {
+            "type": "string"
+          },
+          "__schema11": {
+            "type": "string"
+          },
+          "__schema12": {
+            "type": "string"
+          },
+          "__schema13": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema14": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "condition": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "llm"
+                        },
+                        "when": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "when"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "expression"
+                        },
+                        "expr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "expr"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "to",
+                "condition"
+              ],
+              "additionalProperties": {}
+            }
           }
         }
       },
@@ -10867,6 +11350,10 @@
                       ],
                       "additionalProperties": {}
                     }
+                  },
+                  "globalEdges": {
+                    "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
+                    "$ref": "#/$defs/__schema14"
                   }
                 },
                 "required": [
@@ -11024,9 +11511,18 @@
                   "entry",
                   "message",
                   "tool",
+                  "logic_split",
+                  "extract_variable",
+                  "press_digit",
+                  "code",
+                  "mcp",
+                  "subagent",
+                  "sms",
+                  "note",
                   "transfer",
                   "end"
-                ]
+                ],
+                "description": "Node kind. The worker walks entry / message / tool / note / transfer / end today; the others are authorable and saved, and the response names any the runtime cannot walk yet."
               },
               "label": {
                 "type": "string"
@@ -11111,26 +11607,40 @@
                 ]
               },
               "edgeOrder": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
+                "description": "Edge ids in the order this node evaluates its branches.",
+                "$ref": "#/$defs/__schema5"
+              },
+              "digitSlot": {
+                "description": "`press_digit`: state key ([A-Za-z0-9_]+) the pressed digit lands in.",
+                "$ref": "#/$defs/__schema6"
+              },
+              "digitTimeoutMs": {
+                "description": "`press_digit`: how long to wait.",
+                "$ref": "#/$defs/__schema7"
+              },
+              "code": {
+                "description": "`code`: expression evaluated over the state store.",
+                "$ref": "#/$defs/__schema8"
+              },
+              "mcpServer": {
+                "description": "`mcp`: the connected server to call.",
+                "$ref": "#/$defs/__schema9"
+              },
+              "mcpTool": {
+                "description": "`mcp`: the tool on that server.",
+                "$ref": "#/$defs/__schema10"
+              },
+              "subagentId": {
+                "description": "`subagent`: the agent handed the turn.",
+                "$ref": "#/$defs/__schema11"
+              },
+              "smsBody": {
+                "description": "`sms`: the message sent mid-call.",
+                "$ref": "#/$defs/__schema12"
               },
               "position": {
-                "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number"
-                  },
-                  "y": {
-                    "type": "number"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ],
-                "additionalProperties": {}
+                "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
+                "$ref": "#/$defs/__schema13"
               }
             },
             "required": [
@@ -11154,6 +11664,112 @@
           },
           "__schema4": {
             "type": "string"
+          },
+          "__schema5": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "__schema6": {
+            "type": "string"
+          },
+          "__schema7": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "__schema8": {
+            "type": "string"
+          },
+          "__schema9": {
+            "type": "string"
+          },
+          "__schema10": {
+            "type": "string"
+          },
+          "__schema11": {
+            "type": "string"
+          },
+          "__schema12": {
+            "type": "string"
+          },
+          "__schema13": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": {}
+          },
+          "__schema14": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "condition": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "llm"
+                        },
+                        "when": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "when"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "expression"
+                        },
+                        "expr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "expr"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "to",
+                "condition"
+              ],
+              "additionalProperties": {}
+            }
           }
         }
       },
