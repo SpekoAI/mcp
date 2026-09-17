@@ -45,13 +45,12 @@ OAUTH_RESOURCE_SCOPES = [
     "speko:credentials",
     "speko:compliance",
     # Advertised so the CLIENT requests it -- but only on a surface that can
-    # actually dial; see `oauth_resource_scopes()`. It was previously stamped
-    # onto the grant by the authorization server instead, which cannot work:
-    # when the user has no session -- the normal case for a fresh connector --
-    # Better Auth redirects to the login page using `ctx.request.url`, the raw
-    # inbound URL, so a scope injected into `ctx.query` by a before-hook is
-    # discarded microseconds later and never reaches the consent screen or the
-    # token.
+    # actually dial; see `oauth_resource_scopes()`. Clients whose scope list a
+    # directory portal froze (the ChatGPT plugin, the Anthropic directory)
+    # cannot follow this advertisement, so the authorization server adds the
+    # scope for those two hosts itself: `DEFAULT_MCP_PHONE_DIRECTORY_HOSTS` in
+    # apps/server/src/lib/mcp-resources.ts. Its before-hook edit survives the
+    # login redirect because Better Auth signs `ctx.query`, not the raw URL.
     #
     # Requesting it does not grant phone access. Dialing is behind two
     # independent gates (see apps/server/src/routes/sessions-phone.ts): this
