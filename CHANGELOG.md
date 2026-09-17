@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.30
+
+- `agents.graph.get` and `agents.graph.replace` now describe every node kind an agent may hold. The hand-written mirror of `agentGraphSchema` listed five -- `entry`, `message`, `tool`, `transfer`, `end` -- where core has thirteen, and omitted `globalEdges` along with every per-kind field the canvas writes. A workflow authored in the dashboard with a `note`, `mcp`, `sms`, `code`, `logic_split`, `press_digit`, `extract_variable` or `subagent` node therefore came back through `agents.graph.get` describing itself as something the client was not allowed to send, and because `agents.graph.replace` is a whole-object replace, a read-edit-write round trip dropped the node or looked illegal before it was tried. The server has always accepted all thirteen; only the teaching schema was narrow.
+- Authorable is not the same as walkable. `GRAPH_RUNTIME_KINDS` is the shorter list the worker executes today -- entry, message, tool, note, transfer, end -- and publishing a kind outside it is allowed and named in the response, not rejected. The schema description says so rather than leaving the caller to infer it from a refusal that never comes.
+- The mirror stays hand-written, because the published manifest is dependency-free on purpose. Nothing made the copy follow the original, so tests in `apps/server`, where both are importable, now pin them together and fail when core gains a kind the mirror does not.
+- Corrects a claim this changelog made in 0.2.25 and repeated since: that a scope injected into `ctx.query` by an `/oauth2/authorize` before-hook is discarded by the login redirect. It is not -- Better Auth signs `ctx.query`, not the raw inbound URL, so the edit survives. The comments in `auth.py` said the same wrong thing and now describe what the authorization server actually does for the two directory hosts whose scope lists a portal froze.
+
 ## 0.2.29
 
 - `audio.synthesize` now carries `_meta["openai/outputTemplate"]` alongside the standard `_meta.ui.resourceUri`, both pointing at `ui://speko/audio-player.html`. ChatGPT's Apps SDK reference calls its key an alias and says the standard one is read too; the live client disagrees. On 2026-09-16 `openai-mcp/1.0.0 (Codex)` called the tool against `chatgpt.speko.ai`, answered `200`, printed its "Rendered inline audio in chat" card, and never issued the `resources/read` that rendering the widget requires -- a single request for the whole turn. The Apps SDK's own example tool sets both keys, so 0.2.29 sets both.

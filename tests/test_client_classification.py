@@ -35,7 +35,27 @@ def test_matchers_and_version_match_the_shared_platform_contract() -> None:
     assert [
         (pattern.pattern, client, evidence) for pattern, client, evidence in CLIENT_MATCHERS
     ] == expected
-    assert f"CLIENT_CLASSIFIER_VERSION = '{CLIENT_CLASSIFIER_VERSION}'" in source
+    assert _active_classifier_version(source) == CLIENT_CLASSIFIER_VERSION
+
+
+def _active_classifier_version(source: str) -> str:
+    """Resolve the version ACTIVE_CLIENT_CLASSIFIER selects, through its constant.
+
+    The export is `ACTIVE_CLIENT_CLASSIFIER.version`, not a literal, so reading the
+    export alone says nothing about which version is live -- and a flip to a v2
+    classifier has to pull this mirror with it.
+    """
+    selected = re.search(
+        r"const ACTIVE_CLIENT_CLASSIFIER = Object\.freeze\(\{\s*version: (\w+),",
+        source,
+    )
+    assert selected, "ACTIVE_CLIENT_CLASSIFIER no longer names the version it selects"
+    literal = re.search(
+        rf"export const {selected.group(1)} = '([^']+)'",
+        source,
+    )
+    assert literal, f"{selected.group(1)} is not declared as a string literal"
+    return literal.group(1)
 
 
 @pytest.mark.parametrize(
