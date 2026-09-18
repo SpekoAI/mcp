@@ -4439,7 +4439,7 @@
     {
       "id": "gateway.models.list",
       "version": 1,
-      "description": "List Relay models with their provider, kind (stt, tts, llm, or s2s), routability, and benchmark and ranking data for the given objective and language. Filtering by `language` narrows to models that actually serve it; omit both filters to see the full catalog and every language it covers. gateway.relay.tts_preview.create and other Relay-routed actions expect a (provider, model, voice) combination taken from this list, not guessed.",
+      "description": "List Relay models with their provider, kind (stt, tts, llm, s2s, or evaluation), routability, and benchmark and ranking data for the given objective and language. Filtering by `language` narrows to models that actually serve it; omit both filters to see the full catalog and every language it covers. gateway.relay.tts_preview.create and other Relay-routed actions expect a (provider, model, voice) combination taken from this list, not guessed.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4492,7 +4492,8 @@
                         "stt",
                         "tts",
                         "llm",
-                        "s2s"
+                        "s2s",
+                        "evaluation"
                       ]
                     },
                     "routable": {
@@ -4717,7 +4718,8 @@
                         "stt",
                         "tts",
                         "llm",
-                        "s2s"
+                        "s2s",
+                        "evaluation"
                       ]
                     },
                     "status": {
@@ -5080,7 +5082,8 @@
                   "stt",
                   "tts",
                   "llm",
-                  "s2s"
+                  "s2s",
+                  "evaluation"
                 ]
               },
               "requests": {
