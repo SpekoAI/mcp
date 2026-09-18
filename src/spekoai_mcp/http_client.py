@@ -301,6 +301,8 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
             if isinstance(nested_message, str) and nested_message:
                 prefix = f"{nested_code}: " if isinstance(nested_code, str) else ""
                 nested = f"{prefix}{nested_message}"[:500]
+                nested = _with_field_issues(nested, detail)
+                nested = _appended(nested, _next_action(detail))
                 return _with_hint(_ApiErrorDetails(nested, trace_id, code, balance_usd), hint)
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
@@ -314,6 +316,38 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
             _ApiErrorDetails(json.dumps(payload)[:500], trace_id, code, balance_usd), hint
         )
     return _ApiErrorDetails(json.dumps(payload)[:500], trace_id)
+
+
+def _next_action(detail: dict[str, Any]) -> str | None:
+    """The action layer's own remediation line.
+
+    `/v1/actions/*` errors carry `nextAction` where REST errors carry `hint`
+    (`middleware/enrich-errors.ts`). Both say what to do next and both were
+    being dropped on this branch.
+    """
+    value = detail.get("nextAction")
+    return value if isinstance(value, str) and value else None
+
+
+def _with_field_issues(message: str, detail: dict[str, Any]) -> str:
+    """Append the per-field reasons an action error published.
+
+    `/v1/actions/*` nests them under `error.fieldIssues`, and this branch
+    returned as soon as it had `error.message` -- so an MCP caller was told
+    `INVALID_GRAPH: The graph failed structural validation.` and never which
+    node or edge failed, while the reasons sat one key away in the same
+    response. Reported 2026-09-18 after three blind retries against
+    `agents.graph.replace`.
+    """
+    issues = _validation_issue_summary(detail.get("fieldIssues"))
+    return _appended(message, issues)
+
+
+def _appended(message: str, addition: str | None) -> str:
+    """Join a remediation/detail clause on, unless the message already says it."""
+    if addition is None or addition in message:
+        return message
+    return f"{message} {addition}"[:1000]
 
 
 def _validation_issue_summary(value: Any) -> str | None:

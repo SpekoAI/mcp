@@ -504,6 +504,71 @@ def test_an_error_without_a_hint_is_unchanged() -> None:
     assert details.message == "Nope."
 
 
+def test_action_field_issues_reach_the_model() -> None:
+    # `/v1/actions/*` nests its per-field reasons under `error.fieldIssues`, and
+    # the parser returned as soon as it had `error.message` -- so a rejected
+    # `agents.graph.replace` said only that validation failed and never which
+    # node or edge, leaving the caller to guess and retry blind.
+    details = http_client._parse_api_error(
+        _error_response(
+            {
+                "error": {
+                    "code": "INVALID_GRAPH",
+                    "message": "The graph failed structural validation.",
+                    "fieldIssues": [
+                        {
+                            "path": "edges.2",
+                            "code": "invalid_graph",
+                            "message": "a tool node may only carry tool_result edges",
+                        },
+                        {
+                            "path": "nodes.4.slots",
+                            "code": "invalid_graph",
+                            "message": "question is referenced but never declared",
+                        },
+                    ],
+                    "retryable": False,
+                    "requestId": "req_9",
+                    "nextAction": "Fix the listed nodes/edges and call agents.graph.replace again.",
+                }
+            }
+        )
+    )
+
+    assert details.code == "INVALID_GRAPH"
+    assert "edges.2: a tool node may only carry tool_result edges" in details.message
+    assert "nodes.4.slots: question is referenced but never declared" in details.message
+    assert "call agents.graph.replace again" in details.message
+    assert details.trace_id == "req_9"
+
+
+def test_an_action_error_without_field_issues_is_unchanged() -> None:
+    details = http_client._parse_api_error(
+        _error_response(
+            {"error": {"code": "AGENT_NOT_FOUND", "message": "No such agent.", "fieldIssues": []}}
+        )
+    )
+
+    assert details.message == "AGENT_NOT_FOUND: No such agent."
+
+
+def test_a_next_action_the_message_already_states_is_not_repeated() -> None:
+    step = "Call agents.versions.list to see the versions that exist."
+    details = http_client._parse_api_error(
+        _error_response(
+            {
+                "error": {
+                    "code": "AGENT_VERSION_NOT_FOUND",
+                    "message": f"No such version. {step}",
+                    "nextAction": step,
+                }
+            }
+        )
+    )
+
+    assert details.message.count("agents.versions.list") == 1
+
+
 def test_unrecognized_403_falls_back_to_generic_auth_message() -> None:
     other = http_client.SpekoApiError(403, "Forbidden", trace_id="t3", code="SOME_OTHER_CODE")
 
