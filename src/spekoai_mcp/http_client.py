@@ -56,6 +56,8 @@ class SpekoApiError(RuntimeError):
         trace_id: str | None = None,
         code: str | None = None,
         balance_usd: float | None = None,
+        resource_status: str | None = None,
+        retryable: bool | None = None,
     ) -> None:
         super().__init__(f"Speko API returned {status_code}: {message}")
         self.status_code = status_code
@@ -68,6 +70,17 @@ class SpekoApiError(RuntimeError):
         # Platform's credit gates include the (non-positive) balance that
         # tripped them; None for every other failure.
         self.balance_usd = balance_usd
+        # The refused RESOURCE's lifecycle state from the body's `status` field -
+        # not the HTTP status, which is `status_code`. The recording 404s carry
+        # the egress state here (`pending`/`uploading`/`ready`/`failed`/
+        # `suppressed`/`discarded`/null), which is the only thing that separates
+        # "not finalized yet, wait" from "this will never exist, stop".
+        self.resource_status = resource_status
+        # Platform's own verdict on whether retrying can ever succeed:
+        # `middleware/enrich-errors.ts` stamps it onto every body whose code is
+        # in the `packages/core` registry. Dropping it was how a `retryable:
+        # false` answer still reached the model as "Retry the request".
+        self.retryable = retryable
 
     @property
     def credit_exhausted(self) -> bool:
@@ -214,6 +227,8 @@ class _ApiErrorDetails:
     trace_id: str | None
     code: str | None = None
     balance_usd: float | None = None
+    resource_status: str | None = None
+    retryable: bool | None = None
 
 
 def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
@@ -242,6 +257,33 @@ def _balance_usd(payload: dict[str, Any]) -> float | None:
     return None
 
 
+def _resource_status(payload: dict[str, Any]) -> str | None:
+    """The refused resource's lifecycle state, when the route published one.
+
+    `GET /v1/calls/:id/recording` answers `404 {code:
+    'RECORDING_NOT_AVAILABLE', status: 'pending' | 'uploading' | 'ready' |
+    'failed' | 'suppressed' | 'discarded' | null}` - the egress state of the
+    recording, which decides whether waiting can help. Read as a string only:
+    a route that puts an HTTP status number here means something else entirely.
+    """
+    status = payload.get("status")
+    return status if isinstance(status, str) and status else None
+
+
+def _retryable(payload: dict[str, Any]) -> bool | None:
+    """Platform's `retryable` verdict for this error, when the code is registered."""
+    retryable = payload.get("retryable")
+    if isinstance(retryable, bool):
+        return retryable
+    # /v1/actions/*: {error: {code, message, retryable}}.
+    detail = payload.get("error")
+    if isinstance(detail, dict):
+        nested = detail.get("retryable")
+        if isinstance(nested, bool):
+            return nested
+    return None
+
+
 def _raise_api_error(resp: httpx.Response) -> NoReturn:
     """Raise the ``SpekoApiError`` for a Platform ``>= 400`` response."""
     details = _parse_api_error(resp)
@@ -251,6 +293,8 @@ def _raise_api_error(resp: httpx.Response) -> NoReturn:
         trace_id=details.trace_id,
         code=details.code,
         balance_usd=details.balance_usd,
+        resource_status=details.resource_status,
+        retryable=details.retryable,
     )
 
 
@@ -288,6 +332,8 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
         code = _error_code(payload)
         balance_usd = _balance_usd(payload)
         hint = _error_hint(payload)
+        resource_status = _resource_status(payload)
+        retryable = _retryable(payload)
         trace = payload.get("trace_id") or payload.get("traceId")
         if isinstance(trace, str) and trace:
             trace_id = trace
@@ -303,17 +349,37 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
                 nested = f"{prefix}{nested_message}"[:500]
                 nested = _with_field_issues(nested, detail)
                 nested = _appended(nested, _next_action(detail))
-                return _with_hint(_ApiErrorDetails(nested, trace_id, code, balance_usd), hint)
+                return _with_hint(
+                    _ApiErrorDetails(
+                        nested, trace_id, code, balance_usd, resource_status, retryable
+                    ),
+                    hint,
+                )
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
             if issues:
                 return _with_hint(
-                    _ApiErrorDetails(f"{detail}: {issues}"[:500], trace_id, code, balance_usd),
+                    _ApiErrorDetails(
+                        f"{detail}: {issues}"[:500],
+                        trace_id,
+                        code,
+                        balance_usd,
+                        resource_status,
+                        retryable,
+                    ),
                     hint,
                 )
-            return _with_hint(_ApiErrorDetails(detail[:500], trace_id, code, balance_usd), hint)
+            return _with_hint(
+                _ApiErrorDetails(
+                    detail[:500], trace_id, code, balance_usd, resource_status, retryable
+                ),
+                hint,
+            )
         return _with_hint(
-            _ApiErrorDetails(json.dumps(payload)[:500], trace_id, code, balance_usd), hint
+            _ApiErrorDetails(
+                json.dumps(payload)[:500], trace_id, code, balance_usd, resource_status, retryable
+            ),
+            hint,
         )
     return _ApiErrorDetails(json.dumps(payload)[:500], trace_id)
 

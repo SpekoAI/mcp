@@ -276,6 +276,128 @@ PHONE_NUMBER_AUTH_NEXT_STEPS: dict[str, str] = {
         "in the message above, then retry. No reconnect is needed."
     ),
 }
+
+# `GET /v1/calls/:id/recording` answers 404 for four unrelated reasons, and every
+# one of them used to fall through to the default at the bottom of
+# `next_step_for_error`: "Retry the Speko MCP request". That is what turned one
+# agent's post-test-call review into 1,078 requests in 151 seconds. The recording
+# finalizes AFTER the call ends (LiveKit `egress_ended` lands after
+# `room_finished`), so the first read ALWAYS 404s - and the error itself told the
+# model to try again. Platform had already answered `retryable: false` on the
+# wire; the client parsed it away before anything could read it.
+RECORDING_NOT_AVAILABLE_CODE = "RECORDING_NOT_AVAILABLE"
+RECORDING_DISABLED_CODE = "RECORDING_DISABLED"
+
+# Recording lifecycle states that can never become a recording, from
+# `recordingStatus` in `apps/server/src/db/schema.ts`. That column is plain text
+# under a TypeScript cast, not a Postgres enum, so an unrecognized value is
+# possible - and anything unrecognized lands on the bounded-wait wording below,
+# which is capped and therefore safe to be wrong about.
+RECORDING_TERMINAL_STATES = frozenset({"failed", "suppressed", "discarded"})
+
+# Where readiness is read back, per surface. The two routes serialize the SAME
+# `voiceSession.recordingStatus` column under two different spellings -
+# `recording_status` at `routes/calls.ts:727`, `recordingStatus` at
+# `routes/sessions.ts:3840` - so one hard-coded field name is wrong on one of
+# them, and an agent that looks for the other spelling concludes the field is
+# missing. Both ids address the same row, so either read works; this just sends
+# each caller to its own sibling tool.
+RECORDING_READINESS_READ = {
+    "calls": "`recording_status` from calls.get(<call id>)",
+    "sessions": "`recordingStatus` from sessions.get(<session id>)",
+}
+
+_RECORDING_PENDING_TEMPLATE = (
+    "The recording is still finalizing - it lands shortly AFTER the call ends, so a 404 on "
+    "the first read is expected. Wait about 5 seconds, read {readiness}, and call this tool "
+    "again only once it reads 'ready'. Do not call it in a loop: give up after about 24 checks "
+    "(~2 minutes) and tell the user the recording never finalized."
+)
+
+RECORDING_PENDING_NEXT_STEP = _RECORDING_PENDING_TEMPLATE.format(
+    readiness=RECORDING_READINESS_READ["calls"]
+)
+
+RECORDING_PENDING_NEXT_STEP_SESSIONS = _RECORDING_PENDING_TEMPLATE.format(
+    readiness=RECORDING_READINESS_READ["sessions"]
+)
+
+# The remaining states are read off THIS error body, so they name no field: the
+# recording status arrived with the 404 and needs no second read to confirm.
+RECORDING_TERMINAL_NEXT_STEP = (
+    "This recording will never exist - its recording status is terminal (failed, suppressed or "
+    "discarded; recording can be off for this workspace or this call). Do not retry. Read "
+    "what was said with sessions.transcript.get(<session id>) and tell the user why there is "
+    "no audio."
+)
+
+# `status: 'ready'` still 404s when the row has no stored object path, so "ready"
+# is not the same thing as "fetchable" and polling cannot fix this one.
+RECORDING_MISSING_FILE_NEXT_STEP = (
+    "The recording status reads 'ready' but the stored recording is missing, so retrying "
+    "returns this same 404. Do not retry; tell the user the audio is unrecoverable for this "
+    "call and give them the call id."
+)
+
+RECORDING_DISABLED_NEXT_STEP = (
+    "Recording is not configured on this Speko server, so no call on it has one. Do not retry "
+    "and do not try other call ids; read sessions.transcript.get(<session id>) instead."
+)
+
+
+NOT_FOUND_NEXT_STEP = (
+    "Nothing in this workspace matches that id, or it belongs to another organization. Check "
+    "the id against a list read (sessions.list, agents.list) before calling again. Do not "
+    "retry the same request unchanged - it fails identically."
+)
+
+# Platform's own verdict, used ONLY inside the 404 branch and only after the
+# coded branches above. It is deliberately not consulted at other statuses:
+# `retryable` is curated for some codes and inferred from the code's category
+# for the rest (`inferRetryable` in `apps/server/scripts/generate-error-registry.mjs`
+# answers true only for `provider` and `quota`), so plenty of states that clear
+# on their own are stamped `retryable: false` - EXPORT_BUSY answers 429,
+# PHONE_NUMBER_PROVISIONING_IN_PROGRESS and SOUND_NOT_READY answer 409. Telling
+# an agent never to retry those would be this bug's mirror image. No such code
+# answers 404, which is why the flag is trustworthy here and nowhere else yet.
+NON_RETRYABLE_NEXT_STEP = (
+    "The Speko API marked this failure `retryable: false`, so an identical request fails "
+    "identically. Fix what the message names, or tell the user what blocked it - do not retry."
+)
+
+
+def _is_not_found_code(code: str) -> bool:
+    """True for every "the thing is not there" code, without enumerating them.
+
+    In `packages/core/src/lib/errors/registry.generated.ts` the `not_found`
+    category is exactly the codes ending in `_NOT_FOUND` (16 of them:
+    AGENT_NOT_FOUND, SESSION_NOT_FOUND, VOICE_NOT_FOUND, ...) and no code
+    outside that category ends that way, so the suffix is a safe test at 404.
+    The bare REST `NOT_FOUND` that `enrichErrors` stamps on, and the action
+    layer's unregistered `ACTION_NOT_FOUND` nested under `error.code`, both
+    reach us too.
+    """
+    return code == "NOT_FOUND" or code.endswith("_NOT_FOUND")
+
+
+def _recording_next_step(resource_status: str | None, *, path: str) -> str:
+    """What to do about a `RECORDING_NOT_AVAILABLE` 404 in `resource_status`.
+
+    `pending`, `uploading`, `null` and anything unrecognized are still in flight
+    and get the bounded wait; the terminal states and the missing-file case get
+    a hard stop, because no number of retries can change them. One session route
+    omits `status` entirely (the Daily branch at `routes/sessions.ts:4357`), and
+    it lands on the bounded wait - wrong about the cause, but capped.
+    """
+    if resource_status in RECORDING_TERMINAL_STATES:
+        return RECORDING_TERMINAL_NEXT_STEP
+    if resource_status == "ready":
+        return RECORDING_MISSING_FILE_NEXT_STEP
+    if path.startswith("/v1/sessions/"):
+        return RECORDING_PENDING_NEXT_STEP_SESSIONS
+    return RECORDING_PENDING_NEXT_STEP
+
+
 CREATE_AGENT_TOOL_NEXT_STEP = (
     "For create_agent_tool, pass a body like {'name':'lookup_order',"
     "'description':'Look up an order by id.',"
@@ -307,6 +429,7 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "rollback_agent": "agents.rollback",
     "list_agent_versions": "agents.versions.list",
     "test_call_agent": "agents.test_call",
+    "get_test_call_run": "agents.test_call.get",
     "create_session": "sessions.create",
     "create_phone_session": "sessions.phone.create",
     "list_sessions": "sessions.list",
@@ -372,6 +495,7 @@ READ_ONLY_ACTION_TOOL_NAMES = {
     "list_agent_tools",
     "get_agent_tool",
     "list_agent_versions",
+    "get_test_call_run",
     "list_sessions",
     "get_session",
     "get_session_transcript",
@@ -541,9 +665,7 @@ def _router_speech_payload(body: dict[str, Any]) -> dict[str, Any] | None:
     return payload
 
 
-async def _synthesize_via_router(
-    request_payload: dict[str, Any], *, token: str
-) -> ToolResult:
+async def _synthesize_via_router(request_payload: dict[str, Any], *, token: str) -> ToolResult:
     """Synthesize through the Router's speech endpoint."""
     response = await http_client.post_router_speech(request_payload, token=token)
     if not response.content:
@@ -1222,6 +1344,7 @@ def register_action_tools(mcp: FastMCP) -> None:
         rollback_agent,
         list_agent_versions,
         test_call_agent,
+        get_test_call_run,
         create_session,
         create_phone_session,
         list_sessions,
@@ -1395,6 +1518,16 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         if auth_next_step is not None:
             return auth_next_step
         return "Check authentication and retry the Speko MCP request."
+    if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 404:
+        code = exc.code or ""
+        if code == RECORDING_NOT_AVAILABLE_CODE:
+            return _recording_next_step(exc.resource_status, path=path)
+        if code == RECORDING_DISABLED_CODE:
+            return RECORDING_DISABLED_NEXT_STEP
+        if _is_not_found_code(code):
+            return NOT_FOUND_NEXT_STEP
+        if exc.retryable is False:
+            return NON_RETRYABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP
     return "Retry the Speko MCP request or inspect the Speko API response details."
@@ -1960,7 +2093,10 @@ async def test_call_agent(
     ] = None,
     ttl_seconds: Annotated[
         int | None,
-        Field(description="Hard wall-clock cap in seconds (30-1800, default 180)."),
+        # The server schema leaves this optional and the gate worker fills 300
+        # (`aut-session.ts:360`, and the run's own deadline is ttl + 60 at
+        # `run-gate.ts:507`). The description said 180, which no code applies.
+        Field(description="Hard wall-clock cap in seconds (30-1800, default 300)."),
     ] = None,
     record: Annotated[
         bool | None,
@@ -1974,9 +2110,32 @@ async def test_call_agent(
     Dispatches the agent under test plus a caller (a persona synthesized from
     `objective`, or another agent via `caller_agent_id`) into ONE LiveKit room with
     NO phone/SIP leg — so it CANNOT hairpin the way dialing the agent's own number
-    does. Returns immediately with session ids; the conversation runs in the
-    background. To review it: poll calls.get(agentSessionId) until it ends, then
-    read sessions.transcript.get(agentSessionId) and calls.recording.get(agentSessionId).
+    does. Returns immediately with a RUN id and status 'queued' - NOT a session id.
+    Review it in THREE separately bounded phases, polling about every 5 seconds.
+    (1) Get the session id: poll agents.test_call.get(agent_id, runId) until
+    `run.result.testCall.agentSessionId` appears - the worker publishes it once the
+    call actually starts. RECORD that id the first time you see it and keep using
+    it: the worker REPLACES `run.result` on timeout, retry and abort, so a later
+    read can lose the id while the session itself lives on. If `run.status` reaches
+    passed, failed or incomplete and you never saw an id, the call never started -
+    report what `run.result` says. If it reaches aborted, the run hit its deadline
+    or ran out of retries and its result was overwritten: a session may well exist,
+    so recover it before reporting nothing. List candidates with
+    agents.calls.list(agent_id, since=<dispatch time>), then IDENTIFY the right one
+    by reading calls.get on each until `metadata.evalRunId` equals this runId and
+    `metadata.runKind` is 'test_call'. Never just take the newest - another call on
+    the same agent can start after your dispatch, and reviewing it would report the
+    wrong transcript and recording as this test call's.
+    Otherwise give up after ~24 checks. Never pass the run id to a call or session
+    tool. (2) Wait for the call: poll calls.get(agentSessionId) until it reports
+    the call ended, then read sessions.transcript.get(agentSessionId). Bound THIS
+    phase by ttl_seconds PLUS ~60s of worker startup headroom - that sum is the
+    run's own deadline - never by a check count.
+    (3) Get the recording: it finalizes AFTER the call ends, so
+    KEEP polling calls.get for a FURTHER ~24 checks, until `recording_status` reads
+    'ready', and only then call calls.recording.get(agentSessionId) - calling it
+    earlier returns 404 by design. Stop at once if `recording_status` is failed,
+    suppressed or discarded: that recording will never exist.
     Provide exactly one of objective / caller_agent_id / caller_system_prompt.
     """
     body: dict[str, Any] = {}
@@ -1997,6 +2156,41 @@ async def test_call_agent(
         f"/v1/agents/{http_client.path_segment(agent_id)}/test-call",
         body=body,
         text="Started agent-to-agent test call.",
+    )
+
+
+async def get_test_call_run(
+    agent_id: Annotated[str, Field(description="Agent id the test call was started on.")],
+    run_id: Annotated[
+        str,
+        Field(
+            description=(
+                "The runId agents.test_call returned. The session id the run produced "
+                "also resolves, once you have it."
+            )
+        ),
+    ],
+) -> ToolResult:
+    """Read one agents.test_call run, to get its agentSessionId.
+
+    agents.test_call answers with a run id and nothing else: the room and session
+    are created by the worker afterwards, so `run.result.testCall.agentSessionId` -
+    the id every review step needs - only appears here once the call has actually
+    started. Poll this until it does. `run.status` is queued / running / passed /
+    failed / aborted / incomplete, so this is also how you learn the call ended.
+
+    `run.result` is NOT append-only. The worker overwrites it wholesale when a run
+    times out, is requeued, or is abandoned after its retries, leaving only an
+    error - so an agentSessionId that was published earlier DISAPPEARS from later
+    reads even though the session, its transcript and its recording all still
+    exist. Record the id the first time you see it; never treat its absence from a
+    settled or requeued run as proof that no call ever ran.
+    """
+    return await call(
+        "GET",
+        f"/v1/agents/{http_client.path_segment(agent_id)}"
+        f"/eval-runs/{http_client.path_segment(run_id)}",
+        text="Retrieved test call run.",
     )
 
 

@@ -109,7 +109,7 @@ compliance diagnostics:
   `usage.summary.get`;
 - agents: `agents.list`, `agents.get`, `agents.preview_stacks`,
   `agents.versions.list`, `agents.tools.list`, `agents.tools.get`,
-  `agents.calls.list`;
+  `agents.calls.list`, `agents.test_call.get`;
 - sessions and calls: `sessions.list`, `sessions.get`,
   `sessions.transcript.get`, `sessions.recording.get`, `calls.get`,
   `calls.recording.get`;
@@ -171,11 +171,14 @@ Reads of all four resources stay. Calling a withheld tool on this host returns
 https://chatgpt.speko.ai/mcp
 ```
 
-**18 tools.** A separate list, not a reuse of the Anthropic one, because the
+**21 tools.** A separate list, not a reuse of the Anthropic one, because the
 two directories forbid different things: OpenAI has no restriction on generated
 audio, so `audio.synthesize` and outbound calling stay, while its rules on
 selling digital goods remove phone-number provisioning and the credits and
-usage reads.
+usage reads. Three of the reads are there to keep `agents.test_call` from being
+a dead end: reviewing a test call needs `agents.test_call.get` for the run's
+session id, `agents.calls.list` to recover that id if the run's result is
+overwritten, and `calls.recording.get` for the audio.
 
 ## Authentication and downstream calls
 

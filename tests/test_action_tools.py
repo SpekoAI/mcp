@@ -130,6 +130,7 @@ async def test_action_tools_cover_expected_api_paths(
         "agents.test_call",
         {"agent_id": "agent_1", "objective": "Ask the hours and book a table for 2."},
     )
+    await mcp.call_tool("agents.test_call.get", {"agent_id": "agent_1", "run_id": "run_1"})
     await mcp.call_tool(
         "sessions.create", {"body": {"mode": "cascade", "intent": {"language": "en"}}}
     )
@@ -597,6 +598,7 @@ EXPECTED_METHOD_PATHS = {
     ("POST", "/v1/agents/agent_1/rollback"),
     ("GET", "/v1/agents/agent_1/versions"),
     ("POST", "/v1/agents/agent_1/test-call"),
+    ("GET", "/v1/agents/agent_1/eval-runs/run_1"),
     ("POST", "/v1/sessions"),
     ("POST", "/v1/sessions/phone"),
     ("GET", "/v1/sessions"),
