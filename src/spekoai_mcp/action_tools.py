@@ -257,19 +257,14 @@ CREDIT_EXHAUSTED_NEXT_STEP = (
 PHONE_NUMBER_SCOPE_REQUIRED_CODE = "PHONE_NUMBER_SCOPE_REQUIRED"
 PHONE_NUMBER_CONSENT_REQUIRED_CODE = "PHONE_NUMBER_CONSENT_REQUIRED"
 
-# Both strings deliberately defer to the URL Platform put in the error message
-# instead of naming a destination themselves. Platform picks that URL from the
-# calling harness - the Claude directory page, the ChatGPT plugin page, or the
-# workspace phone-authorization page when it cannot name one - and a fixed
-# instruction here cannot know which applied. Saying "the connector's consent
-# screen" while the message names a settings URL hands the model two conflicting
-# destinations, which is what this previously did.
+# Platform names the reconnect location for this caller. Generic clients also
+# receive a workspace-consent link, which cannot widen the token's permissions.
+# Follow the server's instructions without treating every link as reauthorization.
 PHONE_NUMBER_AUTH_NEXT_STEPS: dict[str, str] = {
     PHONE_NUMBER_SCOPE_REQUIRED_CODE: (
-        "Tell the user this connector was authorized before phone calling was enabled "
-        "and must be reconnected - give them the link in the message above, which is "
-        "the page that can re-authorize it. A token refresh never adds this "
-        "permission. Do not retry the call until they confirm they have done it."
+        "Tell the user to follow the reconnect instructions above and approve phone calling. "
+        "Workspace consent and token refresh cannot add this permission. "
+        "Retry only after they confirm a new authorization."
     ),
     PHONE_NUMBER_CONSENT_REQUIRED_CODE: (
         "Tell the user to accept the phone-use consent for this workspace at the link "

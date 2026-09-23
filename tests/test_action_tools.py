@@ -470,6 +470,76 @@ def _error_response(payload: dict[str, Any]) -> httpx.Response:
     )
 
 
+@pytest.mark.parametrize(
+    "reconnect_instructions",
+    [
+        pytest.param(
+            "Reconnect the Speko connector in your client so it authorizes again - "
+            "a token refresh will not add this permission. Phone use must also be "
+            "accepted for this workspace at "
+            "https://platform.speko.ai/settings/phone-authorization.",
+            id="generic-client",
+        ),
+        pytest.param(
+            "Reconnect Speko at https://claude.ai/directory/speko and approve phone "
+            "calling, then retry - a token refresh will not add this permission.",
+            id="claude-directory",
+        ),
+        pytest.param(
+            "Reconnect Speko at "
+            "https://chatgpt.com/plugins/plugin_asdk_app_6a88aa7070e88191b5825453492c5cf5"
+            "?open_in_app and approve phone calling, then retry - "
+            "a token refresh will not add this permission.",
+            id="chatgpt-directory",
+        ),
+    ],
+)
+def test_phone_scope_recovery_preserves_the_server_reconnect_location(
+    reconnect_instructions: str,
+) -> None:
+    # The generic URL is a later workspace-consent step, not a way to widen
+    # OAuth scopes. Render the same error path the tool returns to its caller.
+    server_message = (
+        f"This connection is not authorized for phone calling. {reconnect_instructions}"
+    )
+    response = _error_response(
+        {"error": server_message, "code": PHONE_NUMBER_SCOPE_REQUIRED_CODE}
+    )
+    response.headers["x-request-id"] = "trace-phone-scope"
+    with pytest.raises(http_client.SpekoApiError) as error:
+        http_client._raise_api_error(response)
+
+    next_step = next_step_for_error(error.value, path="/v1/sessions/phone")
+    rendered = http_client.tool_error_message(error.value, next_step=next_step)
+
+    assert server_message in rendered
+    assert "trace_id=trace-phone-scope" in rendered
+    assert "follow the reconnect instructions above" in next_step
+    assert "Workspace consent and token refresh cannot add this permission" in next_step
+    assert "Retry only after they confirm a new authorization" in next_step
+    assert "the page that can re-authorize it" not in rendered
+
+
+def test_phone_consent_recovery_keeps_the_workspace_link_without_reconnecting() -> None:
+    server_message = (
+        "This workspace has not accepted the phone-use authorization yet. Open "
+        "https://platform.speko.ai/settings/phone-authorization, accept it, then retry the call."
+    )
+    response = _error_response(
+        {"error": server_message, "code": PHONE_NUMBER_CONSENT_REQUIRED_CODE}
+    )
+    with pytest.raises(http_client.SpekoApiError) as error:
+        http_client._raise_api_error(response)
+
+    next_step = next_step_for_error(error.value, path="/v1/sessions/phone")
+    rendered = http_client.tool_error_message(error.value, next_step=next_step)
+
+    assert server_message in rendered
+    assert "accept the phone-use consent for this workspace" in next_step
+    assert "No reconnect is needed" in next_step
+    assert "new authorization" not in next_step
+
+
 def test_platform_hint_reaches_the_model() -> None:
     # Platform attaches `hint` to every coded error from the curated registry,
     # and the parser used to read only `error`/`code` - so the one field written
