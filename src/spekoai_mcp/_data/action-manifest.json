@@ -2724,6 +2724,7 @@
                       "phone_agent",
                       "transcription",
                       "voice_content",
+                      "completion",
                       "translation",
                       "other"
                     ]
@@ -7010,6 +7011,13 @@
                     "s2s"
                   ]
                 },
+                "graphClassifier": {
+                  "type": "string",
+                  "enum": [
+                    "llm",
+                    "jev"
+                  ]
+                },
                 "backgroundAudio": {
                   "anyOf": [
                     {
@@ -7858,6 +7866,13 @@
                 "enum": [
                   "cascade",
                   "s2s"
+                ]
+              },
+              "graphClassifier": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "jev"
                 ]
               },
               "backgroundAudio": {
@@ -8878,6 +8893,13 @@
                     "enum": [
                       "cascade",
                       "s2s"
+                    ]
+                  },
+                  "graphClassifier": {
+                    "type": "string",
+                    "enum": [
+                      "llm",
+                      "jev"
                     ]
                   },
                   "backgroundAudio": {
