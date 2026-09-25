@@ -7071,6 +7071,25 @@
                     }
                   ]
                 },
+                "audioOutput": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "gainDb": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "gainDb"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "speechNormalization": {
                   "anyOf": [
                     {
@@ -7921,6 +7940,25 @@
                         "additionalProperties": false
                       }
                     },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "audioOutput": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gainDb": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "gainDb"
+                    ],
                     "additionalProperties": false
                   },
                   {
@@ -8948,6 +8986,25 @@
                             "additionalProperties": false
                           }
                         },
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "audioOutput": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "gainDb": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "gainDb"
+                        ],
                         "additionalProperties": false
                       },
                       {
