@@ -2719,23 +2719,26 @@
               "translationMode": {
                 "$ref": "#/$defs/__schema3"
               },
-              "objective": {
+              "translationModel": {
                 "$ref": "#/$defs/__schema4"
               },
-              "maxPricePerMinUsd": {
+              "objective": {
                 "$ref": "#/$defs/__schema5"
               },
-              "deny": {
+              "maxPricePerMinUsd": {
                 "$ref": "#/$defs/__schema6"
               },
+              "deny": {
+                "$ref": "#/$defs/__schema7"
+              },
               "stt": {
-                "$ref": "#/$defs/__schema8"
+                "$ref": "#/$defs/__schema9"
               },
               "llm": {
-                "$ref": "#/$defs/__schema8"
+                "$ref": "#/$defs/__schema9"
               },
               "tts": {
-                "$ref": "#/$defs/__schema8"
+                "$ref": "#/$defs/__schema9"
               }
             },
             "required": [
@@ -2807,6 +2810,18 @@
             ]
           },
           "__schema4": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema5": {
             "type": "string",
             "enum": [
               "latency",
@@ -2815,7 +2830,7 @@
               "balanced"
             ]
           },
-          "__schema5": {
+          "__schema6": {
             "anyOf": [
               {
                 "type": "number",
@@ -2827,26 +2842,26 @@
               }
             ]
           },
-          "__schema6": {
+          "__schema7": {
             "maxItems": 100,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/__schema7"
+              "$ref": "#/$defs/__schema8"
             }
           },
-          "__schema7": {
+          "__schema8": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
           },
-          "__schema8": {
+          "__schema9": {
             "type": "object",
             "properties": {
               "chain": {
                 "maxItems": 20,
                 "type": "array",
                 "items": {
-                  "$ref": "#/$defs/__schema9"
+                  "$ref": "#/$defs/__schema10"
                 }
               },
               "voice": {
@@ -2926,7 +2941,7 @@
             ],
             "additionalProperties": false
           },
-          "__schema9": {
+          "__schema10": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200
