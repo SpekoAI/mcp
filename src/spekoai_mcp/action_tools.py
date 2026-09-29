@@ -272,6 +272,43 @@ PHONE_NUMBER_AUTH_NEXT_STEPS: dict[str, str] = {
     ),
 }
 
+# The purchase gate on `GET /v1/phone-numbers/available` and number creation.
+# Each is a workspace state only the user can change on the Phone numbers page,
+# so the auth fallback ("check authentication and retry") was wrong for all six.
+_PHONE_NUMBER_PURCHASE_GATE_NEXT_STEP = (
+    "Tell the user to complete the step named in the message above on the Phone "
+    "numbers page. Do not retry until they confirm it is done."
+)
+PHONE_NUMBER_AUTH_NEXT_STEPS.update(
+    {
+        code: _PHONE_NUMBER_PURCHASE_GATE_NEXT_STEP
+        for code in (
+            "PHONE_NUMBER_KYB_REQUIRED",
+            "PHONE_NUMBER_KYB_ATTESTATION_REQUIRED",
+            "PHONE_NUMBER_KYB_REJECTED",
+            "PHONE_NUMBER_KYB_REVOKED",
+            "BUY_PHONE_NUMBERS_DISABLED_FOR_ORG",
+        )
+    }
+)
+PHONE_NUMBER_AUTH_NEXT_STEPS["PHONE_NUMBER_KYB_REVIEW_HOLD"] = (
+    "The workspace's business declaration is under review. Tell the user; there is "
+    "nothing to fix, and retrying will fail until the review completes."
+)
+
+# A 422 is a well-formed request nothing can serve. Repeating it unchanged gets
+# the same 422, which is what the generic "Retry" fallback invited.
+NO_PROVIDER_AVAILABLE_CODE = "NO_PROVIDER_AVAILABLE"
+NO_PROVIDER_AVAILABLE_NEXT_STEP = (
+    "No provider can serve this combination. Change the request before retrying: "
+    "drop sampleRate, check the language code (e.g. 'en' or 'en-US'), and remove or "
+    "correct any model or allowedProviders pin."
+)
+UNPROCESSABLE_NEXT_STEP = (
+    "Speko could not process this request as sent. Change it using the message above; "
+    "do not retry it unchanged."
+)
+
 # `GET /v1/calls/:id/recording` answers 404 for four unrelated reasons, and every
 # one of them used to fall through to the default at the bottom of
 # `next_step_for_error`: "Retry the Speko MCP request". That is what turned one
@@ -547,15 +584,22 @@ async def synthesize_speech(
             description=(
                 "JSON body for POST /v1/synthesize. Required: text (1-50000 "
                 "chars, must contain a speakable character) and intent "
-                "({language: BCP-47 tag, region?: string, optimizeFor?: "
-                "'balanced'|'accuracy'|'latency'|'cost'}). Optional: voice "
-                "(string), model (upstream model such as "
-                "'eleven_multilingual_v2' or 'sonic-2'), speed (0.5-2), "
+                "({language, region?: string, optimizeFor?: "
+                "'balanced'|'accuracy'|'latency'|'cost'}). language is a "
+                "lowercase 2-3 letter code with an optional uppercase region: "
+                "'en' or 'en-US', not 'en_US', 'en-us' or 'English'. "
+                "Optional: voice (a vendor-specific voice id; omit it to get "
+                "the provider's default), model (upstream model such as "
+                "'eleven_multilingual_v2' or 'sonic-3.5'), speed (0.5-2), "
                 "instructions (speaking-style text, applied only when the "
                 "resolved model is instruction-capable), spokenForm (bool; "
                 "normalizes markdown, URLs and numbers before synthesis), "
-                "sampleRate (16000|24000|44100|48000), constraints "
-                "({allowedProviders?: {tts?: string[]}})."
+                "sampleRate (omit it: 24000 is the rate nearly every provider "
+                "serves, and 16000, 44100 or 48000 usually leave no provider "
+                "and fail with 422), constraints ({allowedProviders?: {tts?: "
+                "string[]}}; each entry is a lowercase provider key such as "
+                "'cartesia' or 'elevenlabs', or 'provider/model' such as "
+                "'cartesia/sonic-3')."
             )
         ),
     ],
@@ -579,7 +623,10 @@ async def synthesize_speech(
             if exc.code not in _ROUTER_FALLBACK_CODES:
                 raise
 
-    raw = await http_client.call_speko_api_raw("POST", "/v1/synthesize", body=body)
+    try:
+        raw = await http_client.call_speko_api_raw("POST", "/v1/synthesize", body=body)
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        raise tool_error(exc, next_step=next_step_for_error(exc, path="/v1/synthesize")) from exc
     if not raw.content:
         raise ToolError("Speko synthesize returned an empty body.")
     return _synthesis_result(
@@ -721,9 +768,11 @@ _ROUTER_FALLBACK_CODES = frozenset(
 
 # Platform routing DEMOTES candidates that cannot serve a canonical parameter
 # rather than SELECTING one that can, so an unpinned `wordTimestamps` request
-# answers 422 no_capable_provider even though a capable model exists. This is
-# the only model carrying the mapping today; the Router needs no equivalent,
-# because its automatic routing filters on the capability itself.
+# answers 422 no_capable_provider even though a capable model exists. Platform
+# widens this pin with other rungs that can also return word timings (Deepgram
+# nova-3 on the batch path), so the pin is no longer a single point of failure.
+# The Router needs no equivalent, because its automatic routing filters on the
+# capability itself.
 _WORD_TIMESTAMP_STT_PIN = "gemini:gemini-3.5-transcribe"
 
 
@@ -1523,6 +1572,10 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
             return NOT_FOUND_NEXT_STEP
         if exc.retryable is False:
             return NON_RETRYABLE_NEXT_STEP
+    if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 422:
+        if (exc.code or "") == NO_PROVIDER_AVAILABLE_CODE and path == "/v1/synthesize":
+            return NO_PROVIDER_AVAILABLE_NEXT_STEP
+        return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP
     return "Retry the Speko MCP request or inspect the Speko API response details."
@@ -2424,7 +2477,10 @@ async def search_available_phone_numbers(
 ) -> ToolResult:
     """Search phone numbers available to buy.
 
-    Searching is read-only and always works. BUYING one does not follow from it.
+    Searching is read-only, but it answers 403 until the workspace's business
+    verification (KYB) is approved and number purchasing is enabled. The error
+    names the step; the user completes it on the Phone numbers page, and
+    retrying before then fails the same way. BUYING one does not follow from it.
     `phone_numbers.create` debits the workspace's prepaid credits (setup plus the
     first month; it is not a card payment or a checkout). OAuth connector users
     normally do not need this search: their first outbound call automatically

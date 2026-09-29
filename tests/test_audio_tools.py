@@ -196,6 +196,39 @@ async def test_synthesize_rejects_an_empty_response(monkeypatch: pytest.MonkeyPa
         await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
 
 
+async def test_synthesize_no_provider_says_change_the_request_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 422 repeated unchanged is the same 422; the generic step said "Retry"."""
+
+    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+        raise http_client.SpekoApiError(
+            422, "No TTS provider available at 48000 Hz", code="NO_PROVIDER_AVAILABLE"
+        )
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    with pytest.raises(ToolError) as raised:
+        await action_tools.synthesize_speech(
+            {"text": "hi", "intent": {"language": "en"}, "sampleRate": 48000}
+        )
+    message = str(raised.value)
+    assert action_tools.NO_PROVIDER_AVAILABLE_NEXT_STEP in message
+    assert "Retry the Speko MCP request" not in message
+
+
+def test_phone_purchase_gate_codes_do_not_invite_an_auth_retry() -> None:
+    for code in (
+        "PHONE_NUMBER_KYB_REQUIRED",
+        "PHONE_NUMBER_KYB_REVIEW_HOLD",
+        "BUY_PHONE_NUMBERS_DISABLED_FOR_ORG",
+    ):
+        exc = http_client.SpekoApiError(403, "gated", code=code)
+        step = action_tools.next_step_for_error(exc, path="/v1/phone-numbers/available")
+        assert "Check authentication" not in step
+
+
 PCM = b"\x00\x01" * 64
 
 

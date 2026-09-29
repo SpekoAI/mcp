@@ -38,6 +38,7 @@ from collections.abc import Sequence
 
 import mcp.types as mt
 from fastmcp.exceptions import NotFoundError
+from fastmcp.server.dependencies import get_access_token
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool
 
@@ -69,6 +70,19 @@ _BUILDER_MANIFEST_TOOL_NAMES = manifest_tool_names(BUILDER_PROFILE)
 _CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
 _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 _REPLIT_MANIFEST_TOOL_NAMES = manifest_tool_names(REPLIT_PROFILE)
+# Actions the server refuses to an API-key principal (credentials, billing,
+# agent access). Advertising them to an API-key session only produced 403
+# ACTION_PRINCIPAL_FORBIDDEN on every call.
+_OAUTH_ONLY_MANIFEST_TOOL_NAMES = frozenset(
+    entry["id"] for entry in action_entries() if "api-key" not in entry.get("allowedPrincipals", [])
+)
+
+
+def session_is_api_key() -> bool:
+    """Whether the current MCP request authenticated with a Speko API key."""
+    claims = getattr(get_access_token(), "claims", None)
+    return isinstance(claims, dict) and claims.get("auth_method") == "api_key"
+
 
 # The `connector` profile is the surface published in assistant directories
 # (Anthropic's MCP Directory first).
@@ -500,67 +514,10 @@ class ToolProfileMiddleware(Middleware):
         context: MiddlewareContext[mt.ListToolsRequest],
         call_next: CallNext[mt.ListToolsRequest, Sequence[Tool]],
     ) -> Sequence[Tool]:
-        tools = await call_next(context)
-        profile = current_profile()
-        if profile == CUSTOMER_PROFILE:
-            return [
-                tool
-                for tool in tools
-                if tool.name not in _MANIFEST_TOOL_NAMES
-                or tool.name in _CUSTOMER_MANIFEST_TOOL_NAMES
-            ]
-        if profile == BUILDER_PROFILE:
-            filtered = [tool for tool in tools if tool.name in _BUILDER_PROFILE_TOOL_SET]
-            # Present the preset in its documented order: reads first,
-            # the two sanctioned writes last.
-            filtered.sort(
-                key=lambda tool: (
-                    (
-                        0,
-                        BUILDER_PROFILE_TOOL_NAMES.index(tool.name),
-                    )
-                    if tool.name in BUILDER_PROFILE_TOOL_NAMES
-                    else (1, tool.name)
-                )
-            )
-            return filtered
-        if profile == CHATGPT_PROFILE:
-            filtered = [tool for tool in tools if tool.name in _CHATGPT_PROFILE_TOOL_SET]
-            filtered.sort(
-                key=lambda tool: (
-                    (
-                        0,
-                        CHATGPT_PROFILE_TOOL_NAMES.index(tool.name),
-                    )
-                    if tool.name in CHATGPT_PROFILE_TOOL_NAMES
-                    else (1, tool.name)
-                )
-            )
-            return filtered
-        if profile == REPLIT_PROFILE:
-            filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
-            # Build-time tools first; the order is the whole point of this
-            # preset, so it is asserted in tests rather than left to registration.
-            filtered.sort(
-                key=lambda tool: (
-                    (
-                        0,
-                        REPLIT_PROFILE_TOOL_NAMES.index(tool.name),
-                    )
-                    if tool.name in REPLIT_PROFILE_TOOL_NAMES
-                    else (1, tool.name)
-                )
-            )
-            return filtered
-        visible = [
-            tool
-            for tool in tools
-            if tool.name not in BUILDER_ONLY_TOOL_NAMES
-            and (tool.name not in _MANIFEST_TOOL_NAMES or tool.name in _DEFAULT_MANIFEST_TOOL_NAMES)
-        ]
-        if profile == CONNECTOR_PROFILE:
-            return [tool for tool in visible if not _is_connector_excluded(tool.name)]
-        return visible
+        tools = _for_profile(await call_next(context), current_profile())
+        if session_is_api_key():
+            return [tool for tool in tools if tool.name not in _OAUTH_ONLY_MANIFEST_TOOL_NAMES]
+        return tools
 
     async def on_call_tool(
         self,
@@ -568,6 +525,8 @@ class ToolProfileMiddleware(Middleware):
         call_next: CallNext[mt.CallToolRequestParams, object],
     ) -> object:
         name = context.message.name
+        if session_is_api_key() and name in _OAUTH_ONLY_MANIFEST_TOOL_NAMES:
+            raise NotFoundError(f"Unknown tool: {name!r}")
         profile = current_profile()
         if profile == CUSTOMER_PROFILE:
             if name in _MANIFEST_TOOL_NAMES and name not in _CUSTOMER_MANIFEST_TOOL_NAMES:
@@ -591,6 +550,67 @@ class ToolProfileMiddleware(Middleware):
         ):
             raise NotFoundError(f"Unknown tool: {name!r}")
         return await call_next(context)
+
+
+def _for_profile(tools: Sequence[Tool], profile: str | None) -> Sequence[Tool]:
+    if profile == CUSTOMER_PROFILE:
+        return [
+            tool
+            for tool in tools
+            if tool.name not in _MANIFEST_TOOL_NAMES or tool.name in _CUSTOMER_MANIFEST_TOOL_NAMES
+        ]
+    if profile == BUILDER_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _BUILDER_PROFILE_TOOL_SET]
+        # Present the preset in its documented order: reads first,
+        # the two sanctioned writes last.
+        filtered.sort(
+            key=lambda tool: (
+                (
+                    0,
+                    BUILDER_PROFILE_TOOL_NAMES.index(tool.name),
+                )
+                if tool.name in BUILDER_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
+    if profile == CHATGPT_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _CHATGPT_PROFILE_TOOL_SET]
+        filtered.sort(
+            key=lambda tool: (
+                (
+                    0,
+                    CHATGPT_PROFILE_TOOL_NAMES.index(tool.name),
+                )
+                if tool.name in CHATGPT_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
+    if profile == REPLIT_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
+        # Build-time tools first; the order is the whole point of this
+        # preset, so it is asserted in tests rather than left to registration.
+        filtered.sort(
+            key=lambda tool: (
+                (
+                    0,
+                    REPLIT_PROFILE_TOOL_NAMES.index(tool.name),
+                )
+                if tool.name in REPLIT_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
+    visible = [
+        tool
+        for tool in tools
+        if tool.name not in BUILDER_ONLY_TOOL_NAMES
+        and (tool.name not in _MANIFEST_TOOL_NAMES or tool.name in _DEFAULT_MANIFEST_TOOL_NAMES)
+    ]
+    if profile == CONNECTOR_PROFILE:
+        return [tool for tool in visible if not _is_connector_excluded(tool.name)]
+    return visible
 
 
 PHONE_CALLING_TOOL_NAME = "sessions.phone.create"
