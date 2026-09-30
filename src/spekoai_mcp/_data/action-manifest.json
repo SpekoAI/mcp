@@ -10339,7 +10339,7 @@
     {
       "id": "agents.graph.replace",
       "version": 1,
-      "description": "Publish an authored execution graph as a NEW agent version. A graph change is a change to the agent, so it cuts a version the same way a config change does: the live config is carried forward unchanged and only the graph differs, which is what makes agents.rollback able to restore a previous workflow. WHOLE-OBJECT REPLACE — the graph you send becomes the graph, so read agents.graph.get first and send the full modified object, never a partial patch. Marks the graph source as \"authored\", which permanently protects it from the seeder. Rejects with INVALID_GRAPH plus the exact per-field reasons when the graph fails structural validation, and with VERSION_CONFLICT when a precondition failed — the message says whether the agent was published since you read it, the version you sent is not the live one, or the graph itself changed under you. Re-read with agents.graph.get and retry rather than forcing.",
+      "description": "Publish an authored execution graph as a NEW agent version. A graph change is a change to the agent, so it cuts a version the same way a config change does: the live config is carried forward unchanged and only the graph differs, which is what makes agents.rollback able to restore a previous workflow. WHOLE-OBJECT REPLACE — the graph you send becomes the graph, so read agents.graph.get first and send the full modified object, never a partial patch. Marks the graph source as \"authored\", which permanently protects it from the seeder. Rejects with INVALID_GRAPH plus the exact per-field reasons when the graph fails structural validation, and with VERSION_CONFLICT when a precondition failed — the message says whether the agent was published since you read it, the version you sent is not the live one, or the graph itself changed under you. Re-read with agents.graph.get and retry rather than forcing. A graph that saves can still come back with `warnings` (code GRAPH_LINT): legal shapes the validator flags, each naming the node, the edge and the fix. The graph IS saved; read them and replace again if the fix applies.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -11296,7 +11296,7 @@
     {
       "id": "agents.graph.seed",
       "version": 1,
-      "description": "Derive a first execution graph for an agent version from its system prompt (falling back to the version derived flow). Idempotent: an existing graph is returned unchanged with status \"exists\". `force` re-derives ONLY over a previously seeded graph — an authored or healed graph is never clobbered. Use this to bootstrap, then agents.graph.replace to edit.",
+      "description": "Derive a first execution graph for an agent version from its system prompt (falling back to the version derived flow). Idempotent: an existing graph is returned unchanged with status \"exists\". `force` re-derives ONLY over a previously seeded graph — an authored or healed graph is never clobbered. Use this to bootstrap, then agents.graph.replace to edit. `warnings` carries GRAPH_STALL_RISK when a fresh seed can hang, and GRAPH_LINT for validator findings on the graph returned, fresh or existing.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
