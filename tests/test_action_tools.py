@@ -415,6 +415,75 @@ async def test_create_agent_tool_webhook_requires_url_and_secret_before_api(
     assert speko_api_mock == []
 
 
+async def test_agent_tool_simulation_passes_through_create_and_update(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    mcp = create_server()
+    simulation = {"mode": "mock", "response": {"question": "What days can you start?"}}
+    await mcp.call_tool(
+        "agents.tools.create",
+        {"agent_id": "agent_1", "body": {**tool_body(), "simulation": simulation}},
+    )
+    await mcp.call_tool(
+        "agents.tools.update",
+        {"agent_id": "agent_1", "tool_id": "tool_1", "body": {"simulation": {"mode": "live"}}},
+    )
+    await mcp.call_tool(
+        "agents.tools.update",
+        {"agent_id": "agent_1", "tool_id": "tool_1", "body": {"simulation": None}},
+    )
+
+    writes = [c for c in speko_api_mock if str(c["path"]).startswith("/v1/agents/agent_1/tools")]
+    assert [c["method"] for c in writes] == ["POST", "PATCH", "PATCH"]
+    assert writes[0]["body"]["simulation"] == simulation  # type: ignore[index]
+    assert writes[1]["body"] == {"simulation": {"mode": "live"}}
+    assert writes[2]["body"] == {"simulation": None}
+
+
+@pytest.mark.parametrize(
+    ("tool", "simulation", "match"),
+    [
+        ("agents.tools.create", None, "simulation cannot be null"),
+        ("agents.tools.create", {"mode": "skip"}, "simulation.mode must be one of"),
+        ("agents.tools.create", "mock", "simulation.mode must be one of"),
+        ("agents.tools.update", {"mode": "live", "response": "x"}, "does not accept response"),
+        ("agents.tools.update", {"mode": "mock", "respone": {}}, "does not accept respone"),
+        ("agents.tools.update", {"mode": "mock", "response": "x" * 8_200}, "at most 8192"),
+        # 3,000 emoji: 3,000 code points but 12,000 UTF-8 bytes on the wire.
+        ("agents.tools.update", {"mode": "mock", "response": "\U0001f600" * 3_000}, "at most 8192"),
+    ],
+)
+async def test_agent_tool_simulation_rejects_bad_shapes_before_api(
+    speko_api_mock: list[dict[str, object]],
+    tool: str,
+    simulation: object,
+    match: str,
+) -> None:
+    body: dict[str, object] = {"simulation": simulation}
+    args: dict[str, object] = {"agent_id": "agent_1", "body": body}
+    if tool == "agents.tools.create":
+        body.update(tool_body())
+    else:
+        args["tool_id"] = "tool_1"
+    with pytest.raises(ToolError, match=match):
+        await create_server().call_tool(tool, args)
+
+    assert speko_api_mock == []
+
+
+async def test_agent_tool_write_descriptions_document_simulation() -> None:
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    for name in ("agents.tools.create", "agents.tools.update"):
+        body_doc = tools[name].parameters["properties"]["body"]["description"]
+        assert "simulation?:" in body_doc, name
+        assert "{mode:'live'}" in body_doc, name
+        assert "outputBindings" in body_doc, name
+    assert "null to return the tool to the default policy" in (
+        tools["agents.tools.update"].parameters["properties"]["body"]["description"]
+    )
+    assert "simulation" in (tools["agents.tools.get"].description or "")
+
+
 def test_error_details_include_validation_issues() -> None:
     response = httpx.Response(
         400,

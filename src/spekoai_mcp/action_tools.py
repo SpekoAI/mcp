@@ -439,6 +439,30 @@ CREATE_AGENT_TOOL_NEXT_STEP = (
 
 TOOL_SOURCE_KINDS = ("inline", "webhook", "builtin", "integration")
 
+# Mirrors `toolSimulationSettingSchema` / `MAX_SIMULATION_RESPONSE_BYTES` in
+# apps/server/src/services/simulated-tool-execution.ts. The server stays the
+# authority; this only turns the common mistakes into a readable error before
+# a round trip.
+TOOL_SIMULATION_MODES = ("live", "mock")
+MAX_TOOL_SIMULATION_RESPONSE_BYTES = 8_192
+TOOL_SIMULATION_NEXT_STEP = (
+    "Pass simulation as {'mode':'live'} or {'mode':'mock','response':<any JSON>}; "
+    "omit it for the default (automated reliability runs mock the tool, evals "
+    "and test calls you start run it live), or send null on update to return "
+    "to that default."
+)
+TOOL_SIMULATION_FIELD_DOC = (
+    "simulation?: how the tool behaves in SIMULATED runs (automated reliability "
+    "checks, Test Set evals, test calls; real calls always run it). Omit for the "
+    "default: automated reliability runs mock it, evals and test calls a user "
+    "starts run it live. {mode:'live'} runs it for real in every simulated run. "
+    "{mode:'mock', response?: any JSON, <=8192 UTF-8 bytes serialized} never runs it "
+    "in a simulated run and returns `response` as the tool result (a string "
+    "as-is, anything else as JSON) so a workflow tool node's outputBindings "
+    "still fill, e.g. {'question':'What days can you start?'}; without it the "
+    "model gets a generic 'not executed' result."
+)
+
 _E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 
 ACTION_TOOL_NAME_BY_FUNCTION = {
@@ -1694,6 +1718,49 @@ def validate_update_agent_body(body: dict[str, Any]) -> None:
         validate_intent_field(body["intent"], tool="update_agent", next_step=UPDATE_AGENT_NEXT_STEP)
 
 
+def validate_agent_tool_simulation(body: dict[str, Any], *, tool: str, allow_null: bool) -> None:
+    if "simulation" not in body:
+        return
+    simulation = body["simulation"]
+    if simulation is None:
+        if allow_null:
+            return
+        raise ToolError(
+            f"Invalid {tool} body: simulation cannot be null here; omit it for the "
+            f"default policy; next_step={TOOL_SIMULATION_NEXT_STEP}"
+        )
+    if not isinstance(simulation, dict) or simulation.get("mode") not in TOOL_SIMULATION_MODES:
+        raise ToolError(
+            f"Invalid {tool} body: simulation.mode must be one of "
+            f"{', '.join(TOOL_SIMULATION_MODES)}; next_step={TOOL_SIMULATION_NEXT_STEP}"
+        )
+    allowed = {"mode"} if simulation["mode"] == "live" else {"mode", "response"}
+    extra = sorted(set(simulation) - allowed)
+    if extra:
+        raise ToolError(
+            f"Invalid {tool} body: simulation with mode '{simulation['mode']}' does not "
+            f"accept {', '.join(extra)}; next_step={TOOL_SIMULATION_NEXT_STEP}"
+        )
+    if "response" in simulation:
+        try:
+            serialized = json.dumps(
+                simulation["response"], separators=(",", ":"), ensure_ascii=False
+            )
+        except (TypeError, ValueError) as exc:
+            raise ToolError(
+                f"Invalid {tool} body: simulation.response must be JSON-serializable; "
+                f"next_step={TOOL_SIMULATION_NEXT_STEP}"
+            ) from exc
+        # UTF-8 bytes, like the server: `len()` counts code points, so a
+        # multibyte or emoji-heavy response would pass here and 400 there.
+        if len(serialized.encode("utf-8")) > MAX_TOOL_SIMULATION_RESPONSE_BYTES:
+            raise ToolError(
+                f"Invalid {tool} body: simulation.response must serialize to at most "
+                f"{MAX_TOOL_SIMULATION_RESPONSE_BYTES} UTF-8 bytes; "
+                f"next_step={TOOL_SIMULATION_NEXT_STEP}"
+            )
+
+
 def validate_create_agent_tool_body(body: dict[str, Any]) -> None:
     missing = [
         key
@@ -1716,6 +1783,7 @@ def validate_create_agent_tool_body(body: dict[str, Any]) -> None:
             "Invalid create_agent_tool body: a webhook source requires url and "
             f"secret (>=8 chars); next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
         )
+    validate_agent_tool_simulation(body, tool="create_agent_tool", allow_null=False)
 
 
 async def get_organization() -> ToolResult:
@@ -1982,7 +2050,8 @@ async def create_agent_tool(
                 "responseMode?: 'sync'|'async', asyncAck?: string} | "
                 "{kind:'builtin', name: string, config?: any} | "
                 "{kind:'integration', installationId: uuid, appKey: "
-                "string, actionKey: string, config?: any}}."
+                "string, actionKey: string, config?: any}}. Optional: "
+                + TOOL_SIMULATION_FIELD_DOC
             )
         ),
     ],
@@ -2002,7 +2071,10 @@ async def get_agent_tool(
     agent_id: Annotated[str, Field(description="Agent id.")],
     tool_id: Annotated[str, Field(description="Tool id.")],
 ) -> ToolResult:
-    """Get one agent tool by id, as currently stored in the registry."""
+    """Get one agent tool by id, as currently stored in the registry. The row
+    includes `simulation` when the tool overrides the default simulated-run
+    policy; its absence means the default (automated reliability runs mock the
+    tool, evals and test calls a user starts run it live)."""
     return await call(
         "GET",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
@@ -2021,13 +2093,18 @@ async def update_agent_tool(
                 "All fields optional: description (1-1024 chars), "
                 "parameters (JSON Schema object), source (same shapes as "
                 "create_agent_tool; for kind 'webhook', secret is optional "
-                "on update; omit it to keep the existing secret)."
+                "on update; omit it to keep the existing secret), "
+                "simulation (same shape as create_agent_tool, or null to "
+                "return the tool to the default policy). "
+                + TOOL_SIMULATION_FIELD_DOC
             )
         ),
     ],
 ) -> ToolResult:
-    """Update one agent tool's description, parameters, or source. A call
-    already in progress keeps using the version it started with."""
+    """Update one agent tool's description, parameters, source, or
+    simulated-run behaviour. A call already in progress keeps using the
+    version it started with."""
+    validate_agent_tool_simulation(body, tool="update_agent_tool", allow_null=True)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
