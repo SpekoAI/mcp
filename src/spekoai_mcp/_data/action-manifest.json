@@ -18358,6 +18358,7 @@
     "agents.rollback",
     "agents.versions.list",
     "agents.test_call",
+    "agents.test_call.get",
     "sessions.create",
     "sessions.phone.create",
     "sessions.list",

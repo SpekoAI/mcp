@@ -30,7 +30,7 @@ from pydantic import Field
 
 from spekoai_mcp import http_client
 from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META
-from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile
+from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile, profile_serves_tool
 from spekoai_mcp.tool_text import payload_text
 
 logger = logging.getLogger(__name__)
@@ -308,6 +308,44 @@ UNPROCESSABLE_NEXT_STEP = (
     "Speko could not process this request as sent. Change it using the message above; "
     "do not retry it unchanged."
 )
+
+# A long file can run a batch provider past the rung deadline, so every provider
+# "fails" on the same recording. One org resent it 14 times, a minute apart,
+# on the old "Try again." / generic retry step.
+ALL_PROVIDERS_FAILED_CODE = "ALL_PROVIDERS_FAILED"
+TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP = (
+    "Every transcription provider failed on this audio. A long recording can outlast "
+    "the provider deadline, so do not resend the same file unchanged: split it into "
+    "shorter clips, or retry once later."
+)
+
+# The workspace's automatic number purchase failed. Platform keeps that outcome
+# and replays it on every later call without contacting the carrier again, so
+# the generic "Retry" step produced identical 502s. A number bought by hand
+# replaces the automatic one. The ChatGPT, connector and Replit profiles serve
+# calling without the purchase tools, so only the Phone numbers page is named there.
+PHONE_NUMBER_PROVISIONING_FAILED_CODE = "PHONE_NUMBER_PROVISIONING_FAILED"
+_PHONE_NUMBER_PURCHASE_TOOLS = ("phone_numbers.available.search", "phone_numbers.create")
+
+
+def _phone_provisioning_failed_next_step() -> str:
+    step = (
+        "Automatic phone-number setup failed for this workspace and will not be attempted "
+        "again, so retrying returns the same error. "
+    )
+    profile = current_profile()
+    if all(profile_serves_tool(name, profile) for name in _PHONE_NUMBER_PURCHASE_TOOLS):
+        step += (
+            "Tell the user, and with their approval (a number is billed to workspace "
+            "credit) buy one with phone_numbers.available.search then "
+            "phone_numbers.create, or have them buy it on the Phone numbers page. "
+        )
+    else:
+        step += "Tell the user to buy a number on the Phone numbers page. "
+    return step + (
+        "Then place the call again. If buying fails too, tell the user to contact Speko support."
+    )
+
 
 # `GET /v1/calls/:id/recording` answers 404 for four unrelated reasons, and every
 # one of them used to fall through to the default at the bottom of
@@ -923,26 +961,29 @@ async def transcribe_audio(
     # the request rather than preferences: the Router takes WAV/PCM only, so a
     # call recording (Ogg/Opus) answers 415, and it authenticates Speko API
     # keys only, so an OAuth-delegated MCP session has no credential for it.
-    if router_token and _is_wav(audio):
-        try:
-            return await _transcribe_via_router(
-                audio,
-                token=router_token,
-                language=language,
-                keywords=keywords,
-                word_timestamps=word_timestamps,
-            )
-        except http_client.SpekoApiError as exc:
-            if exc.code not in _ROUTER_FALLBACK_CODES:
-                raise
+    try:
+        if router_token and _is_wav(audio):
+            try:
+                return await _transcribe_via_router(
+                    audio,
+                    token=router_token,
+                    language=language,
+                    keywords=keywords,
+                    word_timestamps=word_timestamps,
+                )
+            except http_client.SpekoApiError as exc:
+                if exc.code not in _ROUTER_FALLBACK_CODES:
+                    raise
 
-    return await _transcribe_via_platform(
-        audio,
-        content_type=content_type,
-        language=language,
-        keywords=keywords,
-        word_timestamps=word_timestamps,
-    )
+        return await _transcribe_via_platform(
+            audio,
+            content_type=content_type,
+            language=language,
+            keywords=keywords,
+            word_timestamps=word_timestamps,
+        )
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        raise tool_error(exc, next_step=next_step_for_error(exc, path="/v1/transcribe")) from exc
 
 
 async def _transcribe_via_router(
@@ -1334,6 +1375,10 @@ def _transcript_from_sse(stream: str) -> str:
             code = payload.get("code")
             safe = isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code) is not None
             suffix = f" ({code})" if safe else ""
+            if code == ALL_PROVIDERS_FAILED_CODE:
+                raise ToolError(
+                    f"Transcription failed{suffix}. {TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP}"
+                )
             raise ToolError(f"Transcription failed{suffix}. Try again.")
         if name == "done":
             text = payload.get("text")
@@ -1602,6 +1647,11 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP
+    if isinstance(exc, http_client.SpekoApiError):
+        if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/transcribe":
+            return TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP
+        if exc.code == PHONE_NUMBER_PROVISIONING_FAILED_CODE:
+            return _phone_provisioning_failed_next_step()
     return "Retry the Speko MCP request or inspect the Speko API response details."
 
 

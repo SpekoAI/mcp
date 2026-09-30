@@ -533,9 +533,11 @@ def test_phone_scope_and_consent_403_map_to_distinct_next_steps() -> None:
     assert "consent" in consent_step.lower()
 
 
-def _error_response(payload: dict[str, Any]) -> httpx.Response:
+def _error_response(payload: dict[str, Any], *, status_code: int = 403) -> httpx.Response:
     return httpx.Response(
-        403, json=payload, request=httpx.Request("POST", "https://api.speko.dev/v1/sessions/phone")
+        status_code,
+        json=payload,
+        request=httpx.Request("POST", "https://api.speko.dev/v1/sessions/phone"),
     )
 
 
@@ -607,6 +609,44 @@ def test_phone_consent_recovery_keeps_the_workspace_link_without_reconnecting() 
     assert "accept the phone-use consent for this workspace" in next_step
     assert "No reconnect is needed" in next_step
     assert "new authorization" not in next_step
+
+
+@pytest.mark.parametrize(
+    ("profile", "names_purchase_tools"),
+    [
+        (None, True),
+        ("customer", True),
+        ("chatgpt", False),
+        ("replit", False),
+        ("connector", False),
+    ],
+)
+def test_failed_phone_provisioning_says_buy_a_number_not_retry(
+    monkeypatch: pytest.MonkeyPatch, profile: str | None, names_purchase_tools: bool
+) -> None:
+    # Platform replays a failed automatic purchase on every later call without
+    # contacting the carrier, so "Retry" produced four identical 502s in 5 min.
+    # Profiles that serve calling without the purchase tools get the page only.
+    if profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
+    response = _error_response(
+        {
+            "error": "The phone provider rejected the number order.",
+            "code": "PHONE_NUMBER_PROVISIONING_FAILED",
+            "retryable": False,
+        },
+        status_code=502,
+    )
+    with pytest.raises(http_client.SpekoApiError) as error:
+        http_client._raise_api_error(response)
+
+    next_step = next_step_for_error(error.value, path="/v1/sessions/phone")
+
+    assert "Phone numbers page" in next_step
+    assert ("phone_numbers.create" in next_step) is names_purchase_tools
+    assert "Retry the Speko MCP request" not in next_step
 
 
 def test_platform_hint_reaches_the_model() -> None:

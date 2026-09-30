@@ -463,6 +463,33 @@ async def test_transcribe_rejects_a_missing_done_frame(
     assert str(error.value) == INCOMPLETE_MESSAGE
 
 
+async def test_transcribe_http_503_says_split_the_audio_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 503 used to escape raw; one org resent the same long file 14 times."""
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def fake_post(*args: Any, **kwargs: Any) -> SpekoRawResponse:
+        raise http_client.SpekoApiError(
+            503, "All providers failed", trace_id="req-1", code="ALL_PROVIDERS_FAILED"
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    with pytest.raises(ToolError) as error:
+        await action_tools.transcribe_audio("https://cdn.example.com/long.m4a")
+
+    message = str(error.value)
+    assert "Speko API returned 503" in message
+    assert "trace_id=req-1" in message
+    assert action_tools.TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP in message
+    assert "Retry the Speko MCP request" not in message
+
+
 # --- SSE semantics ---------------------------------------------------------
 
 
@@ -706,8 +733,10 @@ async def test_router_refusals_fall_back_only_when_platform_can_serve_them(
         out = await action_tools.transcribe_audio("https://storage.example.com/rec.wav")
         assert out.structured_content["text"] == "fallback"
     else:
-        with pytest.raises(http_client.SpekoApiError):
+        with pytest.raises(ToolError) as error:
             await action_tools.transcribe_audio("https://storage.example.com/rec.wav")
+        assert isinstance(error.value.__cause__, http_client.SpekoApiError)
+        assert "next_step=" in str(error.value)
 
 
 async def test_platform_word_timestamps_pin_the_capable_model_and_arrive_in_ms(
@@ -1831,7 +1860,10 @@ def test_an_error_frame_is_not_reported_as_incomplete() -> None:
     )
     with pytest.raises(ToolError) as error:
         action_tools._transcript_from_sse(stream)
-    assert str(error.value) == "Transcription failed (ALL_PROVIDERS_FAILED). Try again."
+    assert str(error.value) == (
+        "Transcription failed (ALL_PROVIDERS_FAILED). "
+        f"{action_tools.TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP}"
+    )
     assert "All providers failed" not in str(error.value)
 
 
@@ -1858,4 +1890,7 @@ async def test_an_error_frame_without_done_is_a_failure_not_incomplete(
     monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
     with pytest.raises(ToolError) as error:
         await action_tools.transcribe_audio("https://cdn.example.com/a.mp3")
-    assert str(error.value) == "Transcription failed (ALL_PROVIDERS_FAILED). Try again."
+    assert str(error.value) == (
+        "Transcription failed (ALL_PROVIDERS_FAILED). "
+        f"{action_tools.TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP}"
+    )
