@@ -9961,7 +9961,7 @@
                       },
                       "globalEdges": {
                         "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                        "$ref": "#/$defs/__schema14"
+                        "$ref": "#/$defs/__schema16"
                       }
                     },
                     "required": [
@@ -10185,9 +10185,17 @@
                 "description": "`sms`: the message sent mid-call.",
                 "$ref": "#/$defs/__schema12"
               },
+              "mustBeHeard": {
+                "description": "The say line must be HEARD before the walk leaves by this node's own edges. When the worker gives up on it (talked over past the re-read cap, or never delivered twice) it goes to `unheardFallback` instead of treating the line as asked.",
+                "$ref": "#/$defs/__schema13"
+              },
+              "unheardFallback": {
+                "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
+                "$ref": "#/$defs/__schema14"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema13"
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
@@ -10242,6 +10250,12 @@
             "type": "string"
           },
           "__schema13": {
+            "type": "boolean"
+          },
+          "__schema14": {
+            "type": "string"
+          },
+          "__schema15": {
             "type": "object",
             "properties": {
               "x": {
@@ -10257,7 +10271,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema14": {
+          "__schema16": {
             "type": "array",
             "items": {
               "type": "object",
@@ -10478,7 +10492,7 @@
               },
               "globalEdges": {
                 "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                "$ref": "#/$defs/__schema14"
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
@@ -10636,9 +10650,17 @@
                 "description": "`sms`: the message sent mid-call.",
                 "$ref": "#/$defs/__schema12"
               },
+              "mustBeHeard": {
+                "description": "The say line must be HEARD before the walk leaves by this node's own edges. When the worker gives up on it (talked over past the re-read cap, or never delivered twice) it goes to `unheardFallback` instead of treating the line as asked.",
+                "$ref": "#/$defs/__schema13"
+              },
+              "unheardFallback": {
+                "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
+                "$ref": "#/$defs/__schema14"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema13"
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
@@ -10693,6 +10715,12 @@
             "type": "string"
           },
           "__schema13": {
+            "type": "boolean"
+          },
+          "__schema14": {
+            "type": "string"
+          },
+          "__schema15": {
             "type": "object",
             "properties": {
               "x": {
@@ -10708,7 +10736,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema14": {
+          "__schema16": {
             "type": "array",
             "items": {
               "type": "object",
@@ -10923,7 +10951,7 @@
                   },
                   "globalEdges": {
                     "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                    "$ref": "#/$defs/__schema14"
+                    "$ref": "#/$defs/__schema16"
                   }
                 },
                 "required": [
@@ -11142,9 +11170,17 @@
                 "description": "`sms`: the message sent mid-call.",
                 "$ref": "#/$defs/__schema12"
               },
+              "mustBeHeard": {
+                "description": "The say line must be HEARD before the walk leaves by this node's own edges. When the worker gives up on it (talked over past the re-read cap, or never delivered twice) it goes to `unheardFallback` instead of treating the line as asked.",
+                "$ref": "#/$defs/__schema13"
+              },
+              "unheardFallback": {
+                "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
+                "$ref": "#/$defs/__schema14"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema13"
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
@@ -11199,6 +11235,12 @@
             "type": "string"
           },
           "__schema13": {
+            "type": "boolean"
+          },
+          "__schema14": {
+            "type": "string"
+          },
+          "__schema15": {
             "type": "object",
             "properties": {
               "x": {
@@ -11214,7 +11256,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema14": {
+          "__schema16": {
             "type": "array",
             "items": {
               "type": "object",
@@ -11482,7 +11524,7 @@
                   },
                   "globalEdges": {
                     "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                    "$ref": "#/$defs/__schema14"
+                    "$ref": "#/$defs/__schema16"
                   }
                 },
                 "required": [
@@ -11767,9 +11809,17 @@
                 "description": "`sms`: the message sent mid-call.",
                 "$ref": "#/$defs/__schema12"
               },
+              "mustBeHeard": {
+                "description": "The say line must be HEARD before the walk leaves by this node's own edges. When the worker gives up on it (talked over past the re-read cap, or never delivered twice) it goes to `unheardFallback` instead of treating the line as asked.",
+                "$ref": "#/$defs/__schema13"
+              },
+              "unheardFallback": {
+                "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
+                "$ref": "#/$defs/__schema14"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema13"
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
@@ -11824,6 +11874,12 @@
             "type": "string"
           },
           "__schema13": {
+            "type": "boolean"
+          },
+          "__schema14": {
+            "type": "string"
+          },
+          "__schema15": {
             "type": "object",
             "properties": {
               "x": {
@@ -11839,7 +11895,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema14": {
+          "__schema16": {
             "type": "array",
             "items": {
               "type": "object",
