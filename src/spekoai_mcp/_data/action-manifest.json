@@ -9964,7 +9964,7 @@
                       },
                       "globalEdges": {
                         "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                        "$ref": "#/$defs/__schema16"
+                        "$ref": "#/$defs/__schema17"
                       }
                     },
                     "required": [
@@ -10196,9 +10196,13 @@
                 "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
                 "$ref": "#/$defs/__schema14"
               },
+              "answerLength": {
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "$ref": "#/$defs/__schema15"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema15"
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
@@ -10259,6 +10263,13 @@
             "type": "string"
           },
           "__schema15": {
+            "type": "string",
+            "enum": [
+              "open",
+              "short"
+            ]
+          },
+          "__schema16": {
             "type": "object",
             "properties": {
               "x": {
@@ -10274,7 +10285,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema16": {
+          "__schema17": {
             "type": "array",
             "items": {
               "type": "object",
@@ -10495,7 +10506,7 @@
               },
               "globalEdges": {
                 "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                "$ref": "#/$defs/__schema16"
+                "$ref": "#/$defs/__schema17"
               }
             },
             "required": [
@@ -10661,9 +10672,13 @@
                 "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
                 "$ref": "#/$defs/__schema14"
               },
+              "answerLength": {
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "$ref": "#/$defs/__schema15"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema15"
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
@@ -10724,6 +10739,13 @@
             "type": "string"
           },
           "__schema15": {
+            "type": "string",
+            "enum": [
+              "open",
+              "short"
+            ]
+          },
+          "__schema16": {
             "type": "object",
             "properties": {
               "x": {
@@ -10739,7 +10761,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema16": {
+          "__schema17": {
             "type": "array",
             "items": {
               "type": "object",
@@ -10954,7 +10976,7 @@
                   },
                   "globalEdges": {
                     "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                    "$ref": "#/$defs/__schema16"
+                    "$ref": "#/$defs/__schema17"
                   }
                 },
                 "required": [
@@ -11181,9 +11203,13 @@
                 "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
                 "$ref": "#/$defs/__schema14"
               },
+              "answerLength": {
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "$ref": "#/$defs/__schema15"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema15"
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
@@ -11244,6 +11270,13 @@
             "type": "string"
           },
           "__schema15": {
+            "type": "string",
+            "enum": [
+              "open",
+              "short"
+            ]
+          },
+          "__schema16": {
             "type": "object",
             "properties": {
               "x": {
@@ -11259,7 +11292,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema16": {
+          "__schema17": {
             "type": "array",
             "items": {
               "type": "object",
@@ -11527,7 +11560,7 @@
                   },
                   "globalEdges": {
                     "description": "Intents a caller may raise from any node. Send them back or they are dropped.",
-                    "$ref": "#/$defs/__schema16"
+                    "$ref": "#/$defs/__schema17"
                   }
                 },
                 "required": [
@@ -11820,9 +11853,13 @@
                 "description": "`mustBeHeard`: node id the walk goes to when the line is never heard.",
                 "$ref": "#/$defs/__schema14"
               },
+              "answerLength": {
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "$ref": "#/$defs/__schema15"
+              },
               "position": {
                 "description": "Authored canvas placement. Preserve it on a write or the layout is re-derived.",
-                "$ref": "#/$defs/__schema15"
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
@@ -11883,6 +11920,13 @@
             "type": "string"
           },
           "__schema15": {
+            "type": "string",
+            "enum": [
+              "open",
+              "short"
+            ]
+          },
+          "__schema16": {
             "type": "object",
             "properties": {
               "x": {
@@ -11898,7 +11942,7 @@
             ],
             "additionalProperties": {}
           },
-          "__schema16": {
+          "__schema17": {
             "type": "array",
             "items": {
               "type": "object",
