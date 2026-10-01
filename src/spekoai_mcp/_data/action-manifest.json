@@ -7062,7 +7062,8 @@
                   "type": "string",
                   "enum": [
                     "llm",
-                    "jev"
+                    "jev",
+                    "gpt-live"
                   ]
                 },
                 "backgroundAudio": {
@@ -7938,7 +7939,8 @@
                 "type": "string",
                 "enum": [
                   "llm",
-                  "jev"
+                  "jev",
+                  "gpt-live"
                 ]
               },
               "backgroundAudio": {
@@ -8984,7 +8986,8 @@
                     "type": "string",
                     "enum": [
                       "llm",
-                      "jev"
+                      "jev",
+                      "gpt-live"
                     ]
                   },
                   "backgroundAudio": {
