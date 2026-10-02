@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.32
+
+- Add session hang-up and five-minute defaults for ChatGPT and connector calls when no duration is specified.
+
 ## 0.2.31
 
 - A 404 from `calls.recording.get` and `sessions.recording.get` now says what to do instead of "retry". A recording finalizes AFTER its call ends -- LiveKit's `egress_ended` lands after `room_finished` -- so the first read always 404s, and `next_step_for_error` had no 404 branch: every one of them came back as `next_step=Retry the Speko MCP request`. On 2026-09-19 one workspace on the ChatGPT harness sent `GET /v1/calls/:id/recording` 1,078 times in 151 seconds, ~14 req/s with 440 of the gaps under 50 ms, while reviewing about 102 test-call recordings; the 30-day baseline for that endpoint is 31 calls/day. Each 404 was a single indexed read averaging 7 ms, so nothing paged -- the cost was a burned context window and a user watching an agent appear to hang. The answer now depends on the lifecycle `status` the route already publishes: a stated cadence (~5 s, ~24 checks, then stop) for `pending`/`uploading`/absent, a hard stop for `failed`/`suppressed`/`discarded`, and a different hard stop when it reads `ready` but the stored object is gone -- which 404s too, because the guard is `status !== 'ready' || !recordingObjectPath`. `RECORDING_DISABLED` and every `*_NOT_FOUND` code get their own answers.
