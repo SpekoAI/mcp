@@ -103,6 +103,7 @@ WRITE_TOOL_NAMES = {
     "agents.test_call",
     "sessions.create",
     "sessions.phone.create",
+    "sessions.end",
 }
 
 

@@ -291,6 +291,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "agents.create",
     "agents.test_call",
     "sessions.phone.create",
+    "sessions.end",
 ]
 
 # Manifest-generated actions that appear on the DEFAULT surface and have no
@@ -301,6 +302,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
 # fail, and a derived expectation could never do that.
 DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
+    "sessions.end",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
@@ -425,6 +427,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     "agents.test_call",
     "sessions.create",
     "sessions.phone.create",
+    "sessions.end",
 ]
 
 _REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFEST_TOOL_NAMES

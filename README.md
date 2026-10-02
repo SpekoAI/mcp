@@ -120,7 +120,12 @@ compliance diagnostics:
 - evals and monitoring: `evals.get`, `agents.monitoring.results.list`;
 - audio: `audio.transcribe`;
 - calling: `sessions.phone.create` — one outbound call per tool call, with
-  AI disclosure injected server side;
+  AI disclosure injected server side. ChatGPT and connector calls default to
+  a hard five-minute limit; set `body.maxDurationSeconds` explicitly for a
+  different limit (30–3600 seconds for S2S, up to 14400 for cascade);
+- hang-up: `sessions.end` — immediately request hang-up using `session_id`.
+  It is safe to repeat. An `ending` response confirms the request; use
+  `sessions.get` to confirm the session ended;
 - compliance: `phone_numbers.kyb.get` — OAuth connector consent and declaration
   submission happen automatically in the backend;
 - migration helpers: `migration.workspace.inspect`,

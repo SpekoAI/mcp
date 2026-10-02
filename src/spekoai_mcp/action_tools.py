@@ -2450,7 +2450,10 @@ async def create_phone_session(
                 "'agent'|'carrier'|'disabled' (default 'agent'), "
                 "timeoutSeconds?: int <=60}}), constraints "
                 "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
-                "metadata (object). Per-call fields win over agent defaults. "
+                "metadata (object), maxDurationSeconds (int, minimum 30; "
+                "maximum 3600 for s2s or 14400 for cascade). ChatGPT and "
+                "connector calls default to 300 seconds when omitted. "
+                "Per-call fields win over agent defaults. "
                 "For OAuth connector users without a number, this first call "
                 "automatically buys a dedicated US number from workspace credits "
                 "and binds it when agentId is present. Do not collect KYB fields. "
@@ -2463,6 +2466,11 @@ async def create_phone_session(
 ) -> ToolResult:
     """Create an outbound phone session, dialing `body.to` from an owned or
     auto-provisioned number.
+
+    Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
+    calls default to five minutes. Use sessions.end to hang up immediately
+    when the call is stuck or the user wants to stop; sessions.get confirms
+    that it ended.
 
     This tool has the highest error rate on this surface. Read the failure
     modes below before retrying. A rejected call returns one of these codes
@@ -2491,6 +2499,8 @@ async def create_phone_session(
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
     apply_directory_phone_s2s_pin(body)
+    if current_profile() in DIRECTORY_PROFILES:
+        body.setdefault("maxDurationSeconds", 300)
     return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
 
 
