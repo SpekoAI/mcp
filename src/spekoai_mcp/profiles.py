@@ -49,6 +49,7 @@ BUILDER_PROFILE = "builder"
 CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
 REPLIT_PROFILE = "replit"
+MUSE_PROFILE = "muse"
 CUSTOMER_PROFILE = "customer"
 
 # Every value SPEKOAI_MCP_DEFAULT_PROFILE will honour. Unknown non-empty values
@@ -59,6 +60,7 @@ KNOWN_PROFILES: frozenset[str] = frozenset(
         CONNECTOR_PROFILE,
         CHATGPT_PROFILE,
         REPLIT_PROFILE,
+        MUSE_PROFILE,
         CUSTOMER_PROFILE,
     }
 )
@@ -70,6 +72,7 @@ _BUILDER_MANIFEST_TOOL_NAMES = manifest_tool_names(BUILDER_PROFILE)
 _CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
 _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 _REPLIT_MANIFEST_TOOL_NAMES = manifest_tool_names(REPLIT_PROFILE)
+_MUSE_MANIFEST_TOOL_NAMES = manifest_tool_names(MUSE_PROFILE)
 # Actions the server refuses to an API-key principal (credentials, billing,
 # agent access). Advertising them to an API-key session only produced 403
 # ACTION_PRINCIPAL_FORBIDDEN on every call.
@@ -307,11 +310,56 @@ DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
 
+# The Meta Muse preset, published to Muse's connector directory as
+# `https://muse.speko.ai/mcp`.
+#
+# Muse is a consumer assistant (US + Canada, 18+), but the person we build
+# this surface for is the small-business owner inside it: someone who wants
+# an AI receptionist on their business line and will never open the
+# dashboard. So it starts from the ChatGPT preset (the call / watch / read
+# workflow OpenAI already reviewed) and adds what that owner needs to finish
+# the job from chat:
+#
+#   - setting up and going live: agents.update / agents.deploy, knowledge-base
+#     writes, and buying and wiring a number. Muse's directory takes payments
+#     (Stripe Link is Meta's stated partner), so unlike OpenAI there is no
+#     purchase ban to design around.
+#   - paying: the Stripe handoffs and the balance read. Each returns a
+#     short-lived hosted URL; no tool on this surface moves money itself.
+#
+# Inbound is the product; outbound stays on. Both run with server-injected AI
+# disclosure because this profile is in DIRECTORY_PROFILES.
+#
+# Manifest actions tagged `muse` (receptionist setup, integrations, support
+# tickets, billing) join through `_MUSE_MANIFEST_TOOL_NAMES`.
+MUSE_PROFILE_TOOL_NAMES: list[str] = [
+    *CHATGPT_PROFILE_TOOL_NAMES[: CHATGPT_PROFILE_TOOL_NAMES.index("audio.transcribe")],
+    "agents.tools.list",
+    "agents.tools.get",
+    "phone_numbers.get",
+    "phone_numbers.available.search",
+    "knowledge_bases.list",
+    "knowledge_bases.get",
+    "knowledge_bases.documents.list",
+    "knowledge_bases.documents.get",
+    "credits.balance.get",
+    *CHATGPT_PROFILE_TOOL_NAMES[CHATGPT_PROFILE_TOOL_NAMES.index("audio.transcribe") :],
+    "agents.update",
+    "agents.deploy",
+    "knowledge_bases.create",
+    "knowledge_bases.documents.create",
+    "knowledge_bases.documents.finalize",
+    "phone_numbers.create",
+    "phone_numbers.update",
+]
+
+_MUSE_PROFILE_TOOL_SET = frozenset(MUSE_PROFILE_TOOL_NAMES) | _MUSE_MANIFEST_TOOL_NAMES
+
 # Profiles published in a third-party assistant directory. Every outbound call
 # created through one of these MUST disclose that the caller is an AI (see
 # `apply_directory_disclosure` in action_tools) — direct MCP clients on the
 # default path are not rewritten.
-DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFILE})
+DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE})
 
 # The curated builder preset, in the order clients see it. Reads first,
 # the two sanctioned writes last (builder platforms default writes to
@@ -543,6 +591,9 @@ class ToolProfileMiddleware(Middleware):
         elif profile == REPLIT_PROFILE:
             if name not in _REPLIT_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == MUSE_PROFILE:
+            if name not in _MUSE_PROFILE_TOOL_SET:
+                raise NotFoundError(f"Unknown tool: {name!r}")
         elif name in BUILDER_ONLY_TOOL_NAMES or (
             name in _MANIFEST_TOOL_NAMES and name not in _DEFAULT_MANIFEST_TOOL_NAMES
         ):
@@ -590,6 +641,16 @@ def _for_profile(tools: Sequence[Tool], profile: str | None) -> Sequence[Tool]:
             )
         )
         return filtered
+    if profile == MUSE_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _MUSE_PROFILE_TOOL_SET]
+        filtered.sort(
+            key=lambda tool: (
+                (0, MUSE_PROFILE_TOOL_NAMES.index(tool.name))
+                if tool.name in MUSE_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
     if profile == REPLIT_PROFILE:
         filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
         # Build-time tools first; the order is the whole point of this
@@ -632,6 +693,8 @@ def profile_serves_tool(name: str, profile: str | None) -> bool:
         return name in _BUILDER_PROFILE_TOOL_SET
     if profile == CHATGPT_PROFILE:
         return name in _CHATGPT_PROFILE_TOOL_SET
+    if profile == MUSE_PROFILE:
+        return name in _MUSE_PROFILE_TOOL_SET
     if profile == REPLIT_PROFILE:
         return name in _REPLIT_PROFILE_TOOL_SET
     visible = name not in BUILDER_ONLY_TOOL_NAMES and (

@@ -307,6 +307,7 @@
                         "connector",
                         "chatgpt",
                         "replit",
+                        "muse",
                         "admin"
                       ]
                     }
@@ -2078,7 +2079,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -7508,7 +7510,8 @@
         "builder",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -8518,7 +8521,8 @@
         "builder",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15195,7 +15199,8 @@
       "idempotency": "required",
       "execution": "handoff",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": [
@@ -15255,7 +15260,8 @@
       "idempotency": "required",
       "execution": "handoff",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": [
@@ -15315,7 +15321,8 @@
       "idempotency": "required",
       "execution": "handoff",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": [
@@ -15745,7 +15752,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15882,7 +15890,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15989,7 +15998,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16364,7 +16374,8 @@
         "customer",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16909,7 +16920,8 @@
         "customer",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17949,7 +17961,8 @@
         "builder",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -18086,7 +18099,8 @@
         "customer",
         "connector",
         "chatgpt",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
