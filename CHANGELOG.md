@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.33
+
+- Add the Meta Muse connector profile with human OAuth billing controls, accurate tool availability, and directory disclosure.
+- Include Muse in attribution observation and verification scope.
+
 ## 0.2.32
 
 - Add session hang-up and five-minute defaults for ChatGPT and connector calls when no duration is specified.
