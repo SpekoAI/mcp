@@ -1815,9 +1815,83 @@
                   "null"
                 ]
               },
+              "sipGateway": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "publicIp": {
+                        "type": "string",
+                        "format": "ipv4",
+                        "pattern": "^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$"
+                      },
+                      "allowlistCidr": {
+                        "type": "string"
+                      },
+                      "realm": {
+                        "default": "sip.speko.ai",
+                        "type": "string"
+                      },
+                      "transport": {
+                        "type": "string",
+                        "const": "udp"
+                      },
+                      "transports": {
+                        "default": [
+                          "udp"
+                        ],
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "udp",
+                            "tcp"
+                          ]
+                        }
+                      },
+                      "sipPort": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "rtpPortStart": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "rtpPortEnd": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "publicIp",
+                      "allowlistCidr",
+                      "realm",
+                      "transport",
+                      "transports",
+                      "sipPort",
+                      "rtpPortStart",
+                      "rtpPortEnd"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "features": {
                 "type": "object",
                 "properties": {
+                  "sipGateway": {
+                    "default": {
+                      "enabled": false
+                    },
+                    "$ref": "#/$defs/__schema0"
+                  },
                   "buyPhoneNumbers": {
                     "$ref": "#/$defs/__schema0"
                   },
@@ -1844,6 +1918,7 @@
                   }
                 },
                 "required": [
+                  "sipGateway",
                   "buyPhoneNumbers",
                   "sms10dlc",
                   "smsMessaging",
@@ -1867,6 +1942,7 @@
               "recordingEnabled",
               "retrievalProvider",
               "imessageProvider",
+              "sipGateway",
               "features"
             ],
             "additionalProperties": false
@@ -16045,6 +16121,14 @@
                     "sip_trunk"
                   ]
                 },
+                "sipIngress": {
+                  "default": "direct",
+                  "type": "string",
+                  "enum": [
+                    "direct",
+                    "gateway"
+                  ]
+                },
                 "providerResourceId": {
                   "type": [
                     "string",
@@ -16271,6 +16355,7 @@
                 "organizationId",
                 "e164",
                 "source",
+                "sipIngress",
                 "providerResourceId",
                 "telnyxPhoneNumberId",
                 "sipTrunkId",
@@ -16426,6 +16511,14 @@
                 "enum": [
                   "managed",
                   "sip_trunk"
+                ]
+              },
+              "sipIngress": {
+                "default": "direct",
+                "type": "string",
+                "enum": [
+                  "direct",
+                  "gateway"
                 ]
               },
               "providerResourceId": {
@@ -16654,6 +16747,7 @@
               "organizationId",
               "e164",
               "source",
+              "sipIngress",
               "providerResourceId",
               "telnyxPhoneNumberId",
               "sipTrunkId",
@@ -16922,6 +17016,423 @@
         "chatgpt",
         "replit",
         "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.sip_gateway.get",
+      "version": 1,
+      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), and the numbers routed through the gateway, plus numbers awaiting ownership verification by a test call. Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "connection": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "publicIp": {
+                        "type": "string",
+                        "format": "ipv4",
+                        "pattern": "^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$"
+                      },
+                      "allowlistCidr": {
+                        "type": "string"
+                      },
+                      "realm": {
+                        "default": "sip.speko.ai",
+                        "type": "string"
+                      },
+                      "transport": {
+                        "type": "string",
+                        "const": "udp"
+                      },
+                      "transports": {
+                        "default": [
+                          "udp"
+                        ],
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "udp",
+                            "tcp"
+                          ]
+                        }
+                      },
+                      "sipPort": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "rtpPortStart": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "rtpPortEnd": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "publicIp",
+                      "allowlistCidr",
+                      "realm",
+                      "transport",
+                      "transports",
+                      "sipPort",
+                      "rtpPortStart",
+                      "rtpPortEnd"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "credential": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "username": {
+                        "type": "string"
+                      },
+                      "authMode": {
+                        "type": "string",
+                        "enum": [
+                          "digest",
+                          "ip"
+                        ]
+                      },
+                      "realm": {
+                        "type": "string"
+                      },
+                      "cidrs": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "maxConcurrentCalls": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      "rotatedAt": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "username",
+                      "authMode",
+                      "realm",
+                      "cidrs",
+                      "maxConcurrentCalls",
+                      "createdAt",
+                      "rotatedAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "numbers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "e164": {
+                      "type": "string"
+                    },
+                    "agentId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "label": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "routable": {
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "e164",
+                    "agentId",
+                    "label",
+                    "routable",
+                    "createdAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "claims": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "e164": {
+                      "type": "string"
+                    },
+                    "agentId": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "verifying",
+                        "provisioning",
+                        "verified",
+                        "failed",
+                        "cancelled"
+                      ]
+                    },
+                    "failureReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "phoneNumberId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    },
+                    "verifiedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastCallAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "codeExpiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verificationCallsToday": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "nextCallAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "e164",
+                    "agentId",
+                    "label",
+                    "status",
+                    "failureReason",
+                    "phoneNumberId",
+                    "createdAt",
+                    "verifiedAt",
+                    "lastCallAt",
+                    "codeExpiresAt",
+                    "verificationCallsToday",
+                    "nextCallAt"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "numberLimit": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "connection",
+              "credential",
+              "numbers",
+              "claims",
+              "numberLimit"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
