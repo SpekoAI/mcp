@@ -363,6 +363,51 @@ async def test_update_agent_rejects_empty_body_before_api(
     assert speko_api_mock == []
 
 
+@pytest.mark.parametrize(
+    "partial",
+    [{"name": "Front desk"}, {"voice": "alloy"}, {"intent": {"language": "en-US"}}],
+)
+async def test_muse_partial_agent_update_leaves_prompt_and_greeting_alone(
+    speko_api_mock: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    partial: dict[str, object],
+) -> None:
+    """PATCH semantics: an unsent field is unchanged, not reset.
+
+    Disclosure used to stamp `systemPrompt = DISCLOSURE_RULE` and
+    `firstMessage = DISCLOSURE_OPENER` onto every directory-surface update, so
+    a rename from Muse replaced the owner's whole prompt with one sentence.
+    """
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+
+    await create_server().call_tool("agents.update", {"agent_id": "agent_1", "body": dict(partial)})
+
+    sent = [call for call in speko_api_mock if call["path"] == "/v1/agents/agent_1"]
+    assert len(sent) == 1, speko_api_mock
+    assert sent[0]["method"] == "PATCH"
+    assert sent[0]["body"] == partial
+
+
+async def test_muse_agent_update_still_discloses_the_fields_it_sends(
+    speko_api_mock: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+
+    await create_server().call_tool(
+        "agents.update",
+        {
+            "agent_id": "agent_1",
+            "body": {"systemPrompt": "You are Ava.", "firstMessage": "Hi, Ava here."},
+        },
+    )
+
+    body = next(c for c in speko_api_mock if c["path"] == "/v1/agents/agent_1")["body"]
+    assert body["systemPrompt"].startswith("You are Ava.")
+    assert DISCLOSURE_RULE in body["systemPrompt"]
+    assert body["firstMessage"].startswith(DISCLOSURE_OPENER)
+    assert "Hi, Ava here." in body["firstMessage"]
+
+
 async def test_create_agent_tool_rejects_missing_fields_before_api(
     speko_api_mock: list[dict[str, object]],
 ) -> None:

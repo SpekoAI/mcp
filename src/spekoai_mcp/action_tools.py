@@ -66,38 +66,47 @@ DISCLOSURE_RULE = (
 )
 
 
-def apply_ai_disclosure(body: dict[str, Any]) -> dict[str, Any]:
+def apply_ai_disclosure(body: dict[str, Any], *, partial: bool = False) -> dict[str, Any]:
     """Force AI disclosure into an agent or phone-session body.
 
     Mutates and returns ``body``. Idempotent: re-applying leaves it alone, so
     a caller who already discloses is not made to say it twice.
-    """
-    prompt = body.get("systemPrompt")
-    if isinstance(prompt, str):
-        if DISCLOSURE_RULE not in prompt:
-            body["systemPrompt"] = f"{prompt.rstrip()}\n\n{DISCLOSURE_RULE}"
-    elif prompt is None:
-        body["systemPrompt"] = DISCLOSURE_RULE
 
-    first = body.get("firstMessage")
-    if isinstance(first, str) and first.strip():
-        if DISCLOSURE_OPENER not in first:
-            body["firstMessage"] = f"{DISCLOSURE_OPENER} {first.lstrip()}"
-    else:
-        body["firstMessage"] = DISCLOSURE_OPENER
+    ``partial=True`` is for PATCH bodies: only a field the caller SENT is
+    rewritten. Filling an absent ``systemPrompt``/``firstMessage`` on a PATCH
+    is not "adding disclosure", it is replacing the stored prompt with one
+    sentence — a Muse rename used to wipe the owner's whole prompt that way.
+    The stored fields already carry disclosure from ``agents.create``.
+    """
+    if not partial or "systemPrompt" in body:
+        prompt = body.get("systemPrompt")
+        if isinstance(prompt, str):
+            if DISCLOSURE_RULE not in prompt:
+                body["systemPrompt"] = f"{prompt.rstrip()}\n\n{DISCLOSURE_RULE}"
+        elif prompt is None:
+            body["systemPrompt"] = DISCLOSURE_RULE
+
+    if not partial or "firstMessage" in body:
+        first = body.get("firstMessage")
+        if isinstance(first, str) and first.strip():
+            if DISCLOSURE_OPENER not in first:
+                body["firstMessage"] = f"{DISCLOSURE_OPENER} {first.lstrip()}"
+        else:
+            body["firstMessage"] = DISCLOSURE_OPENER
     return body
 
 
-def apply_directory_disclosure(body: dict[str, Any]) -> dict[str, Any]:
+def apply_directory_disclosure(body: dict[str, Any], *, partial: bool = False) -> dict[str, Any]:
     """Apply AI disclosure on every published directory surface.
 
     Fires for any profile in ``DIRECTORY_PROFILES`` — Anthropic's MCP
     Directory (`connector`) and OpenAI's Plugin Directory (`chatgpt`) both
     require that a person picking up the phone is told they are speaking to
     an AI. Deployments without a configured profile are never rewritten.
+    ``partial`` is forwarded to :func:`apply_ai_disclosure` (PATCH bodies).
     """
     if current_profile() in DIRECTORY_PROFILES:
-        apply_ai_disclosure(body)
+        apply_ai_disclosure(body, partial=partial)
     return body
 
 
@@ -2056,7 +2065,7 @@ async def update_agent(
 ) -> ToolResult:
     """Update one Speko agent."""
     validate_update_agent_body(body)
-    apply_directory_disclosure(body)
+    apply_directory_disclosure(body, partial=True)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",
@@ -2618,6 +2627,11 @@ async def search_available_phone_numbers(
 ) -> ToolResult:
     """Search phone numbers available to buy.
 
+    PRICES are Speko's retail prices, the ones a purchase charges:
+    ``upfrontCostUsd`` is the one-time setup ($1) and ``monthlyCostUsd`` the
+    monthly rental ($1/month), both debited from prepaid credits. Quote them
+    from the result, not from memory.
+
     Searching is read-only, but it answers 403 until the workspace's business
     verification (KYB) is approved and number purchasing is enabled. The error
     names the step; the user completes it on the Phone numbers page, and
@@ -2655,7 +2669,13 @@ async def create_phone_number(
         ),
     ],
 ) -> ToolResult:
-    """Provision a phone number."""
+    """Buy (provision) a phone number. PAID — tell the owner the price and get
+    their OK first: $1 setup plus $1/month, debited from prepaid workspace
+    credits (setup plus the first month now). The number renews monthly until
+    it is released with phone_numbers.delete (or receptionist.cancel for a
+    receptionist's number). Calls are billed at $0.09 per connected minute from
+    prepaid credits. The search result's upfrontCostUsd/monthlyCostUsd are the
+    exact prices."""
     return await call("POST", "/v1/phone-numbers", body=body, text="Created phone number.")
 
 
