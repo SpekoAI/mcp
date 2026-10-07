@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.36
+
+- Remove the Muse monthly plan tool (`billing.plan.checkout.create`); Speko billing is pay-as-you-go top-ups and auto top-up.
+
 ## 0.2.35
 
 - `agents.update` on directory profiles (ChatGPT, Muse) no longer fills a missing systemPrompt or firstMessage with the disclosure text on a partial update; only fields the caller sends are touched.

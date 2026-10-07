@@ -16198,78 +16198,6 @@
       ]
     },
     {
-      "id": "billing.plan.checkout.create",
-      "version": 1,
-      "description": "Create a short-lived Stripe Checkout handoff that subscribes the workspace to a flat monthly plan (muse_starter). Each paid month adds the plan's included credit to the balance. Returns a url, its purpose, and an expiresAt timestamp; the caller opens the url to pay, this action moves no money itself. This is a MONTHLY SUBSCRIPTION: it charges every month until cancelled in the Stripe billing portal (billing.portal.create). The plan price is configured in Stripe and shown on the Checkout page before payment; tell the owner it renews monthly before creating the link. Fails with PLAN_NOT_CONFIGURED when the plan is not on sale and PLAN_ALREADY_ACTIVE when the workspace already subscribes. Requires a human OAuth principal, not an API key.",
-      "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "plan": {
-            "default": "muse_starter",
-            "type": "string",
-            "enum": [
-              "muse_starter"
-            ]
-          }
-        },
-        "required": [
-          "plan"
-        ],
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "handoff"
-          },
-          "url": {
-            "type": "string",
-            "format": "uri"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-          },
-          "purpose": {
-            "type": "string",
-            "minLength": 1
-          },
-          "sessionId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "url",
-          "expiresAt",
-          "purpose"
-        ],
-        "additionalProperties": false
-      },
-      "effect": "financial",
-      "requiredScopes": [
-        "speko:billing"
-      ],
-      "allowedPrincipals": [
-        "oauth-user"
-      ],
-      "idempotency": "required",
-      "execution": "handoff",
-      "profiles": [
-        "customer",
-        "muse"
-      ],
-      "secretInputPaths": [],
-      "secretOutputPaths": [
-        "url"
-      ]
-    },
-    {
       "id": "billing.invoices.list",
       "version": 1,
       "description": "List recent Stripe invoices for the current workspace, newest first. limit caps the page size at 100 and defaults to 25. Each invoice reports amountPaid and amountDue in the smallest currency unit, plus nullable hostedInvoiceUrl and invoicePdf links once Stripe has generated them.",
@@ -20492,7 +20420,7 @@
     {
       "id": "receptionist.cancel",
       "version": 1,
-      "description": "Cancel the receptionist so the owner stops paying for it, in one approval: it stops answering, the number go_live bought for it is released (which ends the monthly number charge; a released number cannot be recovered), and the result says how to undo carrier forwarding on the business phone. The agent itself is kept; delete it with agents.delete if it is no longer wanted. A monthly plan is not cancelled here: use billing.portal.create for that. A number the owner brought (an existing workspace number or an imported number), or one given to another agent or a person while paused, is never released: it is only unlinked and reported in keptNumber. Errors: NOT_FOUND (no receptionist for this agent), PHONE_NUMBER_RELEASE_FAILED (the number could not be released; nothing was charged and the receptionist stays paused, so retry).",
+      "description": "Cancel the receptionist so the owner stops paying for it, in one approval: it stops answering, the number go_live bought for it is released (which ends the monthly number charge; a released number cannot be recovered), and the result says how to undo carrier forwarding on the business phone. The agent itself is kept; delete it with agents.delete if it is no longer wanted. A number the owner brought (an existing workspace number or an imported number), or one given to another agent or a person while paused, is never released: it is only unlinked and reported in keptNumber. Errors: NOT_FOUND (no receptionist for this agent), PHONE_NUMBER_RELEASE_FAILED (the number could not be released; nothing was charged and the receptionist stays paused, so retry).",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
