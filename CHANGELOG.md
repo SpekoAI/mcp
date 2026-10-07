@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.35
+
+- `agents.update` on directory profiles (ChatGPT, Muse) no longer fills a missing systemPrompt or firstMessage with the disclosure text on a partial update; only fields the caller sends are touched.
+- Paid Muse tools state the price and renewal terms; number search shows the Speko retail price ($1 setup + $1/month).
+- `agents.test_call` is described as a simulated AI-to-AI call.
+
 ## 0.2.34
 
 - Muse serves the full owner surface (everything the customer surface does except API keys, provider credentials, the Router and SIP gateway logins), including the receptionist, integrations, support-ticket and billing actions.
