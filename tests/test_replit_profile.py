@@ -104,6 +104,7 @@ WRITE_TOOL_NAMES = {
     "sessions.create",
     "sessions.phone.create",
     "sessions.end",
+    "support.ticket.create",
 }
 
 

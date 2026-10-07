@@ -92,17 +92,55 @@ async def test_muse_tool_availability_matches_the_served_surface(
     manifest_names = {name for profile in KNOWN_PROFILES for name in manifest_tool_names(profile)}
     candidates = set(DEFAULT_TOOL_NAMES) | set(BUILDER_TOOL_NAMES) | manifest_names
     assert {name for name in candidates if profile_serves_tool(name, MUSE_PROFILE)} == served
-    assert not profile_serves_tool("agents.delete", MUSE_PROFILE)
+    assert profile_serves_tool("agents.delete", MUSE_PROFILE)
+    assert not profile_serves_tool("api_keys.create", MUSE_PROFILE)
     assert not profile_serves_tool("unknown.tool", MUSE_PROFILE)
 
 
-async def test_muse_serves_nothing_destructive(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_muse_serves_receptionist_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     served = set(await _served_names(monkeypatch))
-    assert served & DESTRUCTIVE_PUBLIC_NAMES == set()
+    assert {"receptionist.setup", "receptionist.update_facts"} <= served
+
+
+async def test_muse_serves_the_receptionist_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    served = set(await _served_names(monkeypatch))
+    assert {
+        "receptionist.go_live",
+        "receptionist.verify_forwarding",
+        "receptionist.pause",
+        "receptionist.resume",
+        "receptionist.settings.update",
+    } <= served
+
+
+async def test_muse_serves_every_customer_tool_except_developer_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = set(await _served_names(monkeypatch))
+    missing = [n for n in ACTION_TOOL_NAMES if n not in served]
+    assert missing == [], f"muse is missing customer tools: {missing}"
+    assert not any(n.startswith(("api_keys.", "gateway.")) for n in served)
+
+
+async def test_muse_serves_the_deletes_owners_need_to_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served = set(await _served_names(monkeypatch))
+    assert DESTRUCTIVE_PUBLIC_NAMES <= served
 
 
 async def test_muse_refuses_tools_outside_the_preset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, MUSE_PROFILE)
     server = create_server()
     with pytest.raises(NotFoundError):
-        await server.call_tool("agents.delete", {"agent_id": "agent_x"})
+        await server.call_tool("api_keys.create", {})
+
+
+async def test_muse_serves_the_integration_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    served = set(await _served_names(monkeypatch))
+    assert {
+        "integrations.list",
+        "integrations.connect",
+        "agents.integration_tools.attach",
+        "agents.integration_tools.detach",
+    } <= served

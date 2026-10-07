@@ -30,7 +30,11 @@ from pydantic import Field
 
 from spekoai_mcp import http_client
 from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META
-from spekoai_mcp.profiles import DIRECTORY_PROFILES, current_profile, profile_serves_tool
+from spekoai_mcp.profiles import (
+    DIRECTORY_PROFILES,
+    current_profile,
+    profile_serves_tool,
+)
 from spekoai_mcp.tool_text import payload_text
 
 logger = logging.getLogger(__name__)

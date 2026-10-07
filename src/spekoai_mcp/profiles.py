@@ -295,6 +295,8 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "agents.test_call",
     "sessions.phone.create",
     "sessions.end",
+    # Asking a person for help, from any surface a user can reach.
+    "support.ticket.create",
 ]
 
 # Manifest-generated actions that appear on the DEFAULT surface and have no
@@ -306,6 +308,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
 DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
     "sessions.end",
+    "support.ticket.create",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
@@ -351,6 +354,40 @@ MUSE_PROFILE_TOOL_NAMES: list[str] = [
     "knowledge_bases.documents.finalize",
     "phone_numbers.create",
     "phone_numbers.update",
+    # Everything else an owner can do in the dashboard, so nobody is sent
+    # there to finish a job: account and usage reads, agent versions and
+    # tools, evals and monitors, sessions, sharing, vendor migration, and the
+    # deletes. Deletes matter most: releasing a number is the only way to stop
+    # its monthly charge. They carry the destructive hint, so Muse asks the
+    # owner to confirm each one.
+    "organization.get",
+    "credits.ledger.list",
+    "usage.summary.get",
+    "agents.versions.list",
+    "agents.rollback",
+    "agents.tools.create",
+    "agents.tools.update",
+    "agents.tools.delete",
+    "agents.evals.list",
+    "agents.evals.create",
+    "agents.evals.run",
+    "evals.get",
+    "agents.monitors.list",
+    "agents.monitors.create",
+    "agents.monitors.update",
+    "agents.monitors.delete",
+    "agents.monitors.events.list",
+    "agents.monitoring.results.list",
+    "sessions.create",
+    "share_cards.create",
+    "migration.workspace.inspect",
+    "migration.session_config.build",
+    "migration.external_config.parse",
+    "migration.briefing.render",
+    "knowledge_bases.documents.delete",
+    "knowledge_bases.delete",
+    "agents.delete",
+    "phone_numbers.delete",
 ]
 
 _MUSE_PROFILE_TOOL_SET = frozenset(MUSE_PROFILE_TOOL_NAMES) | _MUSE_MANIFEST_TOOL_NAMES
@@ -476,6 +513,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.create",
     "sessions.phone.create",
     "sessions.end",
+    "support.ticket.create",
 ]
 
 _REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFEST_TOOL_NAMES

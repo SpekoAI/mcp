@@ -170,7 +170,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -420,7 +421,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -745,7 +747,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -1041,7 +1044,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -1344,7 +1348,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -1422,7 +1427,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -1621,7 +1627,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -1742,7 +1749,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -2035,7 +2043,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -2358,7 +2367,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -2543,7 +2553,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -9652,7 +9663,768 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.setup",
+      "version": 1,
+      "description": "Create an AI phone receptionist for a small business in one step, without deploying it. Reads the business website when website_url is given (public http/https pages only; a page that cannot be read is reported in website.status = \"failed\" and setup still completes from the notes). Builds the system prompt from mode and the facts, a short greeting that says it is an AI (and that the call is recorded when recording is on for the workspace), and a transfer to owner_phone; emergency_escalation also escalates to backup_phone when the owner does not answer. No knowledge base or search tool is created when there are no facts. Returns the new agent id, a preview of exactly what it will say and will never do, and missingFacts: the questions to ask the owner, whose answers go to receptionist.update_facts. The agent is NOT live: next call agents.test_call to ring the owner, then receptionist.go_live. Repeating a call with the same idempotency key returns the first result instead of creating a second receptionist. Errors: RECEPTIONIST_RUNTIME_UNSUPPORTED (receptionists are not available on the call runtime of this workspace yet; nothing was created, contact support).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "business_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "website_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "mode": {
+            "default": "message_taking",
+            "type": "string",
+            "enum": [
+              "message_taking",
+              "booking_requests",
+              "emergency_escalation"
+            ]
+          },
+          "languages": {
+            "default": [
+              "en"
+            ],
+            "minItems": 1,
+            "maxItems": 3,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "owner_phone": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "backup_phone": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "voice": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "business_name",
+          "mode",
+          "languages",
+          "owner_phone"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es",
+              "fr"
+            ]
+          },
+          "__schema1": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "agentName": {
+                "type": "string"
+              },
+              "deployed": {
+                "type": "boolean",
+                "const": false
+              },
+              "preview": {
+                "type": "object",
+                "properties": {
+                  "greeting": {
+                    "type": "string"
+                  },
+                  "greetingsByLanguage": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "willSay": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "willNever": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "transfer": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "greeting",
+                  "greetingsByLanguage",
+                  "willSay",
+                  "willNever",
+                  "transfer",
+                  "mode"
+                ],
+                "additionalProperties": false
+              },
+              "facts": {
+                "type": "object",
+                "properties": {
+                  "hours": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "address": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "prices": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "item": {
+                          "type": "string"
+                        },
+                        "price": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "item",
+                        "price"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "faqs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "question": {
+                          "type": "string"
+                        },
+                        "answer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "question",
+                        "answer"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "bookingDetails": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "emergencyDefinition": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "hours",
+                  "address",
+                  "phone",
+                  "services",
+                  "prices",
+                  "faqs",
+                  "bookingDetails",
+                  "emergencyDefinition"
+                ],
+                "additionalProperties": false
+              },
+              "missingFacts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "enum": [
+                        "hours",
+                        "address",
+                        "services",
+                        "prices",
+                        "booking_details",
+                        "emergency_definition"
+                      ]
+                    },
+                    "question": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "question"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "website": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "not_provided",
+                      "read",
+                      "failed"
+                    ]
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "url",
+                  "status",
+                  "error"
+                ],
+                "additionalProperties": false
+              },
+              "knowledgeBaseId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nextSteps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "agentId",
+              "agentName",
+              "deployed",
+              "preview",
+              "facts",
+              "missingFacts",
+              "website",
+              "knowledgeBaseId",
+              "nextSteps"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.update_facts",
+      "version": 1,
+      "description": "Correct or add business facts on a receptionist made by receptionist.setup, in plain text (for example \"we close at 6 on Fridays, a haircut is $40\"). The correction is applied to the stored facts, the prompt and greeting are rebuilt, and the same preview shape as setup is returned so the owner can check it again. Corrections are kept in order and the newest wins when two disagree. Returns RECEPTIONIST_NOT_FOUND (404) for an agent that was not made by receptionist.setup in this workspace. Does not deploy.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "corrections": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "agent_id",
+          "corrections"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "agentName": {
+                "type": "string"
+              },
+              "deployed": {
+                "type": "boolean",
+                "const": false
+              },
+              "preview": {
+                "type": "object",
+                "properties": {
+                  "greeting": {
+                    "type": "string"
+                  },
+                  "greetingsByLanguage": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "willSay": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "willNever": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "transfer": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "greeting",
+                  "greetingsByLanguage",
+                  "willSay",
+                  "willNever",
+                  "transfer",
+                  "mode"
+                ],
+                "additionalProperties": false
+              },
+              "facts": {
+                "type": "object",
+                "properties": {
+                  "hours": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "address": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "services": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "prices": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "item": {
+                          "type": "string"
+                        },
+                        "price": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "item",
+                        "price"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "faqs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "question": {
+                          "type": "string"
+                        },
+                        "answer": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "question",
+                        "answer"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "bookingDetails": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "emergencyDefinition": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "hours",
+                  "address",
+                  "phone",
+                  "services",
+                  "prices",
+                  "faqs",
+                  "bookingDetails",
+                  "emergencyDefinition"
+                ],
+                "additionalProperties": false
+              },
+              "missingFacts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "enum": [
+                        "hours",
+                        "address",
+                        "services",
+                        "prices",
+                        "booking_details",
+                        "emergency_definition"
+                      ]
+                    },
+                    "question": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "question"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "website": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "not_provided",
+                      "read",
+                      "failed"
+                    ]
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "url",
+                  "status",
+                  "error"
+                ],
+                "additionalProperties": false
+              },
+              "knowledgeBaseId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nextSteps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "action": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "action",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "agentId",
+              "agentName",
+              "deployed",
+              "preview",
+              "facts",
+              "missingFacts",
+              "website",
+              "knowledgeBaseId",
+              "nextSteps"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -10239,7 +11011,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -11246,7 +12019,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -11892,7 +12666,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -12176,7 +12951,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -12437,7 +13213,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -12564,7 +13341,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -12751,7 +13529,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -12990,7 +13769,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -13236,7 +14016,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -13381,7 +14162,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -13538,7 +14320,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -13717,7 +14500,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -13899,7 +14683,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -14043,7 +14828,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -14291,7 +15077,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -14591,7 +15378,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -14759,7 +15547,8 @@
       "idempotency": "optional",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -14882,7 +15671,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15011,7 +15801,8 @@
       "idempotency": "required",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15208,7 +15999,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -15352,6 +16144,78 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "handoff"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url",
+          "expiresAt",
+          "purpose"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "financial",
+      "requiredScopes": [
+        "speko:billing"
+      ],
+      "allowedPrincipals": [
+        "oauth-user"
+      ],
+      "idempotency": "required",
+      "execution": "handoff",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": [
+        "url"
+      ]
+    },
+    {
+      "id": "billing.plan.checkout.create",
+      "version": 1,
+      "description": "Create a short-lived Stripe Checkout handoff that subscribes the workspace to a flat monthly plan (muse_starter). Each paid month adds the plan's included credit to the balance. Returns a url, its purpose, and an expiresAt timestamp; the caller opens the url to pay, this action moves no money itself. Fails with PLAN_NOT_CONFIGURED when the plan is not on sale and PLAN_ALREADY_ACTIVE when the workspace already subscribes. Requires a human OAuth principal, not an API key.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "plan": {
+            "default": "muse_starter",
+            "type": "string",
+            "enum": [
+              "muse_starter"
+            ]
+          }
+        },
+        "required": [
+          "plan"
+        ],
         "additionalProperties": false
       },
       "outputSchema": {
@@ -15596,7 +16460,8 @@
       "idempotency": "none",
       "execution": "sync",
       "profiles": [
-        "customer"
+        "customer",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -16072,6 +16937,913 @@
         "oauth-user"
       ],
       "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "billing.spending_cap.get",
+      "version": 1,
+      "description": "Get the workspace monthly spending cap and how much of it this month has used. monthlyCapUsd is null when no cap is set. While reached is true, new sessions, outbound calls and test calls are refused with SPENDING_CAP_REACHED and inbound calls go unanswered instead of being charged; calls already in progress are not cut. Spend is managed usage charged in the current UTC calendar month and resets at resetsAt.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "monthlyCapUsd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "spentThisMonthUsd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "remainingUsd": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reached": {
+                "type": "boolean"
+              },
+              "periodStart": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "resetsAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "monthlyCapUsd",
+              "spentThisMonthUsd",
+              "remainingUsd",
+              "reached",
+              "periodStart",
+              "resetsAt"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:billing"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "billing.spending_cap.update",
+      "version": 1,
+      "description": "Set the workspace monthly spending cap in whole US dollars (1 to 100,000), or null to remove it. Takes effect immediately: if this month has already spent the new cap, new sessions and calls stop until the month resets or the cap is raised. Requires a human OAuth principal, not an API key.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "monthly_cap_usd": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "monthly_cap_usd"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "monthlyCapUsd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "spentThisMonthUsd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "remainingUsd": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "reached": {
+                "type": "boolean"
+              },
+              "periodStart": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "resetsAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "monthlyCapUsd",
+              "spentThisMonthUsd",
+              "remainingUsd",
+              "reached",
+              "periodStart",
+              "resetsAt"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "financial",
+      "requiredScopes": [
+        "speko:billing"
+      ],
+      "allowedPrincipals": [
+        "oauth-user"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "integrations.list",
+      "version": 1,
+      "description": "List the integrations this workspace can use (calendars, CRMs) with each one's connected installations. connectable is true when integrations.connect can start an OAuth connection for the app; tool_modes lists the modes agents.integration_tools.attach accepts for it. An app with an empty installations array is not connected yet. Installation status \"disconnected\" or \"error\" means the owner has to connect it again before an agent can use it. On the Muse surface only Google Calendar and HighLevel are listed.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "apps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "app_key": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string"
+                    },
+                    "auth_kind": {
+                      "type": "string"
+                    },
+                    "connectable": {
+                      "type": "boolean"
+                    },
+                    "tool_modes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "booking_requests",
+                          "availability_only",
+                          "all_actions"
+                        ]
+                      }
+                    },
+                    "installations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "connected",
+                              "disconnected",
+                              "error"
+                            ]
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string"
+                          },
+                          "updated_at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "status",
+                          "display_name",
+                          "created_at",
+                          "updated_at"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "app_key",
+                    "name",
+                    "description",
+                    "category",
+                    "auth_kind",
+                    "connectable",
+                    "tool_modes",
+                    "installations"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "apps"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "integrations.connect",
+      "version": 1,
+      "description": "Start connecting an OAuth integration (e.g. Google Calendar, HighLevel). Returns a short-lived url (ten minutes, single use) to a Speko page that names this workspace and asks the account owner to confirm; Continue takes them to the provider to sign in and grant access, Cancel ends the link. Nothing is connected until they finish there. The browser does not need a Speko session. Give the url only to the owner of this workspace. Afterwards integrations.list shows the new installation, and agents.integration_tools.attach gives an agent its tools. Errors: INTEGRATION_APP_NOT_FOUND (unknown or not offered on this surface), INTEGRATION_NOT_OAUTH (configured in the dashboard instead), OAUTH_NOT_CONFIGURED (this deployment cannot connect the app). Requires a human OAuth principal, not an API key.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "app_key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "description": "Integration app key from integrations.list, e.g. \"google_calendar\" or \"leadconnector\"."
+          }
+        },
+        "required": [
+          "app_key"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "handoff"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "app_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url",
+          "expiresAt",
+          "purpose",
+          "app_key"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "interactive",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user"
+      ],
+      "idempotency": "required",
+      "execution": "handoff",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": [
+        "url"
+      ]
+    },
+    {
+      "id": "agents.integration_tools.attach",
+      "version": 1,
+      "description": "Give an agent the tools of a connected integration installation. Replaces that app's integration tools on the agent with the set for mode, so calling it again switches modes cleanly; other tools are untouched. Modes: availability_only (only checks free times, books nothing; the owner confirms every booking), booking_requests (auto-booking: the agent checks availability and creates new appointments by itself; HighLevel also creates a new contact for the caller and logs a note; it never looks up, edits or cancels an existing contact or appointment), all_actions (every action the app offers, with no booking guardrails). The default is availability_only where the app supports it; use booking_requests only when the owner explicitly asks the agent to book by itself. Booking tools are described so the agent checks availability before offering any time and never invents one; guardrail_prompt is the matching system-prompt section. For a receptionist (receptionist.setup) the agent's instructions are rebuilt to match the new tools and instructions_updated is true; detach rebuilds them again. calendar_id pins which calendar the tools use: optional for Google (defaults to the primary calendar), required for HighLevel booking modes unless the sub-account has exactly one calendar, in which case it is picked automatically; CALENDAR_CHOICE_REQUIRED lists the choices. pipeline_id (and optional pipeline_stage_id) adds HighLevel opportunity creation. Changes apply to the next call. Errors: AGENT_NOT_FOUND, INTEGRATION_NOT_FOUND, INTEGRATION_DISCONNECTED (connect it again with integrations.connect), INTEGRATION_MODE_UNSUPPORTED, CALENDAR_CHOICE_REQUIRED, TOOL_NAME_TAKEN (the agent already has a non-integration tool with the same name), RECEPTIONIST_UPDATE_FAILED (tools changed but the receptionist's instructions did not; call again), CALENDAR_ALREADY_ATTACHED (a receptionist uses one calendar app; detach the current one first).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "installation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "booking_requests",
+              "availability_only",
+              "all_actions"
+            ]
+          },
+          "calendar_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "pipeline_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "pipeline_stage_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "agent_id",
+          "installation_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "agent_id": {
+                "type": "string"
+              },
+              "installation_id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "app_key": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "booking_requests",
+                  "availability_only",
+                  "all_actions"
+                ]
+              },
+              "tools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "action_key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "action_key"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "removed_tool_names": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "guardrail_prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "instructions_updated": {
+                "type": "boolean",
+                "description": "True when the agent is a receptionist and its instructions were rebuilt to match these tools; guardrail_prompt is then already part of them."
+              }
+            },
+            "required": [
+              "agent_id",
+              "installation_id",
+              "app_key",
+              "mode",
+              "tools",
+              "removed_tool_names",
+              "guardrail_prompt",
+              "instructions_updated"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "agents.integration_tools.detach",
+      "version": 1,
+      "description": "Remove an integration app's tools from an agent (only tools of kind integration for that app; webhook and other tools are never touched). The installation stays connected for other agents. Returns the removed tool names; an empty list means the agent had none. Changes apply to the next call.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "app_key": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,63}$",
+            "description": "Integration app key from integrations.list, e.g. \"google_calendar\" or \"leadconnector\"."
+          }
+        },
+        "required": [
+          "agent_id",
+          "app_key"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "agent_id": {
+                "type": "string"
+              },
+              "app_key": {
+                "type": "string"
+              },
+              "detached_tool_names": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "agent_id",
+              "app_key",
+              "detached_tool_names"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
       "execution": "sync",
       "profiles": [
         "customer",
@@ -16848,7 +18620,8 @@
       "profiles": [
         "default",
         "customer",
-        "connector"
+        "connector",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17015,6 +18788,1868 @@
         "connector",
         "chatgpt",
         "replit",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.go_live",
+      "version": 1,
+      "description": "Put an agent live as the business’s phone receptionist in one call: get a number (buy a new US/Canadian number, optionally by area code, or reuse one the workspace owns), link the agent to it for inbound calls in the same database write, enable outbound calling from it, deploy the agent, and return carrier-specific call-forwarding codes plus the exact codes that undo them. A purchased number always has the agent attached; there is no state in which it exists without one. Buying a number charges workspace credits (setup plus the first month). status \"action_required\" means nothing was bought or changed and requiredAction says what the owner must do: PHONE_NUMBER_KYB_REQUIRED / _ATTESTATION_REQUIRED / _REJECTED / _REVOKED / _REVIEW_HOLD (business verification, with a link), BUY_PHONE_NUMBERS_DISABLED_FOR_ORG, or INSUFFICIENT_BALANCE (add credits with billing.checkout.create, then call again). Errors: AGENT_NOT_FOUND, AGENT_ALREADY_HAS_NUMBER (the agent already answers another number; pass that number as phone_number_id), PHONE_NUMBER_IN_USE (the chosen number answers to another agent or a person), NO_NUMBERS_AVAILABLE (try another area code), DEPLOY_BLOCKED, KEPT_NUMBER_IN_USE (the kept number of a paused receptionist now answers another agent or a person; pass a number explicitly), RECEPTIONIST_RUNTIME_UNSUPPORTED (receptionists are not available on the call runtime of this workspace yet; nothing was bought or deployed). Next: receptionist.verify_forwarding once the owner has dialed the forwarding code.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "number_source": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "phone_number_id": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "country": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "area_code": {
+            "$ref": "#/$defs/__schema7"
+          },
+          "e164": {
+            "$ref": "#/$defs/__schema9"
+          },
+          "forwarding_mode": {
+            "$ref": "#/$defs/__schema11"
+          },
+          "owner_business_number": {
+            "$ref": "#/$defs/__schema12"
+          },
+          "owner_carrier": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "owner_line_type": {
+            "$ref": "#/$defs/__schema14"
+          },
+          "notify_email": {
+            "$ref": "#/$defs/__schema15"
+          },
+          "notify_sms_number": {
+            "$ref": "#/$defs/__schema17"
+          },
+          "notify_privacy_mode": {
+            "$ref": "#/$defs/__schema19"
+          },
+          "recording_enabled": {
+            "$ref": "#/$defs/__schema21"
+          }
+        },
+        "required": [
+          "agent_id",
+          "number_source",
+          "country",
+          "forwarding_mode"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          },
+          "__schema1": {
+            "default": "new",
+            "description": "\"new\" buys a number; \"existing\" uses phone_number_id.",
+            "$ref": "#/$defs/__schema2"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "new",
+              "existing"
+            ]
+          },
+          "__schema3": {
+            "description": "Workspace number to use when number_source is \"existing\".",
+            "$ref": "#/$defs/__schema4"
+          },
+          "__schema4": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "__schema5": {
+            "default": "US",
+            "description": "Country for a new number.",
+            "$ref": "#/$defs/__schema6"
+          },
+          "__schema6": {
+            "type": "string",
+            "enum": [
+              "US",
+              "CA"
+            ]
+          },
+          "__schema7": {
+            "description": "Preferred 3-digit area code for a new number.",
+            "$ref": "#/$defs/__schema8"
+          },
+          "__schema8": {
+            "type": "string",
+            "pattern": "^[2-9]\\d{2}$"
+          },
+          "__schema9": {
+            "description": "A specific available number from phone_numbers.available.search.",
+            "$ref": "#/$defs/__schema10"
+          },
+          "__schema10": {
+            "type": "string",
+            "pattern": "^\\+1[2-9]\\d{2}[2-9]\\d{6}$"
+          },
+          "__schema11": {
+            "default": "overflow",
+            "type": "string",
+            "enum": [
+              "overflow",
+              "all"
+            ],
+            "description": "\"overflow\" (default): the business phone rings first and only missed or busy calls reach the receptionist. \"all\": every call goes to the receptionist."
+          },
+          "__schema12": {
+            "description": "The owner’s existing business number that will forward to the receptionist.",
+            "$ref": "#/$defs/__schema10"
+          },
+          "__schema13": {
+            "type": "string",
+            "enum": [
+              "verizon",
+              "att",
+              "tmobile",
+              "comcast_business",
+              "spectrum_business",
+              "rogers",
+              "bell",
+              "telus",
+              "other"
+            ],
+            "description": "Carrier of the owner’s existing business line. \"other\" returns generic codes."
+          },
+          "__schema14": {
+            "type": "string",
+            "enum": [
+              "mobile",
+              "landline"
+            ],
+            "description": "Whether the business number is a mobile phone or a desk/office line."
+          },
+          "__schema15": {
+            "description": "Email that receives a summary after every call. null turns email off.",
+            "$ref": "#/$defs/__schema16"
+          },
+          "__schema16": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email",
+                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema17": {
+            "description": "Mobile number for text summaries. Texts are sent only when the receptionist number is already registered for SMS and this number has opted in; email is always the primary channel. null turns texts off.",
+            "$ref": "#/$defs/__schema18"
+          },
+          "__schema18": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema10"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema19": {
+            "description": "When true, summaries contain only a secure sign-in link to the call, never the caller’s name, number or reason.",
+            "$ref": "#/$defs/__schema20"
+          },
+          "__schema20": {
+            "type": "boolean"
+          },
+          "__schema21": {
+            "description": "Record this receptionist’s calls. false turns recording off for this agent; null follows the workspace setting. It cannot turn recording on when the workspace has recording off. When recording is on, the greeting must tell callers the call may be recorded.",
+            "$ref": "#/$defs/__schema22"
+          },
+          "__schema22": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "live",
+                  "action_required"
+                ]
+              },
+              "requiredAction": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              "receptionist": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  },
+                  "phoneNumberId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "e164": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "paused",
+                      "not_live"
+                    ]
+                  },
+                  "forwardingMode": {
+                    "type": "string",
+                    "enum": [
+                      "overflow",
+                      "all"
+                    ]
+                  },
+                  "ownerBusinessNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ownerCarrier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "verizon",
+                          "att",
+                          "tmobile",
+                          "comcast_business",
+                          "spectrum_business",
+                          "rogers",
+                          "bell",
+                          "telus",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ownerLineType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "mobile",
+                          "landline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notifyEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifySmsNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifyPrivacyMode": {
+                    "type": "boolean"
+                  },
+                  "recordingEnabled": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "forwardingVerifiedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "agentId",
+                  "phoneNumberId",
+                  "e164",
+                  "status",
+                  "forwardingMode",
+                  "ownerBusinessNumber",
+                  "ownerCarrier",
+                  "ownerLineType",
+                  "notifyEmail",
+                  "notifySmsNumber",
+                  "notifyPrivacyMode",
+                  "recordingEnabled",
+                  "forwardingVerifiedAt"
+                ],
+                "additionalProperties": false
+              },
+              "deployedVersion": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "numberPurchased": {
+                "type": "boolean"
+              },
+              "outboundEnabled": {
+                "type": "boolean"
+              },
+              "forwarding": {
+                "type": "object",
+                "properties": {
+                  "carrier": {
+                    "type": "string",
+                    "enum": [
+                      "verizon",
+                      "att",
+                      "tmobile",
+                      "comcast_business",
+                      "spectrum_business",
+                      "rogers",
+                      "bell",
+                      "telus",
+                      "other"
+                    ]
+                  },
+                  "carrierName": {
+                    "type": "string"
+                  },
+                  "lineType": {
+                    "type": "string",
+                    "enum": [
+                      "mobile",
+                      "landline",
+                      "unknown"
+                    ]
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "overflow",
+                      "all"
+                    ]
+                  },
+                  "forwardTo": {
+                    "type": "string"
+                  },
+                  "setup": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "undo": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "undoSummary": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "confirmWithCarrier": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "carrier",
+                  "carrierName",
+                  "lineType",
+                  "mode",
+                  "forwardTo",
+                  "setup",
+                  "undo",
+                  "undoSummary",
+                  "notes",
+                  "confirmWithCarrier"
+                ],
+                "additionalProperties": false
+              },
+              "nextStep": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string"
+              },
+              "dial": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "instruction",
+              "dial"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "effect": "financial",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.verify_forwarding",
+      "version": 1,
+      "description": "Check that calls to the owner’s business number actually reach the receptionist. Speko cannot place a test call into a carrier’s forwarding, so this is a two-step check: the first call (or restart: true) opens a 15-minute check window and returns status \"waiting_for_test_call\" with what the owner should do — call the business number from a DIFFERENT phone and, in overflow mode, let it ring out. Calling again reports what arrived on the receptionist number since the window opened: \"verified\" (a forwarded call reached the agent; evidence.forwardedFrom matches the business number), \"probably_verified\" (a call reached the agent but the carrier did not say it was forwarded), or \"not_seen\" (nothing yet; check the forwarding code or wait for the rings to run out). Errors: RECEPTIONIST_NOT_FOUND (run receptionist.go_live first), OWNER_NUMBER_REQUIRED (set owner_business_number via receptionist.settings.update).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "restart": {
+            "default": false,
+            "description": "Open a fresh check window.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "agent_id",
+          "restart"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "boolean"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "waiting_for_test_call",
+                  "verified",
+                  "probably_verified",
+                  "not_seen"
+                ]
+              },
+              "checkStartedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "checkExpiresAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "businessNumber": {
+                "type": "string"
+              },
+              "receptionistNumber": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "object",
+                "properties": {
+                  "sessionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "callerNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "forwardedFrom": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "sessionId",
+                  "at",
+                  "callerNumber",
+                  "forwardedFrom"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "checkStartedAt",
+              "checkExpiresAt",
+              "businessNumber",
+              "receptionistNumber",
+              "instructions"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.pause",
+      "version": 1,
+      "description": "Instant off switch: the receptionist stops answering its number right away. The number is kept (and still billed monthly) so receptionist.resume brings it back exactly as it was. While paused, calls that reach the Speko number are not answered, so the owner should also undo carrier forwarding (the returned undoForwarding) if callers should only ring the business phone. Safe to repeat.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "paused"
+              },
+              "receptionist": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  },
+                  "phoneNumberId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "e164": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "paused",
+                      "not_live"
+                    ]
+                  },
+                  "forwardingMode": {
+                    "type": "string",
+                    "enum": [
+                      "overflow",
+                      "all"
+                    ]
+                  },
+                  "ownerBusinessNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ownerCarrier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "verizon",
+                          "att",
+                          "tmobile",
+                          "comcast_business",
+                          "spectrum_business",
+                          "rogers",
+                          "bell",
+                          "telus",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ownerLineType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "mobile",
+                          "landline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notifyEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifySmsNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifyPrivacyMode": {
+                    "type": "boolean"
+                  },
+                  "recordingEnabled": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "forwardingVerifiedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "agentId",
+                  "phoneNumberId",
+                  "e164",
+                  "status",
+                  "forwardingMode",
+                  "ownerBusinessNumber",
+                  "ownerCarrier",
+                  "ownerLineType",
+                  "notifyEmail",
+                  "notifySmsNumber",
+                  "notifyPrivacyMode",
+                  "recordingEnabled",
+                  "forwardingVerifiedAt"
+                ],
+                "additionalProperties": false
+              },
+              "undoForwarding": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "status",
+              "receptionist",
+              "undoForwarding"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.resume",
+      "version": 1,
+      "description": "Turn a paused receptionist back on: re-links the agent to its kept number so it answers again. Safe to repeat. Errors: RECEPTIONIST_NOT_FOUND, PHONE_NUMBER_IN_USE (someone linked the number to another agent or a person while paused), PHONE_NUMBER_GONE (the number was released; run receptionist.go_live).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "live"
+              },
+              "receptionist": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  },
+                  "phoneNumberId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "e164": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "paused",
+                      "not_live"
+                    ]
+                  },
+                  "forwardingMode": {
+                    "type": "string",
+                    "enum": [
+                      "overflow",
+                      "all"
+                    ]
+                  },
+                  "ownerBusinessNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ownerCarrier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "verizon",
+                          "att",
+                          "tmobile",
+                          "comcast_business",
+                          "spectrum_business",
+                          "rogers",
+                          "bell",
+                          "telus",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ownerLineType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "mobile",
+                          "landline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notifyEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifySmsNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifyPrivacyMode": {
+                    "type": "boolean"
+                  },
+                  "recordingEnabled": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "forwardingVerifiedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "agentId",
+                  "phoneNumberId",
+                  "e164",
+                  "status",
+                  "forwardingMode",
+                  "ownerBusinessNumber",
+                  "ownerCarrier",
+                  "ownerLineType",
+                  "notifyEmail",
+                  "notifySmsNumber",
+                  "notifyPrivacyMode",
+                  "recordingEnabled",
+                  "forwardingVerifiedAt"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "status",
+              "receptionist"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.settings.update",
+      "version": 1,
+      "description": "Change a receptionist’s owner settings: who gets the post-call summary (email, text), privacy mode (link only, no caller details), per-agent recording, and the owner’s business line and forwarding mode. Partial update: omitted fields keep their value; null clears. Returns the settings and, when a business line is known, fresh forwarding codes. Errors: RECEPTIONIST_NOT_FOUND.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "forwarding_mode": {
+            "type": "string",
+            "enum": [
+              "overflow",
+              "all"
+            ],
+            "description": "\"overflow\" (default): the business phone rings first and only missed or busy calls reach the receptionist. \"all\": every call goes to the receptionist."
+          },
+          "owner_business_number": {
+            "description": "The owner’s existing business number that will forward to the receptionist.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "owner_carrier": {
+            "type": "string",
+            "enum": [
+              "verizon",
+              "att",
+              "tmobile",
+              "comcast_business",
+              "spectrum_business",
+              "rogers",
+              "bell",
+              "telus",
+              "other"
+            ],
+            "description": "Carrier of the owner’s existing business line. \"other\" returns generic codes."
+          },
+          "owner_line_type": {
+            "type": "string",
+            "enum": [
+              "mobile",
+              "landline"
+            ],
+            "description": "Whether the business number is a mobile phone or a desk/office line."
+          },
+          "notify_email": {
+            "description": "Email that receives a summary after every call. null turns email off.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "notify_sms_number": {
+            "description": "Mobile number for text summaries. Texts are sent only when the receptionist number is already registered for SMS and this number has opted in; email is always the primary channel. null turns texts off.",
+            "$ref": "#/$defs/__schema2"
+          },
+          "notify_privacy_mode": {
+            "description": "When true, summaries contain only a secure sign-in link to the call, never the caller’s name, number or reason.",
+            "$ref": "#/$defs/__schema3"
+          },
+          "recording_enabled": {
+            "description": "Record this receptionist’s calls. false turns recording off for this agent; null follows the workspace setting. It cannot turn recording on when the workspace has recording off. When recording is on, the greeting must tell callers the call may be recorded.",
+            "$ref": "#/$defs/__schema4"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^\\+1[2-9]\\d{2}[2-9]\\d{6}$"
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email",
+                "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema2": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema0"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema3": {
+            "type": "boolean"
+          },
+          "__schema4": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "receptionist": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  },
+                  "phoneNumberId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "e164": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "live",
+                      "paused",
+                      "not_live"
+                    ]
+                  },
+                  "forwardingMode": {
+                    "type": "string",
+                    "enum": [
+                      "overflow",
+                      "all"
+                    ]
+                  },
+                  "ownerBusinessNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ownerCarrier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "verizon",
+                          "att",
+                          "tmobile",
+                          "comcast_business",
+                          "spectrum_business",
+                          "rogers",
+                          "bell",
+                          "telus",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ownerLineType": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "mobile",
+                          "landline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "notifyEmail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifySmsNumber": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "notifyPrivacyMode": {
+                    "type": "boolean"
+                  },
+                  "recordingEnabled": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "forwardingVerifiedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "agentId",
+                  "phoneNumberId",
+                  "e164",
+                  "status",
+                  "forwardingMode",
+                  "ownerBusinessNumber",
+                  "ownerCarrier",
+                  "ownerLineType",
+                  "notifyEmail",
+                  "notifySmsNumber",
+                  "notifyPrivacyMode",
+                  "recordingEnabled",
+                  "forwardingVerifiedAt"
+                ],
+                "additionalProperties": false
+              },
+              "forwarding": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "carrier": {
+                        "type": "string",
+                        "enum": [
+                          "verizon",
+                          "att",
+                          "tmobile",
+                          "comcast_business",
+                          "spectrum_business",
+                          "rogers",
+                          "bell",
+                          "telus",
+                          "other"
+                        ]
+                      },
+                      "carrierName": {
+                        "type": "string"
+                      },
+                      "lineType": {
+                        "type": "string",
+                        "enum": [
+                          "mobile",
+                          "landline",
+                          "unknown"
+                        ]
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "overflow",
+                          "all"
+                        ]
+                      },
+                      "forwardTo": {
+                        "type": "string"
+                      },
+                      "setup": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      },
+                      "undo": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/__schema0"
+                        }
+                      },
+                      "undoSummary": {
+                        "type": "string"
+                      },
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "confirmWithCarrier": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "carrier",
+                      "carrierName",
+                      "lineType",
+                      "mode",
+                      "forwardTo",
+                      "setup",
+                      "undo",
+                      "undoSummary",
+                      "notes",
+                      "confirmWithCarrier"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "receptionist",
+              "forwarding"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string"
+              },
+              "dial": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "instruction",
+              "dial"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "receptionist.cancel",
+      "version": 1,
+      "description": "Cancel the receptionist so the owner stops paying for it, in one approval: it stops answering, the number go_live bought for it is released (which ends the monthly number charge; a released number cannot be recovered), and the result says how to undo carrier forwarding on the business phone. The agent itself is kept; delete it with agents.delete if it is no longer wanted. A monthly plan is not cancelled here: use billing.portal.create for that. A number the owner brought (an existing workspace number or an imported number), or one given to another agent or a person while paused, is never released: it is only unlinked and reported in keptNumber. Errors: NOT_FOUND (no receptionist for this agent), PHONE_NUMBER_RELEASE_FAILED (the number could not be released; nothing was charged and the receptionist stays paused, so retry).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "cancelled"
+              },
+              "releasedNumber": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "keptNumber": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "e164": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "reassigned",
+                          "owner_number"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "e164",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "undoForwarding": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "nextSteps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "status",
+              "releasedNumber",
+              "keptNumber",
+              "undoForwarding",
+              "nextSteps"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "destructive",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer",
         "muse"
       ],
       "secretInputPaths": [],
@@ -17656,7 +21291,8 @@
         "default",
         "customer",
         "connector",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -17821,7 +21457,8 @@
         "default",
         "customer",
         "connector",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -18023,7 +21660,8 @@
         "default",
         "customer",
         "connector",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -18227,7 +21865,8 @@
         "default",
         "customer",
         "connector",
-        "replit"
+        "replit",
+        "muse"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
@@ -18671,6 +22310,182 @@
         "chatgpt",
         "replit",
         "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "support.ticket.create",
+      "version": 1,
+      "description": "Open a support ticket with the Speko team on behalf of the signed-in user. summary is one line (3-200 characters); details is the full description (up to 4,000 characters). category is billing, calls, setup or other (default other). related optionally carries ids the team should look at: sessionId, callId, agentId, phoneNumber. Ids only: recordings and transcripts are never attached. Returns ticketId and expectedResponse; the user also receives a confirmation email and the team replies to that email address. Returns 429 SUPPORT_TICKET_RATE_LIMITED after too many tickets in a short time; the error says when to retry. A ticket is stored even when the team notification is delayed, so a success never needs a resend.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "details": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "category": {
+            "default": "other",
+            "type": "string",
+            "enum": [
+              "billing",
+              "calls",
+              "setup",
+              "other"
+            ]
+          },
+          "related": {
+            "type": "object",
+            "properties": {
+              "sessionId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "callId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "agentId": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "phoneNumber": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "summary",
+          "details",
+          "category"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "ticketId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "const": "received"
+              },
+              "expectedResponse": {
+                "type": "string"
+              },
+              "confirmationEmailSent": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "ticketId",
+              "status",
+              "expectedResponse",
+              "confirmationEmailSent"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "muse",
+        "customer",
+        "chatgpt",
+        "connector",
+        "replit",
+        "default"
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []

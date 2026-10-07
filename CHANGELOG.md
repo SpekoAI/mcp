@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.34
+
+- Muse serves the full owner surface (everything the customer surface does except API keys, provider credentials, the Router and SIP gateway logins), including the receptionist, integrations, support-ticket and billing actions.
+- Drop the Muse US provider pin: Muse calls and transcription route like every other MCP surface.
+
 ## 0.2.33
 
 - Add the Meta Muse connector profile with human OAuth billing controls, accurate tool availability, and directory disclosure.
