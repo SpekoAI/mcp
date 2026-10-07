@@ -17023,7 +17023,7 @@
     {
       "id": "phone_numbers.sip_gateway.get",
       "version": 1,
-      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), and the numbers routed through the gateway, plus numbers awaiting ownership verification by a test call. Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard.",
+      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), the numbers routed through the gateway, numbers awaiting ownership verification by a test call, and the PBX outbound calls from gateway numbers go through (host, port, login; never its password). Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard; the outbound PBX only by Speko staff.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -17349,6 +17349,64 @@
                 "type": "integer",
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
+              },
+              "upstream": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "host": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "transport": {
+                        "type": "string",
+                        "enum": [
+                          "udp",
+                          "tcp"
+                        ]
+                      },
+                      "username": {
+                        "type": "string"
+                      },
+                      "dialStripPrefix": {
+                        "type": "string"
+                      },
+                      "dialAddPrefix": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      }
+                    },
+                    "required": [
+                      "host",
+                      "port",
+                      "transport",
+                      "username",
+                      "dialStripPrefix",
+                      "dialAddPrefix",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -17356,7 +17414,8 @@
               "credential",
               "numbers",
               "claims",
-              "numberLimit"
+              "numberLimit",
+              "upstream"
             ],
             "additionalProperties": false
           },
