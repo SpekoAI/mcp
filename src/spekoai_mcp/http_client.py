@@ -505,7 +505,14 @@ async def call_action(
         raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
     if response.status_code >= 400:
         _raise_api_error(response)
-    payload = response.json()
+    if not response.content:
+        return {}
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise SpekoApiError(
+            response.status_code, "Speko API returned a non-JSON response."
+        ) from exc
     if not isinstance(payload, dict):
         raise SpekoApiError(response.status_code, "Speko action returned an unexpected response.")
     return payload
