@@ -399,7 +399,7 @@ _MUSE_PROFILE_TOOL_SET = frozenset(MUSE_PROFILE_TOOL_NAMES) | _MUSE_MANIFEST_TOO
 DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE})
 
 # The curated builder preset, in the order clients see it. Reads first,
-# the two sanctioned writes last (builder platforms default writes to
+# the sanctioned writes last (builder platforms default writes to
 # ask-approval).
 #
 # Rule: every tool an INCLUDED tool's description REFERS to must itself be
@@ -408,7 +408,9 @@ DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFI
 # tiers) and the agents.test_call review path (`calls.get` +
 # `sessions.transcript.get` + `calls.recording.get`). The one exception:
 # agents.create's mention of parse_external_config is a migrations-only
-# escape hatch, not a step in any builder workflow, so it stays out.
+# escape hatch, not a step in any builder workflow, so it stays out. The
+# server instructions and `support_handoff` name support.ticket.create, so
+# it is served here too.
 #
 # Descriptions state facts and never direct the model — see the directory
 # policy acknowledgement on tool descriptions. Sequencing that used to live
@@ -429,6 +431,7 @@ BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "code_snippets.get",
     "agents.create",
     "agents.test_call",
+    "support.ticket.create",
 ]
 
 # The Replit preset, published as `https://replit.speko.ai/mcp`.
@@ -654,7 +657,7 @@ def _for_profile(tools: Sequence[Tool], profile: str | None) -> Sequence[Tool]:
     if profile == BUILDER_PROFILE:
         filtered = [tool for tool in tools if tool.name in _BUILDER_PROFILE_TOOL_SET]
         # Present the preset in its documented order: reads first,
-        # the two sanctioned writes last.
+        # the sanctioned writes last.
         filtered.sort(
             key=lambda tool: (
                 (

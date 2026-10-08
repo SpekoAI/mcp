@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Errors that tell the user to contact support now add a `support=` step that points the agent at `support.ticket.create` with the trace id, on every tool and every profile that serves the ticket tool. The server instructions say the same, and the builder profile now serves `support.ticket.create`.
+
 ## 0.2.36
 
 - Remove the Muse monthly plan tool (`billing.plan.checkout.create`); Speko billing is pay-as-you-go top-ups and auto top-up.

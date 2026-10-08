@@ -36,6 +36,7 @@ from spekoai_mcp.http_client import reset_current_client_ua, set_current_client_
 from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
+from spekoai_mcp.support_handoff import SupportHandoffMiddleware
 
 MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
@@ -74,6 +75,13 @@ INSTRUCTIONS = "\n\n".join(
         Bearer sk_*. Tool names use
         domain.action dot notation, for example agents.list, sessions.create,
         docs.search, and knowledge_bases.documents.create.
+        """,
+        """
+        When the user is blocked by something only the Speko team can fix (an
+        error says to contact support, a feature is not enabled for the
+        workspace, a billing problem, or a platform bug), offer to open a
+        ticket with support.ticket.create instead of sending them to email.
+        Put the trace_id and any agent, session or call ids in the ticket.
         """,
     ]
 )
@@ -135,6 +143,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     mcp.add_middleware(InvocationAttributionMiddleware())
     mcp.add_middleware(ToolProfileMiddleware())
     mcp.add_middleware(CreditExhaustedMiddleware())
+    mcp.add_middleware(SupportHandoffMiddleware())
     return mcp
 
 
