@@ -2665,7 +2665,7 @@ async def search_available_phone_numbers(
 
     PRICES are Speko's retail prices, the ones a purchase charges:
     ``upfrontCostUsd`` is the one-time setup ($1) and ``monthlyCostUsd`` the
-    monthly rental ($1/month), both debited from prepaid credits. Quote them
+    monthly rental ($2/month), both debited from prepaid credits. Quote them
     from the result, not from memory.
 
     Searching is read-only, but it answers 403 until the workspace's business
@@ -2706,7 +2706,7 @@ async def create_phone_number(
     ],
 ) -> ToolResult:
     """Buy (provision) a phone number. PAID — tell the owner the price and get
-    their OK first: $1 setup plus $1/month, debited from prepaid workspace
+    their OK first: $1 setup plus $2/month, debited from prepaid workspace
     credits (setup plus the first month now). The number renews monthly until
     it is released with phone_numbers.delete (or receptionist.cancel for a
     receptionist's number). Calls are billed at $0.09 per connected minute from
