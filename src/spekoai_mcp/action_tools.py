@@ -498,15 +498,14 @@ TOOL_SIMULATION_MODES = ("live", "mock")
 MAX_TOOL_SIMULATION_RESPONSE_BYTES = 8_192
 TOOL_SIMULATION_NEXT_STEP = (
     "Pass simulation as {'mode':'live'} or {'mode':'mock','response':<any JSON>}; "
-    "omit it for the default (automated reliability runs mock the tool, evals "
-    "and test calls you start run it live), or send null on update to return "
-    "to that default."
+    "omit it for the default (every simulated run mocks the tool), or send "
+    "null on update to return to that default."
 )
 TOOL_SIMULATION_FIELD_DOC = (
     "simulation?: how the tool behaves in SIMULATED runs (automated reliability "
     "checks, Test Set evals, test calls; real calls always run it). Omit for the "
-    "default: automated reliability runs mock it, evals and test calls a user "
-    "starts run it live. {mode:'live'} runs it for real in every simulated run. "
+    "default: every simulated run mocks it. {mode:'live'} runs it for real in "
+    "every simulated run (only for tools safe to repeat). "
     "{mode:'mock', response?: any JSON, <=8192 UTF-8 bytes serialized} never runs it "
     "in a simulated run and returns `response` as the tool result (a string "
     "as-is, anything else as JSON) so a workflow tool node's outputBindings "
@@ -2136,8 +2135,8 @@ async def get_agent_tool(
 ) -> ToolResult:
     """Get one agent tool by id, as currently stored in the registry. The row
     includes `simulation` when the tool overrides the default simulated-run
-    policy; its absence means the default (automated reliability runs mock the
-    tool, evals and test calls a user starts run it live)."""
+    policy; its absence means the default (every simulated run mocks the
+    tool)."""
     return await call(
         "GET",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
