@@ -907,3 +907,28 @@ def session_config() -> dict[str, object]:
 
 def eval_body() -> dict[str, object]:
     return {"name": "Regression", "expected_behavior": "Say hello."}
+
+
+async def test_call_action_handles_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test")
+    )
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, content=b""))
+    monkeypatch.setattr(http_client, "_TEST_TRANSPORT", transport)
+    result = await http_client.call_action("agents.list", {})
+    assert result == {}
+
+
+async def test_call_action_raises_speko_api_error_on_non_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test")
+    )
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, content=b"<html>Bad Gateway</html>")
+    )
+    monkeypatch.setattr(http_client, "_TEST_TRANSPORT", transport)
+    with pytest.raises(http_client.SpekoApiError, match="non-JSON response"):
+        await http_client.call_action("agents.list", {})
+
