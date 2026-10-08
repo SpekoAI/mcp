@@ -20943,6 +20943,10 @@
                       "dialAddPrefix": {
                         "type": "string"
                       },
+                      "register": {
+                        "default": false,
+                        "type": "boolean"
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time",
@@ -20961,6 +20965,7 @@
                       "username",
                       "dialStripPrefix",
                       "dialAddPrefix",
+                      "register",
                       "createdAt",
                       "updatedAt"
                     ],
