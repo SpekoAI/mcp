@@ -20,7 +20,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 
 export type SessionLanguage = 'en-US' | 'es-US';
-export type SessionOptimizeFor = 'latency' | 'quality';
+export type SessionOptimizeFor = 'latency' | 'accuracy' | 'cost' | 'quality';
 
 const SESSION_LANGUAGE_OPTIONS: Array<{ value: SessionLanguage; label: string }> = [
   { value: 'en-US', label: 'English (en-US)' },
@@ -29,6 +29,8 @@ const SESSION_LANGUAGE_OPTIONS: Array<{ value: SessionLanguage; label: string }>
 
 const SESSION_OPTIMIZE_OPTIONS: Array<{ value: SessionOptimizeFor; label: string }> = [
   { value: 'latency', label: 'Latency' },
+  { value: 'accuracy', label: 'Accuracy' },
+  { value: 'cost', label: 'Cost' },
   { value: 'quality', label: 'Quality' },
 ];
 
