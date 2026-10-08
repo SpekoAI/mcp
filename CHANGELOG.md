@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.2.37
 
 - Errors that tell the user to contact support now add a `support=` step that points the agent at `support.ticket.create` with the trace id, on every tool and every profile that serves the ticket tool. The server instructions say the same, and the builder profile now serves `support.ticket.create`.
+- Call and session tools strip a `phone-` prefix and reject ids that are not UUIDs; builder, audio and recording errors carry clearer next steps.
+- SIP gateway upstreams accept `register` (REGISTER to the customer PBX).
+- Agent tool descriptions state that every simulated run mocks side-effecting tools by default.
 
 ## 0.2.36
 
