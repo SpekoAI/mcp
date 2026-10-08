@@ -117,6 +117,14 @@ def test_component_declares_session_config_types() -> None:
     assert "SessionConfig" in body
     assert "SessionLanguage" in body
     assert "SessionOptimizeFor" in body
+    assert "'accuracy'" in body
+    assert "'cost'" in body
+
+
+def test_route_handler_session_overrides_types() -> None:
+    manifest = build_voice_app_manifest()
+    route = _files_by_path(manifest)["app/api/speko/route.ts"]
+    assert "optimizeFor?: 'latency' | 'accuracy' | 'cost' | 'quality';" in route
 
 
 def test_route_returns_transport_credentials() -> None:

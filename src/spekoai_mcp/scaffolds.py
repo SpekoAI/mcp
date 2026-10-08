@@ -166,7 +166,7 @@ type SessionOverrides = {{
   intent?: {{
     language?: string;
     region?: string;
-    optimizeFor?: 'latency' | 'quality';
+    optimizeFor?: 'latency' | 'accuracy' | 'cost' | 'quality';
   }};
   systemPrompt?: string;
 }};
