@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.38
+
+- Phone number tools quote the $2/month rental (with the $1 setup fee).
+- `usage.summary.get` returns `minutesCost`, `addOnCost` and `minutesBilledSeconds`, and a `chargeKind` per breakdown row, so agents can tell the per-minute call rate from add-ons (telephony, speech-to-speech backend tokens) and free post-call summaries.
+
 ## 0.2.37
 
 - Errors that tell the user to contact support now add a `support=` step that points the agent at `support.ticket.create` with the trace id, on every tool and every profile that serves the ticket tool. The server instructions say the same, and the builder profile now serves `support.ticket.create`.
