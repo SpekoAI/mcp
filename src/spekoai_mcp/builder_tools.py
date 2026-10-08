@@ -126,7 +126,11 @@ async def list_models() -> ToolResult:
     """List the STT/LLM/TTS/S2S provider and model catalog. Each entry's
     `id` ('vendor' or 'vendor:model') is the literal string accepted by
     `allowedProviders` pins in agent and session configs; `benchmarked`
-    marks entries with live Speko benchmark scores."""
+    marks entries with live Speko benchmark scores. STT and TTS entries
+    carry `priced`: on audio.synthesize and audio.transcribe, a
+    `priced: false` model is skipped on Speko-managed keys (the request
+    fails if no priced model is left) and works only with the caller's own
+    provider key, so pin a `priced: true` model for managed usage."""
     return await call("GET", "/v1/providers/known", text="Retrieved model catalog.")
 
 

@@ -39,7 +39,7 @@ from spekoai_mcp.server import create_server
 
 GENERIC_RETRY = "Retry the Speko MCP request or inspect the Speko API response details."
 
-RECORDING_PATH = "/v1/calls/call_1/recording"
+RECORDING_PATH = "/v1/calls/7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70/recording"
 
 
 def _not_available(status: str | None) -> dict[str, object]:
@@ -122,7 +122,7 @@ def test_pending_recording_waits_on_a_cadence_instead_of_retrying(status: str | 
     assert "Retry the Speko MCP request" not in step
 
 
-SESSION_RECORDING_PATH = "/v1/sessions/sess_1/recording"
+SESSION_RECORDING_PATH = "/v1/sessions/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d/recording"
 
 
 @pytest.mark.parametrize("status", ["pending", "uploading", None])
@@ -294,14 +294,16 @@ async def test_recording_tool_hands_the_model_a_cadence_not_a_retry(
 ) -> None:
     mcp = create_server()
     with pytest.raises(ToolError) as raised:
-        await mcp.call_tool("calls.recording.get", {"call_id": "call_1"})
+        await mcp.call_tool(
+            "calls.recording.get", {"call_id": "7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"}
+        )
 
     text = str(raised.value)
     assert "recording_status" in text
     assert "5 seconds" in text
     assert "trace_id=req_404" in text
     assert "Retry the Speko MCP request" not in text
-    assert recording_pending_api == ["/v1/calls/call_1/recording"]
+    assert recording_pending_api == ["/v1/calls/7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70/recording"]
 
 
 async def test_session_recording_tool_reaches_the_same_branch(
@@ -317,13 +319,15 @@ async def test_session_recording_tool_reaches_the_same_branch(
     """
     mcp = create_server()
     with pytest.raises(ToolError) as raised:
-        await mcp.call_tool("sessions.recording.get", {"session_id": "sess_1"})
+        await mcp.call_tool(
+            "sessions.recording.get", {"session_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}
+        )
 
     text = str(raised.value)
     assert "sessions.get" in text
     assert "5 seconds" in text
     assert "Retry the Speko MCP request" not in text
-    assert recording_pending_api == ["/v1/sessions/sess_1/recording"]
+    assert recording_pending_api == ["/v1/sessions/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d/recording"]
 
 
 # --- the description that started the loop ----------------------------------

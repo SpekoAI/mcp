@@ -155,6 +155,17 @@ async def test_both_audio_tools_are_on_the_default_surface() -> None:
     assert "audio.transcribe" in names
 
 
+async def test_synthesize_teaches_the_pin_form_the_server_parses() -> None:
+    # The description once said "'provider/model' such as 'cartesia/sonic-3'";
+    # nothing split on `/`, so those pins 422'd as unknown providers.
+    tool = next(t for t in await create_server().list_tools() if t.name == "audio.synthesize")
+    description = json.dumps(tool.parameters)
+    assert "provider/model" not in description
+    assert "cartesia/sonic-3" not in description
+    assert "'provider:model'" in description
+    assert "'cartesia:sonic-3'" in description
+
+
 # --- synthesis -------------------------------------------------------------
 
 

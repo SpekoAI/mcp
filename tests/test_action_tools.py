@@ -139,16 +139,18 @@ async def test_action_tools_cover_expected_api_paths(
         {"body": {"to": "+12015550123", "intent": {"language": "en"}}},
     )
     await mcp.call_tool("sessions.list", {"limit": 10, "agent": "agent_1"})
-    await mcp.call_tool("sessions.get", {"session_id": "sess_1"})
+    await mcp.call_tool("sessions.get", {"session_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"})
     await mcp.call_tool(
         "sessions.transcript.get", {"session_id": "22222222-2222-4222-8222-222222222222"}
     )
-    await mcp.call_tool("sessions.recording.get", {"session_id": "sess_1"})
+    await mcp.call_tool(
+        "sessions.recording.get", {"session_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"}
+    )
     await mcp.call_tool(
         "agents.calls.list", {"agent_id": "agent_1", "since": "2026-05-01T00:00:00.000Z"}
     )
-    await mcp.call_tool("calls.get", {"call_id": "call_1"})
-    await mcp.call_tool("calls.recording.get", {"call_id": "call_1"})
+    await mcp.call_tool("calls.get", {"call_id": "7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"})
+    await mcp.call_tool("calls.recording.get", {"call_id": "7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"})
     await mcp.call_tool("phone_numbers.list", {})
     await mcp.call_tool("phone_numbers.available.search", {"area_code": "415", "limit": 2})
     await mcp.call_tool("phone_numbers.create", {"body": {"e164": "+12015550123"}})
@@ -209,9 +211,7 @@ async def test_action_tools_cover_expected_api_paths(
     assert create["action_id"] == "agents.create"
     assert share_result.structured_content["png_url"].endswith(".png")
     ledger = next(
-        call
-        for call in speko_api_mock
-        if call["path"] == "/v1/actions/credits.ledger.list"
+        call for call in speko_api_mock if call["path"] == "/v1/actions/credits.ledger.list"
     )
     assert ledger["body"] == {"limit": 25, "kind": "grant,debit"}
     available = next(
@@ -321,6 +321,28 @@ async def test_create_phone_session_rejects_non_e164_to_before_api(
             "sessions.phone.create",
             {"body": {"to": "(201) 555-0123", "agentId": "agent_1"}},
         )
+
+    assert speko_api_mock == []
+
+
+async def test_call_tools_strip_the_sip_participant_prefix(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    session = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d"
+
+    await create_server().call_tool("calls.get", {"call_id": f"phone-{session}"})
+
+    assert speko_api_mock[-1]["path"] == f"/v1/calls/{session}"
+
+
+@pytest.mark.parametrize("bad_id", ["none", "open", "0b1c2d3e-4f50", "end_call"])
+async def test_call_tools_reject_a_non_uuid_before_api(
+    speko_api_mock: list[dict[str, object]], bad_id: str
+) -> None:
+    with pytest.raises(ToolError, match="sessionId"):
+        await create_server().call_tool("calls.get", {"call_id": bad_id})
+    with pytest.raises(ToolError, match="sessionId"):
+        await create_server().call_tool("sessions.get", {"session_id": bad_id})
 
     assert speko_api_mock == []
 
@@ -523,8 +545,9 @@ async def test_agent_tool_write_descriptions_document_simulation() -> None:
         assert "simulation?:" in body_doc, name
         assert "{mode:'live'}" in body_doc, name
         assert "outputBindings" in body_doc, name
-    assert "null to return the tool to the default policy" in (
-        tools["agents.tools.update"].parameters["properties"]["body"]["description"]
+    assert (
+        "null to return the tool to the default policy"
+        in (tools["agents.tools.update"].parameters["properties"]["body"]["description"])
     )
     assert "simulation" in (tools["agents.tools.get"].description or "")
 
@@ -618,9 +641,7 @@ def test_phone_scope_recovery_preserves_the_server_reconnect_location(
     server_message = (
         f"This connection is not authorized for phone calling. {reconnect_instructions}"
     )
-    response = _error_response(
-        {"error": server_message, "code": PHONE_NUMBER_SCOPE_REQUIRED_CODE}
-    )
+    response = _error_response({"error": server_message, "code": PHONE_NUMBER_SCOPE_REQUIRED_CODE})
     response.headers["x-request-id"] = "trace-phone-scope"
     with pytest.raises(http_client.SpekoApiError) as error:
         http_client._raise_api_error(response)
@@ -826,12 +847,12 @@ EXPECTED_METHOD_PATHS = {
     ("POST", "/v1/sessions"),
     ("POST", "/v1/sessions/phone"),
     ("GET", "/v1/sessions"),
-    ("GET", "/v1/sessions/sess_1"),
+    ("GET", "/v1/sessions/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"),
     ("POST", "/v1/actions/sessions.transcript.get"),
-    ("GET", "/v1/sessions/sess_1/recording"),
+    ("GET", "/v1/sessions/1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d/recording"),
     ("GET", "/v1/agents/agent_1/calls"),
-    ("GET", "/v1/calls/call_1"),
-    ("GET", "/v1/calls/call_1/recording"),
+    ("GET", "/v1/calls/7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"),
+    ("GET", "/v1/calls/7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70/recording"),
     ("POST", "/v1/actions/phone_numbers.list"),
     ("GET", "/v1/phone-numbers/available"),
     ("POST", "/v1/phone-numbers"),

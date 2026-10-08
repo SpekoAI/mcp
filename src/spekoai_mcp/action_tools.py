@@ -672,8 +672,9 @@ async def synthesize_speech(
                 "serves, and 16000, 44100 or 48000 usually leave no provider "
                 "and fail with 422), constraints ({allowedProviders?: {tts?: "
                 "string[]}}; each entry is a lowercase provider key such as "
-                "'cartesia' or 'elevenlabs', or 'provider/model' such as "
-                "'cartesia/sonic-3')."
+                "'cartesia' or 'elevenlabs', or a 'provider:model' id from "
+                "models.list such as 'cartesia:sonic-3'; on a Speko-managed "
+                "key, pin a model models.list marks priced: true)."
             )
         ),
     ],
@@ -2050,9 +2051,18 @@ async def update_agent(
                 "air}|null), speechNormalization "
                 "({pronunciationDictionary?: {term: spoken}, "
                 "textReplacements?: {from: to}}|null), turnHandling "
-                "({profile?: 'conversational'|'ivr', dtmfToolDescription?: "
-                "string, onMachine?: 'leave_message'|..., amdPrompt?: "
-                "string, ...}|null; setting profile to 'ivr' arms the "
+                "({profile?: 'conversational'|'ivr', vad?: {provider: "
+                "'silero'|'ai-coustics'}, noiseCancellation?: {enabled: boolean, "
+                "model?: 'quail'|'quail-voice-focus'}, endpointing?: {minDelay?: "
+                "int ms, maxDelay?: int ms}, interruption?: {mode?: "
+                "'adaptive'|'vad', minDuration?: int ms, minWords?: int}, "
+                "turnDetection?: boolean|'stt', turnDetector?: "
+                "'smart_turn'|'speko_turn_v1', contextThreshold?: boolean, "
+                "keypad?: boolean, textGate?: boolean, dtmfToolDescription?: "
+                "string, amdPrompt?: string, waitForCallee?: boolean, "
+                "onMachine?: 'hangup'|'leave_message'|'agent_decides', "
+                "voicemailMessage?: string}|null; no other keys are accepted. "
+                "Setting profile to 'ivr' arms the "
                 "agent's keypad tool (send_dtmf) for the whole call, "
                 "otherwise it only arms when answering-machine detection "
                 "classifies the call as an automated menu mid-call), webhooks "
@@ -2112,8 +2122,7 @@ async def create_agent_tool(
                 "responseMode?: 'sync'|'async', asyncAck?: string} | "
                 "{kind:'builtin', name: string, config?: any} | "
                 "{kind:'integration', installationId: uuid, appKey: "
-                "string, actionKey: string, config?: any}}. Optional: "
-                + TOOL_SIMULATION_FIELD_DOC
+                "string, actionKey: string, config?: any}}. Optional: " + TOOL_SIMULATION_FIELD_DOC
             )
         ),
     ],
@@ -2157,8 +2166,7 @@ async def update_agent_tool(
                 "create_agent_tool; for kind 'webhook', secret is optional "
                 "on update; omit it to keep the existing secret), "
                 "simulation (same shape as create_agent_tool, or null to "
-                "return the tool to the default policy). "
-                + TOOL_SIMULATION_FIELD_DOC
+                "return the tool to the default policy). " + TOOL_SIMULATION_FIELD_DOC
             )
         ),
     ],
@@ -2195,7 +2203,10 @@ async def deploy_agent(
         str | None, Field(description="Optional briefing markdown.")
     ] = None,
     source: Annotated[
-        str | None, Field(description="Optional source label. Defaults to mcp upstream.")
+        str | None,
+        Field(
+            description="Optional source label, at most 64 characters. Defaults to mcp upstream."
+        ),
     ] = None,
 ) -> ToolResult:
     """Deploy a SessionConfig as a new immutable agent version."""
@@ -2544,35 +2555,61 @@ async def list_sessions(
     )
 
 
+_SESSION_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z", re.IGNORECASE
+)
+
+
+def _session_id(value: str) -> str:
+    """The session UUID a call or session tool was given, or a ToolError saying where it is.
+
+    A call and a session are the same row, keyed by a UUID; the server answers any
+    other path id with a bare 404 that reads as "nothing matches". Models sent
+    `phone-<uuid>` (the SIP participant identity create_phone_session returns as
+    `callControlId`), `none`, and truncated ids, then were told the call did not
+    exist. The participant prefix is stripped; anything else that is not a UUID
+    fails here, before a request.
+    """
+    candidate = value.strip()
+    if candidate.lower().startswith("phone-"):
+        candidate = candidate[len("phone-") :]
+    if _SESSION_UUID.match(candidate):
+        return candidate
+    raise ToolError(
+        f"{value!r} is not a call or session id. Pass the session UUID: `sessionId` from "
+        "create_phone_session, or `id` from list_sessions or list_agent_calls."
+    )
+
+
 async def get_session(
-    session_id: Annotated[str, Field(description="Session id.")],
+    session_id: Annotated[str, Field(description="Session UUID.")],
 ) -> ToolResult:
     """Get one session."""
     return await call(
         "GET",
-        f"/v1/sessions/{http_client.path_segment(session_id)}",
+        f"/v1/sessions/{http_client.path_segment(_session_id(session_id))}",
         text="Retrieved session.",
     )
 
 
 async def get_session_transcript(
-    session_id: Annotated[str, Field(description="Session id.")],
+    session_id: Annotated[str, Field(description="Session UUID.")],
 ) -> ToolResult:
     """Get one session transcript."""
     return await call(
         "GET",
-        f"/v1/sessions/{http_client.path_segment(session_id)}/transcript",
+        f"/v1/sessions/{http_client.path_segment(_session_id(session_id))}/transcript",
         text="Retrieved session transcript.",
     )
 
 
 async def get_session_recording(
-    session_id: Annotated[str, Field(description="Session id.")],
+    session_id: Annotated[str, Field(description="Session UUID.")],
 ) -> ToolResult:
     """Get a signed recording URL for one session."""
     return await call(
         "GET",
-        f"/v1/sessions/{http_client.path_segment(session_id)}/recording",
+        f"/v1/sessions/{http_client.path_segment(_session_id(session_id))}/recording",
         text="Retrieved session recording URL.",
     )
 
@@ -2595,21 +2632,21 @@ async def list_agent_calls(
 
 
 async def get_call(
-    call_id: Annotated[str, Field(description="Call/session id.")],
+    call_id: Annotated[str, Field(description="Call/session UUID.")],
 ) -> ToolResult:
     """Get call detail including transcript."""
     return await call(
-        "GET", f"/v1/calls/{http_client.path_segment(call_id)}", text="Retrieved call."
+        "GET", f"/v1/calls/{http_client.path_segment(_session_id(call_id))}", text="Retrieved call."
     )
 
 
 async def get_call_recording(
-    call_id: Annotated[str, Field(description="Call/session id.")],
+    call_id: Annotated[str, Field(description="Call/session UUID.")],
 ) -> ToolResult:
     """Get a signed recording URL for one call."""
     return await call(
         "GET",
-        f"/v1/calls/{http_client.path_segment(call_id)}/recording",
+        f"/v1/calls/{http_client.path_segment(_session_id(call_id))}/recording",
         text="Retrieved call recording URL.",
     )
 

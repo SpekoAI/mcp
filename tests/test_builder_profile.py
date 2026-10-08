@@ -309,3 +309,13 @@ async def test_list_models_relays_to_providers_known_endpoint(
     assert captured["method"] == "GET"
     assert captured["url"] == "https://api.speko.dev/v1/providers/known"
     assert result.structured_content == {"ok": True}
+
+
+async def test_list_models_says_which_pins_managed_keys_can_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Unpriced STT/TTS rows are refused on managed keys; the description must
+    # tell the model to read the `priced` flag before pinning.
+    _force_deployment_profile(monkeypatch, "builder")
+    tool = next(t for t in await create_server().list_tools() if t.name == "models.list")
+    assert "`priced`" in (tool.description or "")

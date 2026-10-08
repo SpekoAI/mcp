@@ -179,7 +179,7 @@
     {
       "id": "capabilities.describe",
       "version": 1,
-      "description": "Return the exact input schema, output schema and authorization policy for one action, by id. The natural second call after capabilities.search, when a summary is not enough to construct the arguments.",
+      "description": "Return the exact input schema, output schema and authorization policy for one action, by id. The natural second call after capabilities.search, when a summary is not enough to construct the arguments. Covers actions from capabilities.search only: a tool already in your tool list carries its own input schema, so do not describe it.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -4524,7 +4524,7 @@
     {
       "id": "gateway.models.list",
       "version": 1,
-      "description": "List Relay models with their provider, kind (stt, tts, llm, s2s, or evaluation), routability, and benchmark and ranking data for the given objective and language. Filtering by `language` narrows to models that actually serve it; omit both filters to see the full catalog and every language it covers. gateway.relay.tts_preview.create and other Relay-routed actions expect a (provider, model, voice) combination taken from this list, not guessed.",
+      "description": "List Relay models with their provider, kind (stt, tts, llm, s2s, or evaluation), routability, and benchmark and ranking data for the given objective and language. Filtering by `language` narrows to models that actually serve it; omit both filters to see the full catalog and every language it covers. gateway.relay.tts_preview.create and other Relay-routed actions expect a (provider, model) pair taken from this list, not guessed; a preview speaks only the row's `default_voice`.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -6611,7 +6611,7 @@
     {
       "id": "gateway.relay.tts_preview.create",
       "version": 1,
-      "description": "Create a bounded Relay TTS preview and return a short-lived audio resource link. The voice id is not cross-checked against the chosen provider before synthesis. An id that belongs to a different vendor (for example an OpenAI voice name passed with provider: \"azure\") can be accepted and still fail or return silence instead of erroring up front. See gateway.models.list for a language's available provider and model pairs; prefer a voice already listed under the chosen provider.",
+      "description": "Create a bounded Relay TTS preview and return a short-lived audio resource link. Pick the provider and model from a tts row of gateway.models.list. A preview speaks only that model's `default_voice`; any other voice, including the row's language-specific `voice`, is rejected. Omit `voice` and the default is used.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -6648,7 +6648,6 @@
         "required": [
           "provider",
           "model",
-          "voice",
           "language",
           "mode"
         ],
@@ -14329,7 +14328,7 @@
     {
       "id": "agents.apply_prompt_fix",
       "version": 1,
-      "description": "Deploy a revised system prompt as a NEW agent version. Takes the current live config, swaps the prompt, and deploys — which auto-enqueues a version-stamped re-test, closing the fail → suggest → apply → re-test loop. Send the FULL prompt, not a diff. Requires the agent to already have a deployed version.",
+      "description": "Deploy a revised system prompt as a NEW agent version. Takes the current live config (or the agent as it stands, if it was never deployed), swaps the prompt, and deploys. No re-test runs automatically; re-run the Test Set to check the fix. Send the FULL prompt, not a diff.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -14509,7 +14508,7 @@
     {
       "id": "agents.apply_stack_fix",
       "version": 1,
-      "description": "Re-pin ONE pipeline layer (stt, llm or tts) to a different provider and deploy that as a new agent version — the fix that is not a prompt change. Every other layer and config key is carried forward. Auto-enqueues a re-test like agents.apply_prompt_fix.",
+      "description": "Re-pin ONE pipeline layer (stt, llm or tts) to a different provider and deploy that as a new agent version — the fix that is not a prompt change. Every other layer and config key is carried forward. Like agents.apply_prompt_fix, no re-test runs automatically.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
