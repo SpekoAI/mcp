@@ -228,7 +228,8 @@ def _extract_summary(body: str) -> str:
 
 
 def _default_repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    parents = Path(__file__).resolve().parents
+    return parents[3] if len(parents) > 3 else parents[1]
 
 
 def _is_remote_source(source: str) -> bool:
