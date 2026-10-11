@@ -651,6 +651,68 @@ async def test_transcribe_forwards_bytes_with_the_intent_header(
     assert out.structured_content == {"text": "Your table is ready.", "language": "es-MX"}
 
 
+async def test_transcribe_surfaces_a_truncated_transcript_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SERVER-24: a Gemini transcript that stopped early must not read as complete."""
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def fake_post(*args: Any, **kwargs: Any) -> SpekoRawResponse:
+        return SpekoRawResponse(
+            content=(
+                b'event: done\ndata: {"text": "Your table is", "provider": "gemini", '
+                b'"model": "gemini-3.5-transcribe", "warnings": [{"kind": "transcript_truncated", '
+                b'"provider": "gemini", "model": "gemini-3.5-transcribe"}, '
+                b'"junk", {"kind": 7}]}\n\n'
+            ),
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    out = await action_tools.transcribe_audio("https://storage.example.com/rec.mp3", language="en")
+
+    assert out.structured_content["text"] == "Your table is"
+    # Malformed entries are dropped; the real warning keeps only its string fields.
+    assert out.structured_content["warnings"] == [
+        {"kind": "transcript_truncated", "provider": "gemini", "model": "gemini-3.5-transcribe"}
+    ]
+    assert out.structured_content["message"].startswith(
+        "The provider cut the transcript short; speech after the cut is missing."
+    )
+    # The text block is the rendered payload, so a text-only host sees the cut too,
+    # and it sees it FIRST: the renderer truncates long payloads from the end.
+    rendered = json.loads(out.content[0].text)
+    assert list(rendered)[:2] == ["warnings", "message"]
+    assert rendered["warnings"][0]["kind"] == "transcript_truncated"
+    assert rendered["message"] == out.structured_content["message"]
+
+
+async def test_transcribe_omits_warnings_when_the_list_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def fake_post(*args: Any, **kwargs: Any) -> SpekoRawResponse:
+        return SpekoRawResponse(
+            content=b'event: done\ndata: {"text": "Your table is ready.", "warnings": []}\n\n',
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    out = await action_tools.transcribe_audio("https://storage.example.com/rec.mp3", language="en")
+
+    assert out.structured_content == {"text": "Your table is ready.", "language": "en"}
+
+
 async def test_transcribe_rejects_a_missing_done_frame(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

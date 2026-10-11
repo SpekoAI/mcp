@@ -1246,8 +1246,48 @@ async def _transcribe_via_platform(
             and word.get("start") is not None
             and word.get("end") is not None
         ]
+    warnings = _transcript_warnings(done.get("warnings"))
+    if warnings:
+        # The payload is what a text-only host renders, and the renderer keeps
+        # only the first TEXT_CHAR_CEILING characters of it. A long transcript
+        # would push a trailing warning past the cut, so the warning goes first.
+        lead: dict[str, Any] = {"warnings": warnings}
+        if any(w["kind"] == "transcript_truncated" for w in warnings):
+            lead["message"] = _TRUNCATED_NOTE
+        payload = {**lead, **payload}
     _mark_no_speech(payload)
     return result(payload, text=text or "No speech detected.")
+
+
+_TRUNCATED_NOTE = (
+    "The provider cut the transcript short; speech after the cut is missing. "
+    "Re-run on the remaining audio before treating this text as the whole recording."
+)
+_WARNING_DETAIL_KEYS = ("provider", "model", "param", "reason")
+
+
+def _transcript_warnings(raw: Any) -> list[dict[str, str]]:
+    """Keep the server's warnings in the shape a host can act on.
+
+    A Gemini transcript that stopped early (Interactions status `incomplete`)
+    reached callers as a complete one because this tool dropped the `done`
+    frame's `warnings` (Sentry SERVER-24). The server attaches
+    `transcript_truncated` for that case; `words_truncated` and `param_dropped`
+    ride the same list. Only string fields are copied so a malformed entry
+    cannot leak provider payloads into the tool result.
+    """
+    if not isinstance(raw, list):
+        return []
+    kept: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict) or not isinstance(item.get("kind"), str):
+            continue
+        warning = {"kind": item["kind"]}
+        for key in _WARNING_DETAIL_KEYS:
+            if isinstance(item.get(key), str):
+                warning[key] = item[key]
+        kept.append(warning)
+    return kept
 
 
 def _completed_transcript(text: Any) -> str:
