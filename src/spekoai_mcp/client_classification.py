@@ -8,13 +8,26 @@ from __future__ import annotations
 
 import re
 
-CLIENT_CLASSIFIER_VERSION = "execution-client-v1"
+CLIENT_CLASSIFIER_VERSION = "execution-client-v2"
 
 # First match wins. Product markers precede generic runtimes.
 CLIENT_MATCHERS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (
         re.compile(r"(?:^|[\s;(])claude-user(?=[/\s;()]|$)", re.IGNORECASE),
         "claude_hosted",
+        "observed_client_marker",
+    ),
+    # grok.com Connectors names itself only in the User-Agent; its MCP
+    # clientInfo.name is the generic `connectors-manager`. Taken from PostHog's
+    # MCP analytics classifier; not yet seen in Speko traffic.
+    (
+        re.compile(r"(?:^|[\s;(])grok-connectors-manager(?=[/\s;()]|$)", re.IGNORECASE),
+        "grok",
+        "observed_client_marker",
+    ),
+    (
+        re.compile(r"(?:^|[\s;(])grok-(?:cli|build)(?=[/\s;()]|$)", re.IGNORECASE),
+        "grok_build",
         "observed_client_marker",
     ),
     (
@@ -35,6 +48,13 @@ CLIENT_MATCHERS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (
         re.compile(r"(?:^|[\s;(])claude-?code(?=[/\s;()]|$)", re.IGNORECASE),
         "claude_code",
+        "observed_client_marker",
+    ),
+    # Cursor's cloud agents send a bare `Cursor/1.0.0`; the editor appends its
+    # platform, `Cursor/3.18.9 (win32 x64)`.
+    (
+        re.compile(r"^cursor/\d+\.\d+\.\d+$", re.IGNORECASE),
+        "cursor_agents",
         "observed_client_marker",
     ),
     (

@@ -32,7 +32,14 @@ from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.credit_exhaustion import CreditExhaustedMiddleware
 from spekoai_mcp.docs_tools import register_docs_tools
 from spekoai_mcp.generated_action_tools import register_generated_action_tools
-from spekoai_mcp.http_client import reset_current_client_ua, set_current_client_ua
+from spekoai_mcp.http_client import (
+    ANTHROPIC_CLIENT_MAX_LENGTH,
+    bounded_printable,
+    reset_current_anthropic_client,
+    reset_current_client_ua,
+    set_current_anthropic_client,
+    set_current_client_ua,
+)
 from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
@@ -236,11 +243,13 @@ class MCPProtocolGuard:
         # JSON-RPC body and the transport headers are gone. Reset in `finally`
         # so a ContextVar cannot leak across requests on a reused worker task.
         ua_token = set_current_client_ua(self._sanitized_user_agent(scope))
+        anthropic_token = set_current_anthropic_client(self._anthropic_client(scope))
         host_token = set_current_host(observed_host(scope.get("headers", [])))
         try:
             await self._dispatch(scope, receive, send)
         finally:
             reset_current_host(host_token)
+            reset_current_anthropic_client(anthropic_token)
             reset_current_client_ua(ua_token)
 
     async def _dispatch(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -330,6 +339,23 @@ class MCPProtocolGuard:
             await send(message)
 
     @staticmethod
+    def _anthropic_client(scope: Scope) -> str:
+        """Anthropic's surface header (ClaudeCode, ClaudeAI, Cowork), or "".
+
+        The only vendor header seen in the wild: Claude Code, claude.ai and Cowork
+        can all send the same clientInfo.name, and this is what tells them apart.
+        """
+        raw = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"x-anthropic-client"
+            ),
+            "",
+        )
+        return bounded_printable(raw, ANTHROPIC_CLIENT_MAX_LENGTH)
+
+    @staticmethod
     def _sanitized_user_agent(scope: Scope) -> str:
         raw = next(
             (
@@ -340,7 +366,9 @@ class MCPProtocolGuard:
             "",
         )
         printable = "".join(character if character.isprintable() else "?" for character in raw)
-        return printable[:USER_AGENT_MAX_LENGTH]
+        # Strip after the cut: a cut on a space leaves trailing whitespace,
+        # which httpx refuses to send as X-Speko-Client-UA.
+        return printable[:USER_AGENT_MAX_LENGTH].strip()
 
     @staticmethod
     async def _jsonrpc_error(

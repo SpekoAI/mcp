@@ -32,6 +32,23 @@ _CURRENT_ACTION_ID: ContextVar[str | None] = ContextVar("speko_mcp_action_id", d
 # server runs stateless_http=True, so there is no session to hang it on.
 _CURRENT_CLIENT_UA: ContextVar[str | None] = ContextVar("speko_mcp_client_ua", default=None)
 
+# What the harness says about itself beyond the User-Agent: Anthropic's
+# `x-anthropic-client` surface header (ClaudeCode, ClaudeAI, Cowork), bound at
+# the ASGI edge beside the UA, and the MCP `clientInfo` from a tool call's
+# `_meta`, bound per call. Forwarded raw so Platform can learn the real values
+# before anything classifies on them. Each maps Platform header -> value, with
+# empty values already dropped.
+_CURRENT_ANTHROPIC_CLIENT: ContextVar[str | None] = ContextVar(
+    "speko_mcp_anthropic_client", default=None
+)
+_CURRENT_CLIENT_INFO: ContextVar[dict[str, str] | None] = ContextVar(
+    "speko_mcp_client_info", default=None
+)
+
+ANTHROPIC_CLIENT_MAX_LENGTH = 64
+CLIENT_INFO_NAME_MAX_LENGTH = 128
+CLIENT_INFO_VERSION_MAX_LENGTH = 64
+
 
 class SpekoAuthError(RuntimeError):
     """Raised when a private MCP tool is called without MCP auth."""
@@ -187,6 +204,50 @@ def current_client_ua() -> str | None:
     return _CURRENT_CLIENT_UA.get()
 
 
+def bounded_printable(value: object, limit: int) -> str:
+    """A client-supplied value as printable ASCII, cut to `limit`; "" when not a string.
+
+    These become outbound header values, so anything a header cannot carry
+    verbatim is replaced rather than passed through. Stripped after the cut:
+    a cut landing on a space would leave trailing whitespace, which httpx
+    refuses to send, failing the tool call the header rides on.
+    """
+    if not isinstance(value, str):
+        return ""
+    printable = "".join(
+        character if character.isascii() and character.isprintable() else "?" for character in value
+    )
+    return printable[:limit].strip()
+
+
+def set_current_anthropic_client(value: str) -> Token[str | None]:
+    """Bind the inbound `x-anthropic-client` header for the duration of one request."""
+    return _CURRENT_ANTHROPIC_CLIENT.set(value)
+
+
+def reset_current_anthropic_client(token: Token[str | None]) -> None:
+    _CURRENT_ANTHROPIC_CLIENT.reset(token)
+
+
+def set_current_client_info(client_info: object) -> Token[dict[str, str] | None]:
+    """Bind an MCP `clientInfo` object for the duration of one tool call."""
+    headers: dict[str, str] = {}
+    if isinstance(client_info, dict):
+        for header, key, limit in (
+            ("X-Speko-Client-Info-Name", "name", CLIENT_INFO_NAME_MAX_LENGTH),
+            ("X-Speko-Client-Info-Version", "version", CLIENT_INFO_VERSION_MAX_LENGTH),
+            ("X-Speko-Client-Info-Title", "title", CLIENT_INFO_NAME_MAX_LENGTH),
+        ):
+            value = bounded_printable(client_info.get(key), limit)
+            if value:
+                headers[header] = value
+    return _CURRENT_CLIENT_INFO.set(headers or None)
+
+
+def reset_current_client_info(token: Token[dict[str, str] | None]) -> None:
+    _CURRENT_CLIENT_INFO.reset(token)
+
+
 def _platform_headers(
     *,
     action_id: str | None = None,
@@ -213,6 +274,12 @@ def _platform_headers(
     client_ua = _CURRENT_CLIENT_UA.get()
     if client_ua:
         headers["X-Speko-Client-UA"] = client_ua
+    # Same absent-not-empty rule as the UA: a missing self-report stays
+    # distinguishable from one that was sent blank.
+    anthropic_client = _CURRENT_ANTHROPIC_CLIENT.get()
+    if anthropic_client:
+        headers["X-Speko-Anthropic-Client"] = anthropic_client
+    headers.update(_CURRENT_CLIENT_INFO.get() or {})
     if resolved_action_id:
         headers["X-Speko-Action-Id"] = resolved_action_id
     if extra_headers:

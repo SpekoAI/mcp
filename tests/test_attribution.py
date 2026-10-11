@@ -424,6 +424,7 @@ def test_host_and_verified_principal_survive_real_http_dispatch(relay, caplog) -
                 "Authorization": "Bearer sk_unchanged_platform_credential",
                 "Host": "mcp.speko.ai",
                 "User-Agent": "test-harness/1",
+                "X-Anthropic-Client": "ClaudeCode",
                 "X-Speko-MCP-Host": "forged.example",
                 "X-Speko-Invocation-Id": "00000000-0000-4000-8000-000000000000",
                 "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
@@ -458,6 +459,12 @@ def test_host_and_verified_principal_survive_real_http_dispatch(relay, caplog) -
     assert event["oauth_client_id"] is None
     assert event["host"] == relay[0].headers["x-speko-mcp-host"] == "mcp.speko.ai"
     assert relay[0].headers["x-speko-client-ua"] == "test-harness/1"
+    # The harness self-report crosses the relay raw: clientInfo from the call's
+    # `_meta`, the vendor header from the transport. Neither reaches the event.
+    assert relay[0].headers["x-speko-client-info-name"] == "test"
+    assert relay[0].headers["x-speko-client-info-version"] == "1"
+    assert "x-speko-client-info-title" not in relay[0].headers
+    assert relay[0].headers["x-speko-anthropic-client"] == "ClaudeCode"
     assert "client_ua" not in event
     assert event["execution_client"] == "unknown:generic_marker"
     assert event["client_evidence_class"] == "unknown"

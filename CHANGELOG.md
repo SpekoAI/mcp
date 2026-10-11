@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Platform relays forward the MCP client's own `clientInfo` (name, version, title), read from each tool call's `_meta`, and Anthropic's `x-anthropic-client` header, as `X-Speko-Client-Info-*` and `X-Speko-Anthropic-Client`. A header is absent when there is no value. The client classifier mirror moves to `execution-client-v2`, which recognizes Cursor's cloud agents and Grok.
+
 ## 0.2.38
 
 - Phone number tools quote the $2/month rental (with the $1 setup fee).

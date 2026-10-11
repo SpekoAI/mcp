@@ -147,6 +147,31 @@ def _principal() -> dict[str, str | None]:
     }
 
 
+CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo"
+
+
+def _client_info(context: MiddlewareContext[mt.CallToolRequestParams]) -> object:
+    """The MCP clientInfo this tool call carries, or None.
+
+    The server is stateless, so an `initialize` handshake is its own request and
+    its clientInfo cannot be tied to a later call. A client on a protocol that
+    repeats clientInfo in each request's `_meta` is the one that can be read.
+    FastMCP strips `_meta` from the params handed to middleware and keeps it on
+    the request context; the session's own handshake is the fallback.
+    """
+    try:
+        request = getattr(context.fastmcp_context, "request_context", None)
+        for meta in (context.message.meta, getattr(request, "meta", None)):
+            if isinstance(meta, dict) and CLIENT_INFO_META_KEY in meta:
+                return meta[CLIENT_INFO_META_KEY]
+        params = getattr(getattr(request, "session", None), "client_params", None)
+        client_info = getattr(params, "client_info", None)
+        return client_info.model_dump() if client_info is not None else None
+    except Exception:
+        # Attribution must never fail a tool call.
+        return None
+
+
 class InvocationAttributionMiddleware(Middleware):
     """Observe tool completion without analytics I/O or changes to tool responses.
 
@@ -162,11 +187,16 @@ class InvocationAttributionMiddleware(Middleware):
         context: MiddlewareContext[mt.CallToolRequestParams],
         call_next: CallNext[mt.CallToolRequestParams, ToolResult],
     ) -> ToolResult:
-        from spekoai_mcp.http_client import current_client_ua
+        from spekoai_mcp.http_client import (
+            current_client_ua,
+            reset_current_client_info,
+            set_current_client_info,
+        )
         from spekoai_mcp.profiles import current_profile
 
         invocation = _Invocation()
         token = _CURRENT_INVOCATION.set(invocation)
+        client_info_token = set_current_client_info(_client_info(context))
         started = time.monotonic()
         outcome = "failed"
         try:
@@ -181,6 +211,7 @@ class InvocationAttributionMiddleware(Middleware):
             # also prevents detached tasks from reusing an already completed ID.
             invocation.active = False
             _CURRENT_INVOCATION.reset(token)
+            reset_current_client_info(client_info_token)
             if os.environ.get("ATTRIBUTION_ENABLED", "").lower() in {"true", "1"}:
                 try:
                     event = {

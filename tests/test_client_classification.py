@@ -28,7 +28,7 @@ def test_matchers_and_version_match_the_shared_platform_contract() -> None:
         )
         for kind, pattern, client in re.findall(
             r"  (observed|runtime)\(/(.+)/i, '([^']+)'\),",
-            source,
+            _active_matchers_block(source),
         )
     ]
     assert len(expected) > 20
@@ -36,6 +36,27 @@ def test_matchers_and_version_match_the_shared_platform_contract() -> None:
         (pattern.pattern, client, evidence) for pattern, client, evidence in CLIENT_MATCHERS
     ] == expected
     assert _active_classifier_version(source) == CLIENT_CLASSIFIER_VERSION
+
+
+def _active_matchers_block(source: str) -> str:
+    """The rows of the matcher array ACTIVE_CLIENT_CLASSIFIER selects.
+
+    The source keeps every older version's rules, so collecting matcher lines
+    from the whole file would mix versions instead of comparing the live one.
+    """
+    selected = re.search(
+        r"const ACTIVE_CLIENT_CLASSIFIER = Object\.freeze\(\{\s*version: \w+,\s*matchers: (\w+),",
+        source,
+    )
+    assert selected, "ACTIVE_CLIENT_CLASSIFIER no longer names the matchers it selects"
+    block = re.search(
+        rf"export const {selected.group(1)}: readonly ClientMatcher\[\] = "
+        r"Object\.freeze\(\[\n(.*?)\n\]\);",
+        source,
+        re.DOTALL,
+    )
+    assert block, f"{selected.group(1)} is not declared as a literal matcher array"
+    return block.group(1)
 
 
 def _active_classifier_version(source: str) -> str:
@@ -69,6 +90,10 @@ def _active_classifier_version(source: str) -> str:
         ("codex-mcp-client/1", "codex", "observed_client_marker"),
         ("claude-code/1", "claude_code", "observed_client_marker"),
         ("Claude-User/1", "claude_hosted", "observed_client_marker"),
+        ("Cursor/1.0.0", "cursor_agents", "observed_client_marker"),
+        ("Cursor/3.18.9 (win32 x64)", "cursor", "observed_client_marker"),
+        ("grok-connectors-manager/1.0", "grok", "observed_client_marker"),
+        ("grok-cli/0.1", "grok_build", "observed_client_marker"),
         ("python-httpx/0.28", "python_httpx", "generic_runtime"),
         ("node", "node", "generic_runtime"),
         ("spekoai-python/1 python-httpx/0.28", "sdk_python", "observed_client_marker"),
