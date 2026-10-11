@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import socket
+import struct
 from functools import wraps
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
@@ -679,10 +680,12 @@ async def synthesize_speech(
         ),
     ],
 ) -> ToolResult:
-    """Synthesize speech from text, returning base64 audio.
+    """Synthesize speech from text, returning a download link and base64 audio.
 
-    Routed across TTS providers by the intent. The audio is returned as base64
-    with its content type and sample rate so a client can save or play it.
+    Routed across TTS providers by the intent. The result carries a signed
+    download URL (valid 15 minutes) that can be shared or passed as `audio_url`
+    to audio.transcribe, plus the audio as base64 with its content type and
+    sample rate when the clip is small enough to embed.
 
     Served by the Speko Router when the request is one the Router's speech body
     can express, and by the Platform endpoint otherwise — a request naming
@@ -691,7 +694,7 @@ async def synthesize_speech(
     """
     router_token = http_client.router_bearer_token()
     router_payload = _router_speech_payload(body) if router_token else None
-    if router_token and router_payload is not None:
+    if router_token and router_payload is not None and _router_audio_fits_inline(router_payload):
         try:
             return await _synthesize_via_router(router_payload, token=router_token)
         except http_client.SpekoApiError as exc:
@@ -699,11 +702,20 @@ async def synthesize_speech(
                 raise
 
     try:
-        raw = await http_client.call_speko_api_raw("POST", "/v1/synthesize", body=body)
+        raw = await http_client.call_speko_api_raw(
+            "POST",
+            "/v1/synthesize",
+            body={**body, "delivery": "link"},
+            timeout=_LINKED_SYNTHESIS_TIMEOUT_S,
+        )
     except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
         raise tool_error(exc, next_step=next_step_for_error(exc, path="/v1/synthesize")) from exc
     if not raw.content:
         raise ToolError("Speko synthesize returned an empty body.")
+    # A server with no media bucket, or one predating `delivery`, streams the
+    # bytes instead; those keep the base64-only result.
+    if raw.content_type.split(";", 1)[0].strip().lower() == "application/json":
+        return await _linked_synthesis_result(raw.content)
     return _synthesis_result(
         raw.content,
         content_type=raw.content_type,
@@ -737,7 +749,12 @@ def _router_speech_payload(body: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(body, dict) or not set(body).issubset(_ROUTER_SPEECH_FIELDS):
         return None
     text = body.get("text")
-    if not isinstance(text, str) or not text:
+    # Text with no letter or digit in any script is left to Platform, which answers
+    # 400 "must contain at least one speakable character" at once; the Router does
+    # not validate it and would hand it to a vendor (a blank narration hung for
+    # ~33 s before Platform got this check on 2026-10-10). Same rule as
+    # `isSpeechlessText` in apps/server/src/routes/synthesize.ts.
+    if not isinstance(text, str) or not any(ch.isalnum() for ch in text):
         return None
 
     intent = body.get("intent") or {}
@@ -790,14 +807,144 @@ async def _synthesize_via_router(request_payload: dict[str, Any], *, token: str)
     sample_rate = request_payload["audio"]["sample_rate_hz"]
     # The Router labels the stream application/octet-stream. It is the format
     # this request asked for and got — headerless signed 16-bit PCM at the
-    # requested rate — and saying so is what lets a client play the bytes.
+    # requested rate. Raw PCM plays nowhere once saved to disk, so it leaves
+    # here as WAV: a client that writes `audio_base64` to a file gets a file
+    # that opens, and audio.transcribe accepts the same bytes.
     return _synthesis_result(
-        response.content,
-        content_type=f"audio/pcm;rate={sample_rate}",
+        _pcm_to_wav(response.content, sample_rate),
+        content_type="audio/wav",
         sample_rate=sample_rate,
         provider=response.provider,
         model=response.model,
     )
+
+
+def _pcm_to_wav(pcm: bytes, sample_rate: int) -> bytes:
+    """A 44-byte RIFF/WAVE header over signed 16-bit mono PCM."""
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        36 + len(pcm),
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        1,
+        sample_rate,
+        sample_rate * 2,
+        2,
+        16,
+        b"data",
+        len(pcm),
+    )
+    return header + pcm
+
+
+# Base64 is embedded only up to this many audio bytes, about three minutes of
+# 24 kHz WAV. Above it the link carries the audio alone: a long narration's
+# base64 on `/mcp` exceeded Cloud Run's 32 MiB response cap and answered 500
+# twice in the week to 2026-10-10. 8 MB encodes to ~10.7 MB, well clear of it.
+_INLINE_AUDIO_MAX_BYTES = 8 * 1024 * 1024
+
+# The slowest speech the Router guard assumes. At this rate a text's audio is an
+# upper bound, so text that passes the guard cannot outgrow the inline cap.
+_SLOWEST_SPEECH_CHARS_PER_S = 10
+
+
+def _router_audio_fits_inline(router_payload: dict[str, Any]) -> bool:
+    """Whether the Router's audio for this text is sure to fit the inline cap.
+
+    The Router answers with bytes only, so its audio has no download link and
+    always rides inline. Text long enough to outgrow the cap goes to Platform,
+    which links it instead of returning a response Cloud Run refuses to send.
+    """
+    bytes_per_char = router_payload["audio"]["sample_rate_hz"] * 2 / _SLOWEST_SPEECH_CHARS_PER_S
+    return len(router_payload["input"]) * bytes_per_char <= _INLINE_AUDIO_MAX_BYTES
+
+
+# A linked synthesis answers only once the whole clip is synthesized and
+# stored, so the 60 s per-read default would cut off a long narration that the
+# server goes on to finish and bill.
+_LINKED_SYNTHESIS_TIMEOUT_S = 300.0
+
+
+async def _linked_synthesis_result(content: bytes) -> ToolResult:
+    """The result for a `/v1/synthesize` answer with `delivery: 'link'`."""
+    try:
+        link = json.loads(content)
+    except ValueError:
+        link = None
+    url = link.get("url") if isinstance(link, dict) else None
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ToolError("Speko synthesize returned no audio link.")
+    content_type = str(link.get("contentType") or "audio/wav")
+    size = link.get("sizeBytes")
+    payload: dict[str, Any] = {
+        "url": url,
+        "expires_at": link.get("expiresAt"),
+        "content_type": content_type,
+        "size_bytes": size,
+        "sample_rate": link.get("sampleRate"),
+    }
+    duration = link.get("durationSeconds")
+    if isinstance(duration, int | float):
+        payload["duration_seconds"] = duration
+    for key in ("provider", "model"):
+        if link.get(key):
+            payload[key] = link[key]
+
+    # The bundled player (and hosts that save the payload) read `audio_base64`;
+    # a text-only host gets nothing from it and relies on the URL in the text.
+    audio = (
+        await _download_synthesized_audio(url)
+        if isinstance(size, int) and 0 < size <= _INLINE_AUDIO_MAX_BYTES
+        else None
+    )
+    if audio:
+        payload["audio_base64"] = base64.b64encode(audio).decode("ascii")
+
+    if isinstance(duration, int | float):
+        length = f"{duration:.1f} s"
+    elif isinstance(size, int):
+        length = f"{size} bytes"
+    else:
+        length = "audio"
+    route = " ".join(str(payload[key]) for key in ("provider", "model") if key in payload)
+    expires = f" until {payload['expires_at']}" if payload["expires_at"] else ""
+    # audio.transcribe fetches at most _MAX_AUDIO_BYTES, so a longer clip is not
+    # offered as its input: following that step would only fail.
+    transcribe_step = (
+        "This clip is larger than audio.transcribe accepts "
+        f"({_MAX_AUDIO_BYTES // (1024 * 1024)} MB); synthesize shorter text to "
+        "transcribe it."
+        if isinstance(size, int) and size > _MAX_AUDIO_BYTES
+        else "Pass this URL as audio_url to audio.transcribe to transcribe it."
+    )
+    text = (
+        f"Synthesized {length} of {content_type}{f' ({route})' if route else ''}.\n"
+        f"Download link (valid{expires}): {url}\n"
+        f"{transcribe_step}"
+    )
+    return result(payload, text=text, summary_only=True)
+
+
+async def _download_synthesized_audio(url: str) -> bytes | None:
+    """The stored clip, for the inline payload; None leaves the link to carry it."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            response = await client.get(url)
+    except httpx.HTTPError as exc:
+        # The class name only: the message can carry the signed URL.
+        logger.warning(
+            "audio.synthesize could not read back the stored clip: %s", type(exc).__name__
+        )
+        return None
+    if response.status_code != 200 or not response.content:
+        logger.warning(
+            "audio.synthesize could not read back the stored clip: http_%s", response.status_code
+        )
+        return None
+    return response.content
 
 
 def _synthesis_result(
@@ -2534,9 +2681,16 @@ async def list_sessions(
     kind: Annotated[str | None, Field(description="Optional kind filter: cascade or s2s.")] = None,
     from_: Annotated[str | None, Field(description="Optional ISO start timestamp.")] = None,
     to: Annotated[str | None, Field(description="Optional ISO end timestamp.")] = None,
-    agent: Annotated[str | None, Field(description="Optional agent id filter.")] = None,
+    agent_id: Annotated[str | None, Field(description="Optional agent id filter.")] = None,
+    agent: Annotated[
+        str | None, Field(description="Deprecated alias of agent_id; prefer agent_id.")
+    ] = None,
 ) -> ToolResult:
     """List sessions for the authenticated organization."""
+    # Every other tool names this `agent_id`; models sent it here and got "Invalid
+    # arguments" 11 times over 2026-10-08..10 against the old `agent` name, which
+    # stays as an alias for callers that already use it.
+    agent = agent_id or agent
     return await call(
         "GET",
         http_client.with_query(

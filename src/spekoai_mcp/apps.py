@@ -61,7 +61,8 @@ def register_apps(mcp: FastMCP) -> None:
             "Audio player for `audio.synthesize`. Decodes the tool's "
             "base64 payload, wraps headerless PCM in a WAV container so a "
             "browser can play it, and renders playback and download "
-            "controls with the resolved provider, model and duration."
+            "controls with the resolved provider, model and duration. "
+            "A clip too long to embed is offered as its download link."
         ),
     )
     def audio_player() -> str:

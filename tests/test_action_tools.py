@@ -220,6 +220,17 @@ async def test_action_tools_cover_expected_api_paths(
     assert available["query"] == "areaCode=415&limit=2"
 
 
+async def test_list_sessions_takes_agent_id_like_every_other_tool(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    mcp = create_server()
+    await mcp.call_tool("sessions.list", {"agent_id": "agent_1"})
+    await mcp.call_tool("sessions.list", {"agent": "agent_2"})
+
+    queries = [call["query"] for call in speko_api_mock if call["path"] == "/v1/sessions"]
+    assert queries == ["agent=agent_1", "agent=agent_2"]
+
+
 async def test_server_lists_exact_action_tools() -> None:
     names = [tool.name for tool in await create_server().list_tools()]
     assert names == ACTION_TOOL_NAMES + DEFAULT_MANIFEST_ONLY_TOOL_NAMES + DOCS_TOOL_NAMES

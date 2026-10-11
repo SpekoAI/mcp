@@ -44,6 +44,7 @@ from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 from spekoai_mcp.support_handoff import SupportHandoffMiddleware
+from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
 
 MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
@@ -151,6 +152,9 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     mcp.add_middleware(ToolProfileMiddleware())
     mcp.add_middleware(CreditExhaustedMiddleware())
     mcp.add_middleware(SupportHandoffMiddleware())
+    # Innermost, so it logs the tool's own failure before the credit/support
+    # rewrites above lengthen the message.
+    mcp.add_middleware(ToolErrorLogMiddleware())
     return mcp
 
 

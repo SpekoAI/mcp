@@ -3,6 +3,10 @@
 ## Unreleased
 
 - Platform relays forward the MCP client's own `clientInfo` (name, version, title), read from each tool call's `_meta`, and Anthropic's `x-anthropic-client` header, as `X-Speko-Client-Info-*` and `X-Speko-Anthropic-Client`. A header is absent when there is no value. The client classifier mirror moves to `execution-client-v2`, which recognizes Cursor's cloud agents and Grok.
+- `audio.synthesize` returns a 15-minute download link to a WAV file, which hosts without the audio player (Cursor agents, Codex) can open and `audio.transcribe` accepts as `audio_url`. Base64 audio is still included for clips up to 8 MB; longer clips come back as the link only. Router audio is wrapped as WAV.
+- `sessions.list` takes `agent_id` like every other tool; `agent` still works.
+- Text with no letter or digit is no longer sent to the Router. Platform rejects it immediately instead.
+- Tool errors log one line with the tool, status, code, trace id and a redacted message.
 
 ## 0.2.38
 

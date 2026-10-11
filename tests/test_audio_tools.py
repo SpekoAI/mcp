@@ -172,10 +172,13 @@ async def test_synthesize_teaches_the_pin_form_the_server_parses() -> None:
 async def test_synthesize_posts_the_body_and_returns_base64_audio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A server with no media bucket streams bytes; that result is unchanged."""
     seen: dict[str, Any] = {}
 
-    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
-        seen.update(method=method, path=path, body=body)
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
+        seen.update(method=method, path=path, body=body, timeout=timeout)
         return SpekoRawResponse(content=MP3, content_type="audio/mpeg")
 
     monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
@@ -185,7 +188,10 @@ async def test_synthesize_posts_the_body_and_returns_base64_audio(
 
     assert seen["method"] == "POST"
     assert seen["path"] == "/v1/synthesize"
-    assert seen["body"] is body
+    assert seen["body"] == {**body, "delivery": "link"}
+    assert "delivery" not in body
+    assert seen["timeout"] == action_tools._LINKED_SYNTHESIS_TIMEOUT_S
+    assert out.content[0].text == f"Synthesized {len(MP3)} bytes of audio/mpeg."
     assert out.structured_content == {
         "audio_base64": base64.b64encode(MP3).decode("ascii"),
         "content_type": "audio/mpeg",
@@ -198,7 +204,9 @@ async def test_synthesize_posts_the_body_and_returns_base64_audio(
 async def test_synthesize_rejects_an_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
     """Silent success is worse than an error: empty audio must not look synthesized."""
 
-    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
         return SpekoRawResponse(content=b"", content_type="audio/mpeg")
 
     monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
@@ -212,7 +220,9 @@ async def test_synthesize_no_provider_says_change_the_request_not_retry(
 ) -> None:
     """A 422 repeated unchanged is the same 422; the generic step said "Retry"."""
 
-    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
         raise http_client.SpekoApiError(
             422, "No TTS provider available at 48000 Hz", code="NO_PROVIDER_AVAILABLE"
         )
@@ -284,12 +294,17 @@ async def test_synthesize_prefers_the_router_with_an_api_key(
         "voice": "Aoede",
         "language": "es-MX",
     }
-    # The Router labels the stream application/octet-stream; the tool reports
-    # the format the request asked for and got, so a client can play it.
-    assert out.structured_content["content_type"] == "audio/pcm;rate=24000"
+    # The Router streams headerless PCM labelled application/octet-stream; the
+    # tool wraps it in WAV so a saved file opens and audio.transcribe takes it.
+    assert out.structured_content["content_type"] == "audio/wav"
     assert out.structured_content["provider"] == "inworld"
     assert out.structured_content["model"] == "inworld-tts-2"
-    assert base64.b64decode(out.structured_content["audio_base64"]) == PCM
+    wav = base64.b64decode(out.structured_content["audio_base64"])
+    assert action_tools._is_wav(wav)
+    assert wav[44:] == PCM
+    assert int.from_bytes(wav[24:28], "little") == 24000
+    assert int.from_bytes(wav[40:44], "little") == len(PCM)
+    assert out.structured_content["size_bytes"] == len(PCM) + 44
 
 
 async def test_synthesize_maps_a_single_pin_to_explicit_routing(
@@ -331,6 +346,7 @@ async def test_synthesize_maps_a_single_pin_to_explicit_routing(
         ({"text": "hi", "intent": {"language": "en"}, "instructions": "warmly"}, "instructions"),
         ({"text": "hi", "intent": {"language": "en"}, "model": "sonic-2"}, "bare model id"),
         ({"text": "hi", "intent": {"language": "en", "region": "us"}}, "intent.region"),
+        ({"text": " ... ", "intent": {"language": "en"}}, "speechless text"),
         (
             {
                 "text": "hi",
@@ -350,7 +366,9 @@ async def test_synthesize_stays_on_platform_for_what_the_router_cannot_say(
     async def unreachable(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError(f"{why} has no Router equivalent and must not be dropped")
 
-    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
         seen["path"] = path
         return SpekoRawResponse(content=MP3, content_type="audio/mpeg")
 
@@ -371,7 +389,9 @@ async def test_synthesize_falls_back_when_the_router_refuses(
     async def failing_router(*args: Any, **kwargs: Any) -> Any:
         raise http_client.SpekoApiError(400, "refused", code="capability_unsupported")
 
-    async def fake_raw(method: str, path: str, *, body: Any = None) -> SpekoRawResponse:
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
         seen["path"] = path
         return SpekoRawResponse(content=MP3, content_type="audio/mpeg")
 
@@ -402,6 +422,187 @@ async def test_synthesize_raises_a_router_provider_error_rather_than_retrying(
 
     with pytest.raises(http_client.SpekoApiError):
         await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+
+# --- linked synthesis (`delivery: 'link'`) ---------------------------------
+
+SIGNED_URL = (
+    "https://storage.googleapis.com/speko-action-media/org_1/abc/speech.wav"
+    "?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=deadbeef"
+)
+
+
+def _link_response(**overrides: Any) -> SpekoRawResponse:
+    link = {
+        "url": SIGNED_URL,
+        "expiresAt": "2026-10-11T12:15:00.000Z",
+        "contentType": "audio/wav",
+        "sizeBytes": 48_044,
+        "sampleRate": 24000,
+        "durationSeconds": 1,
+        "provider": "cartesia",
+        "model": "sonic-3",
+        **overrides,
+    }
+    return SpekoRawResponse(
+        content=json.dumps(link).encode(), content_type="application/json; charset=UTF-8"
+    )
+
+
+def _platform_returning(monkeypatch: pytest.MonkeyPatch, response: SpekoRawResponse) -> None:
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
+        return response
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+
+async def test_linked_synthesis_puts_the_url_in_the_text_and_keeps_small_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text-only host sees only the text block, so the link has to be in it."""
+    wav = action_tools._pcm_to_wav(PCM, 24000)
+    fetched: list[str] = []
+
+    async def fake_download(url: str) -> bytes:
+        fetched.append(url)
+        return wav
+
+    _platform_returning(monkeypatch, _link_response(sizeBytes=len(wav)))
+    monkeypatch.setattr(action_tools, "_download_synthesized_audio", fake_download)
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    text = out.content[0].text
+    assert SIGNED_URL in text
+    assert "audio_url" in text and "audio.transcribe" in text
+    assert text.startswith("Synthesized 1.0 s of audio/wav (cartesia sonic-3).")
+    assert fetched == [SIGNED_URL]
+    assert out.structured_content == {
+        "url": SIGNED_URL,
+        "expires_at": "2026-10-11T12:15:00.000Z",
+        "content_type": "audio/wav",
+        "size_bytes": len(wav),
+        "sample_rate": 24000,
+        "duration_seconds": 1,
+        "provider": "cartesia",
+        "model": "sonic-3",
+        # Still embedded, so the bundled player keeps playing short clips.
+        "audio_base64": base64.b64encode(wav).decode("ascii"),
+    }
+
+
+async def test_linked_synthesis_omits_base64_above_the_inline_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Long narration base64 overran Cloud Run's 32 MiB response cap."""
+
+    async def unreachable(url: str) -> bytes:
+        raise AssertionError("a clip over the cap must not be downloaded")
+
+    _platform_returning(
+        monkeypatch,
+        _link_response(sizeBytes=action_tools._INLINE_AUDIO_MAX_BYTES + 1, durationSeconds=180.5),
+    )
+    monkeypatch.setattr(action_tools, "_download_synthesized_audio", unreachable)
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    assert "audio_base64" not in out.structured_content
+    assert out.structured_content["url"] == SIGNED_URL
+    assert "180.5 s" in out.content[0].text
+    assert SIGNED_URL in out.content[0].text
+
+
+async def test_linked_synthesis_does_not_offer_transcription_past_its_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """audio.transcribe fetches at most 25 MB, so the step would only fail."""
+    too_big = action_tools._MAX_AUDIO_BYTES + 1
+    _platform_returning(monkeypatch, _link_response(sizeBytes=too_big, durationSeconds=600))
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    text = out.content[0].text
+    assert SIGNED_URL in text
+    assert "Pass this URL as audio_url" not in text
+    assert "larger than audio.transcribe accepts (25 MB)" in text
+
+
+async def test_text_too_long_to_inline_goes_to_platform_for_a_link(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Router audio is inline only; text whose audio could outgrow the cap is linked."""
+    seen: dict[str, Any] = {}
+
+    async def unreachable(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("text this long must not go to the Router")
+
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
+        seen["body"] = body
+        return _link_response(sizeBytes=action_tools._INLINE_AUDIO_MAX_BYTES + 1)
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_live_test")
+    monkeypatch.setattr(http_client, "post_router_speech", unreachable)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    long_text = "word " * 400  # 2,000 chars: over the 24 kHz bound of ~1,750
+    out = await action_tools.synthesize_speech({"text": long_text, "intent": {"language": "en"}})
+
+    assert seen["body"]["delivery"] == "link"
+    assert SIGNED_URL in out.content[0].text
+
+
+def test_the_router_inline_bound_covers_short_narration() -> None:
+    payload = {"input": "x" * 1_700, "audio": {"sample_rate_hz": 24000}}
+    assert action_tools._router_audio_fits_inline(payload)
+    payload["input"] = "x" * 1_800
+    assert not action_tools._router_audio_fits_inline(payload)
+
+
+async def test_linked_synthesis_keeps_the_link_when_the_read_back_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failed_download(url: str) -> None:
+        return None
+
+    _platform_returning(monkeypatch, _link_response())
+    monkeypatch.setattr(action_tools, "_download_synthesized_audio", failed_download)
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    assert "audio_base64" not in out.structured_content
+    assert SIGNED_URL in out.content[0].text
+
+
+async def test_linked_synthesis_without_a_url_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _platform_returning(monkeypatch, _link_response(url=None))
+
+    with pytest.raises(ToolError, match="no audio link"):
+        await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+
+async def test_the_synthesis_link_is_a_fetchable_transcription_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Narration -> transcription: the signed URL passes audio.transcribe's fetch."""
+    wav = action_tools._pcm_to_wav(PCM, 24000)
+    monkeypatch.setattr(action_tools.socket, "getaddrinfo", _public_getaddrinfo)
+    monkeypatch.setattr(
+        action_tools.httpx,
+        "AsyncClient",
+        _client_returning(_FakeStream(chunks=[wav], headers={"content-type": "audio/wav"})),
+    )
+
+    url = action_tools._normalize_audio_url(SIGNED_URL)
+    assert url == SIGNED_URL
+    assert await action_tools._fetch_audio(url) == (wav, "audio/wav")
 
 
 # --- transcription ---------------------------------------------------------

@@ -615,13 +615,15 @@ async def _call_speko_api_raw(
     method: str,
     path: str,
     body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 60.0,
 ) -> SpekoRawResponse:
     api_base = get_api_base()
     url = f"{api_base}/{path.lstrip('/')}"
     headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
-            timeout=60.0,
+            timeout=timeout,
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
@@ -646,8 +648,12 @@ async def call_speko_api_raw(
     method: str,
     path: str,
     body: dict[str, Any] | None = None,
+    *,
+    timeout: float = 60.0,
 ) -> SpekoRawResponse:
-    return await _call_speko_api_raw(method, path, body)
+    """`timeout` is per read: a response that streams is never cut off by it,
+    but one that answers only when finished (a linked synthesis) needs room."""
+    return await _call_speko_api_raw(method, path, body, timeout=timeout)
 
 
 async def post_speko_api_bytes(
