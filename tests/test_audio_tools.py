@@ -692,6 +692,41 @@ async def test_transcribe_surfaces_a_truncated_transcript_warning(
     assert rendered["message"] == out.structured_content["message"]
 
 
+async def test_transcribe_keeps_the_servers_warning_sentence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`param_dropped` carries a readable `message`; the host should see it."""
+    sentence = "diarization was dropped for soniox/stt-async-v4: unsupported"
+
+    async def fake_fetch(url: str) -> tuple[bytes, str]:
+        return MP3, "audio/mpeg"
+
+    async def fake_post(*args: Any, **kwargs: Any) -> SpekoRawResponse:
+        warning = {
+            "kind": "param_dropped",
+            "provider": "soniox",
+            "model": "stt-async-v4",
+            "param": "diarization",
+            "reason": "unsupported",
+            "message": sentence,
+        }
+        done = {"text": "Hello there.", "warnings": [warning]}
+        return SpekoRawResponse(
+            content=f"event: done\ndata: {json.dumps(done)}\n\n".encode(),
+            content_type="text/event-stream",
+        )
+
+    monkeypatch.setattr(action_tools, "_fetch_audio", fake_fetch)
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "post_speko_api_bytes", fake_post)
+
+    out = await action_tools.transcribe_audio("https://storage.example.com/rec.mp3", language="en")
+
+    assert out.structured_content["warnings"][0]["message"] == sentence
+    # Not a truncation, so the payload-level note stays unset.
+    assert "message" not in out.structured_content
+
+
 async def test_transcribe_omits_warnings_when_the_list_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

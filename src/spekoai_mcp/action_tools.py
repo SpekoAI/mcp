@@ -1263,7 +1263,9 @@ _TRUNCATED_NOTE = (
     "The provider cut the transcript short; speech after the cut is missing. "
     "Re-run on the remaining audio before treating this text as the whole recording."
 )
-_WARNING_DETAIL_KEYS = ("provider", "model", "param", "reason")
+# `message` is the server's own sentence (`param_dropped` sends one); dropping it
+# left a host with the bare fields and no readable reason.
+_WARNING_DETAIL_KEYS = ("provider", "model", "param", "reason", "message")
 
 
 def _transcript_warnings(raw: Any) -> list[dict[str, str]]:
