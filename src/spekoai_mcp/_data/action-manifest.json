@@ -22546,7 +22546,7 @@
     {
       "id": "support.ticket.list",
       "version": 1,
-      "description": "List the organization's support tickets, most recent activity first. status filters to open (waiting on Speko), answered (Speko replied last), closed, or all (default). limit is 1-100 (default 50). Each ticket carries unreadReplies, the number of Speko replies the user has not read yet, and ticketUrl, the dashboard page for it. Read a conversation with support.ticket.get. An organization with no tickets returns an empty list.",
+      "description": "List the organization's support tickets, most recent activity first. status filters to open (waiting on Speko), answered (Speko replied last), closed, or all (default). limit is 1-100 (default 50). stage is where the ticket stands for the user: sent, in_review (the team opened it), replied or resolved. Each ticket carries unreadReplies, the number of Speko replies the user has not read yet, and ticketUrl, the dashboard page for it. Read a conversation with support.ticket.get. An organization with no tickets returns an empty list.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -22613,6 +22613,15 @@
                         "closed"
                       ]
                     },
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "sent",
+                        "in_review",
+                        "replied",
+                        "resolved"
+                      ]
+                    },
                     "createdAt": {
                       "type": "string"
                     },
@@ -22633,6 +22642,7 @@
                     "summary",
                     "category",
                     "status",
+                    "stage",
                     "createdAt",
                     "lastMessageAt",
                     "unreadReplies",
@@ -22732,7 +22742,7 @@
     {
       "id": "support.ticket.get",
       "version": 1,
-      "description": "Read one support ticket and its conversation. ticket carries the original summary and details the user sent; messages holds every reply after that, oldest first, each with author customer or team (the Speko support team). Reading marks the team replies as read, so unreadReplies drops to 0. Answer with support.ticket.reply. Returns 404 SUPPORT_TICKET_NOT_FOUND for an id outside this organization.",
+      "description": "Read one support ticket and its conversation. ticket carries the original summary and details the user sent; messages holds every reply after that, oldest first, each with author customer or team (the Speko support team). timeline holds when the latest message was sent and, when they happened since, when the team reviewed it, replied and resolved the ticket. Reading marks the team replies as read, so unreadReplies drops to 0. Answer with support.ticket.reply. Returns 404 SUPPORT_TICKET_NOT_FOUND for an id outside this organization.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -22785,6 +22795,15 @@
                       "closed"
                     ]
                   },
+                  "stage": {
+                    "type": "string",
+                    "enum": [
+                      "sent",
+                      "in_review",
+                      "replied",
+                      "resolved"
+                    ]
+                  },
                   "createdAt": {
                     "type": "string"
                   },
@@ -22819,6 +22838,39 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "timeline": {
+                    "type": "object",
+                    "properties": {
+                      "sentAt": {
+                        "type": "string"
+                      },
+                      "reviewedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "repliedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "resolvedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "sentAt",
+                      "reviewedAt",
+                      "repliedAt",
+                      "resolvedAt"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
@@ -22826,12 +22878,14 @@
                   "summary",
                   "category",
                   "status",
+                  "stage",
                   "createdAt",
                   "lastMessageAt",
                   "unreadReplies",
                   "ticketUrl",
                   "details",
-                  "related"
+                  "related",
+                  "timeline"
                 ],
                 "additionalProperties": false
               },
