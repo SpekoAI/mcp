@@ -37,8 +37,9 @@ def support_next_step(trace_id: str | None) -> str:
         "When this needs the Speko team (after any fix named above has been tried), offer "
         f"to open a ticket with {SUPPORT_TICKET_TOOL}: a one-line summary, what the user "
         f"was doing and this error in details ({trace} included), and any agentId, "
-        "sessionId, callId or phoneNumber in related. The team replies to the user's "
-        "email. Point the user to support@speko.ai only if the ticket tool itself fails."
+        "sessionId, callId or phoneNumber in related. The team replies on the ticket "
+        "(support.ticket.get) and by email. Point the user to support@speko.ai only if "
+        "the ticket tool itself fails."
     )
 
 

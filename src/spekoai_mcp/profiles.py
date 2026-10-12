@@ -297,6 +297,9 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.end",
     # Asking a person for help, from any surface a user can reach.
     "support.ticket.create",
+    "support.ticket.list",
+    "support.ticket.get",
+    "support.ticket.reply",
 ]
 
 # Manifest-generated actions that appear on the DEFAULT surface and have no
@@ -309,6 +312,9 @@ DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
     "sessions.end",
     "support.ticket.create",
+    "support.ticket.list",
+    "support.ticket.get",
+    "support.ticket.reply",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
@@ -432,6 +438,9 @@ BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "agents.create",
     "agents.test_call",
     "support.ticket.create",
+    "support.ticket.list",
+    "support.ticket.get",
+    "support.ticket.reply",
 ]
 
 # The Replit preset, published as `https://replit.speko.ai/mcp`.
@@ -505,6 +514,8 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     # One-shot audio. Replit bans neither generated speech nor transcription.
     "audio.transcribe",
     "audio.synthesize",
+    "support.ticket.list",
+    "support.ticket.get",
     # Writes last.
     "knowledge_bases.create",
     "knowledge_bases.documents.create",
@@ -517,6 +528,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.phone.create",
     "sessions.end",
     "support.ticket.create",
+    "support.ticket.reply",
 ]
 
 _REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFEST_TOOL_NAMES
