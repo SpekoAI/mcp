@@ -2247,7 +2247,7 @@ async def update_agent(
                 "'adaptive'|'vad', minDuration?: int ms, minWords?: int}, "
                 "turnDetection?: boolean|'stt', turnDetector?: "
                 "'smart_turn'|'speko_turn_v1', contextThreshold?: boolean, "
-                "keypad?: boolean, textGate?: boolean, dtmfToolDescription?: "
+                "heardBy?: 'content'|'timing', keypad?: boolean, textGate?: boolean, dtmfToolDescription?: "
                 "string, amdPrompt?: string, waitForCallee?: boolean, "
                 "onMachine?: 'hangup'|'leave_message'|'agent_decides', "
                 "voicemailMessage?: string}|null; no other keys are accepted. "

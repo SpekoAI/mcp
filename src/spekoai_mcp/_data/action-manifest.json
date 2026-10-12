@@ -7303,6 +7303,13 @@
                         "contextThreshold": {
                           "type": "boolean"
                         },
+                        "heardBy": {
+                          "type": "string",
+                          "enum": [
+                            "content",
+                            "timing"
+                          ]
+                        },
                         "textGate": {
                           "type": "boolean"
                         },
@@ -8152,6 +8159,13 @@
                       },
                       "contextThreshold": {
                         "type": "boolean"
+                      },
+                      "heardBy": {
+                        "type": "string",
+                        "enum": [
+                          "content",
+                          "timing"
+                        ]
                       },
                       "textGate": {
                         "type": "boolean"
@@ -9172,6 +9186,13 @@
                           },
                           "contextThreshold": {
                             "type": "boolean"
+                          },
+                          "heardBy": {
+                            "type": "string",
+                            "enum": [
+                              "content",
+                              "timing"
+                            ]
                           },
                           "textGate": {
                             "type": "boolean"
