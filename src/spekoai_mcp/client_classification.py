@@ -50,8 +50,9 @@ CLIENT_MATCHERS: tuple[tuple[re.Pattern[str], str, str], ...] = (
         "claude_code",
         "observed_client_marker",
     ),
-    # Cursor's cloud agents send a bare `Cursor/1.0.0`; the editor appends its
-    # platform, `Cursor/3.18.9 (win32 x64)`.
+    # Cursor's hosted connector backend (Cursor's cloud agents and Grok Bot)
+    # sends a bare `Cursor/1.0.0`; the editor appends its platform,
+    # `Cursor/3.18.9 (win32 x64)`.
     (
         re.compile(r"^cursor/\d+\.\d+\.\d+$", re.IGNORECASE),
         "cursor_agents",
