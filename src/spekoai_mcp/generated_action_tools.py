@@ -50,6 +50,27 @@ def _idempotency_key(action_id: str, arguments: dict[str, Any]) -> str:
     return f"mcp-{digest}"
 
 
+def _open_output_schema(schema: Any) -> Any:
+    """Allow fields the manifest does not list yet, at every depth.
+
+    Clients validate a tool's structured content against its output schema,
+    and Platform deploys ahead of this server. With `additionalProperties:
+    false`, one new response field fails the whole call in the client while the
+    action itself succeeded: on 2026-10-12 `support.ticket.create` began
+    returning `ticketUrl`, and every agent was told its ticket failed although it
+    was stored. Additive fields must never break a released server.
+    """
+    if isinstance(schema, dict):
+        return {
+            key: _open_output_schema(value)
+            for key, value in schema.items()
+            if not (key == "additionalProperties" and value is False)
+        }
+    if isinstance(schema, list):
+        return [_open_output_schema(item) for item in schema]
+    return schema
+
+
 def _title(action_id: str) -> str:
     return " ".join(part.replace("_", " ").title() for part in action_id.split("."))
 
@@ -65,7 +86,7 @@ def register_generated_action_tools(mcp: FastMCP) -> None:
                 title=title,
                 description=entry["description"],
                 parameters=entry["inputSchema"],
-                output_schema=entry["outputSchema"],
+                output_schema=_open_output_schema(entry["outputSchema"]),
                 annotations=ToolAnnotations(
                     title=title,
                     read_only_hint=effect == "read",

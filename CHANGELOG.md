@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.40
+
+- Output schemas accept fields the manifest does not list yet. Clients validate structured content against them, and Platform ships first: since Platform added `ticketUrl` on 2026-10-12, `support.ticket.create` stored the ticket but every client reported the call as failed.
+- Support tickets are conversations. `support.ticket.list`, `support.ticket.get` and `support.ticket.reply` read the team's replies and answer them; `support.ticket.create` returns `ticketUrl`, the dashboard page for the ticket. Tickets carry a `stage` (sent, in_review, replied, resolved) and a timeline. While a reply is unread, Speko tool results carry a `SUPPORT_REPLY_UNREAD` warning telling the agent to pass it on.
+- Graph test results report `heardBy` (content or timing).
+- The client classifier tells Grok Bot apart from Cursor.
+
 ## 0.2.39
 
 - Platform relays forward the MCP client's own `clientInfo` (name, version, title), read from each tool call's `_meta`, and Anthropic's `x-anthropic-client` header, as `X-Speko-Client-Info-*` and `X-Speko-Anthropic-Client`. A header is absent when there is no value. The client classifier mirror moves to `execution-client-v2`, which recognizes Cursor's cloud agents and Grok.
