@@ -2869,6 +2869,10 @@ async def search_available_phone_numbers(
     monthly rental ($2/month), both debited from prepaid credits. Quote them
     from the result, not from memory.
 
+    Results with ``warm: true`` come first: Speko already holds them activated,
+    so they can place calls the moment they are bought. Prefer one when the
+    user will call right away.
+
     Searching is read-only, but it answers 403 until the workspace's business
     verification (KYB) is approved and number purchasing is enabled. The error
     names the step; the user completes it on the Phone numbers page, and
