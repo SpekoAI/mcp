@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp import __version__
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
+from spekoai_mcp.apps import CONNECT_URI
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.profiles import (
     BUILDER_PROFILE_TOOL_NAMES,
@@ -30,6 +31,7 @@ from spekoai_mcp.server import (
     create_public_server,
     create_server,
 )
+from spekoai_mcp.setup_tools import SETUP_TOOL_NAMES
 
 LEGACY_MCP_PROTOCOL_VERSION = "2025-11-25"
 
@@ -134,13 +136,18 @@ async def test_server_lists_operational_and_docs_tools() -> None:
     assert "scaffold_voice_app" not in names
 
 
-async def test_public_server_is_docs_only() -> None:
+async def test_public_server_is_docs_and_setup_only() -> None:
+    """The unauthenticated surface: docs plus the static setup card. Nothing
+    that reads account data or writes."""
     mcp = create_public_server()
     names = [tool.name for tool in await mcp.list_tools()]
-    assert names == DOCS_TOOL_NAMES
+    assert names == DOCS_TOOL_NAMES + SETUP_TOOL_NAMES
     assert all(tool.annotations.read_only_hint is True for tool in await mcp.list_tools())
     resources = await mcp.list_resources()
-    assert [str(resource.uri) for resource in resources] == ["spekoai://docs/index"]
+    assert [str(resource.uri) for resource in resources] == [
+        "spekoai://docs/index",
+        CONNECT_URI,
+    ]
 
 
 async def test_tools_expose_quality_metadata() -> None:
@@ -330,7 +337,7 @@ def test_public_mcp_lists_and_reads_docs_without_authentication() -> None:
     assert "resources" in initialize.json()["result"]["capabilities"]
     assert resources.status_code == 200
     listed = resources.json()["result"]["resources"]
-    assert len(listed) == 1
+    assert [entry["uri"] for entry in listed] == ["spekoai://docs/index", CONNECT_URI]
     assert listed[0]["name"] == "docs_index"
     assert listed[0]["title"] == "SpekoAI documentation index"
     assert listed[0]["uri"] == "spekoai://docs/index"
@@ -375,7 +382,9 @@ def test_public_mcp_root_post_alias_lists_docs_without_authentication() -> None:
     assert initialize.status_code == 200
     assert initialize.json()["result"]["serverInfo"]["name"] == "speko"
     assert tools.status_code == 200
-    assert [tool["name"] for tool in tools.json()["result"]["tools"]] == DOCS_TOOL_NAMES
+    assert [tool["name"] for tool in tools.json()["result"]["tools"]] == (
+        DOCS_TOOL_NAMES + SETUP_TOOL_NAMES
+    )
     assert resources.status_code == 200
     assert resources.json()["result"]["resources"][0]["uri"] == "spekoai://docs/index"
 
@@ -473,10 +482,10 @@ def test_legacy_oauth_initialize_gets_json_challenge() -> None:
     assert 'scope="openid profile email"' in challenge
 
 
-def _assert_server_identity(info: dict[str, object], *, title: str) -> None:
+def _assert_server_identity(info: dict[str, object]) -> None:
     """Directories (Manufact's catalog among them) score these fields."""
     assert info["name"] == "speko"
-    assert info["title"] == title
+    assert info["title"] == "Speko"
     assert info["description"]
     # The package's own version, not fastmcp's (the default when unset).
     assert info["version"] == __version__
@@ -549,11 +558,13 @@ def test_both_endpoints_advertise_the_speko_identity() -> None:
         )
         public = client.post("/", headers=public_headers, json=legacy_initialize_request())
 
-    # The modern protocol carries serverInfo in discover's `_meta`.
-    _assert_server_identity(
-        discover.json()["result"]["_meta"]["io.modelcontextprotocol/serverInfo"], title="Speko"
-    )
-    _assert_server_identity(public.json()["result"]["serverInfo"], title="Speko Docs")
+    # The modern protocol carries serverInfo in discover's `_meta`. Both
+    # endpoints present the same Speko identity.
+    authenticated_info = discover.json()["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]
+    public_info = public.json()["result"]["serverInfo"]
+    _assert_server_identity(authenticated_info)
+    _assert_server_identity(public_info)
+    assert public_info["description"] == authenticated_info["description"]
 
 
 def test_modern_discover_is_json_only_and_sessionless() -> None:

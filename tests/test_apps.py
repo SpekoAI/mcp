@@ -10,6 +10,7 @@ from fastmcp.apps import UI_MIME_TYPE
 from spekoai_mcp.apps import (
     AUDIO_PLAYER_URI,
     BASE_URL_ENV_VAR,
+    CONNECT_URI,
     OPENAI_INVOKED_META_KEY,
     OPENAI_INVOKING_META_KEY,
     OPENAI_TEMPLATE_META_KEY,
@@ -18,6 +19,7 @@ from spekoai_mcp.apps import (
     OPENAI_WIDGET_DOMAIN_META_KEY,
 )
 from spekoai_mcp.server import create_public_server, create_server
+from spekoai_mcp.setup_tools import MCP_ENDPOINT
 
 
 async def test_audio_player_resource_is_advertised() -> None:
@@ -150,3 +152,128 @@ async def test_synthesize_tool_carries_chatgpt_status_text() -> None:
     assert OPENAI_INVOKING_META_KEY not in other
     assert OPENAI_INVOKED_META_KEY not in other
     assert OPENAI_TOOL_INVOCATION_META_KEY not in other
+
+
+# --- the public endpoint's setup card ------------------------------------
+# One test per MCP Apps publishing check, so the public docs endpoint's view
+# keeps passing all of them.
+
+
+async def test_connect_card_is_public_only() -> None:
+    """The card is for people who have not connected yet; `/mcp` never lists it."""
+    public = {str(resource.uri) for resource in await create_public_server().list_resources()}
+    operational = {str(resource.uri) for resource in await create_server().list_resources()}
+    assert CONNECT_URI in public
+    assert CONNECT_URI not in operational
+    assert "setup.connect" not in {tool.name for tool in await create_server().list_tools()}
+
+
+async def test_connect_card_envelope_is_valid() -> None:
+    """View resource envelope: a `ui://` URI read back as the MCP Apps HTML type."""
+    mcp = create_public_server()
+    resources = {str(resource.uri): resource for resource in await mcp.list_resources()}
+    assert resources[CONNECT_URI].mime_type == UI_MIME_TYPE
+    content = (await mcp.read_resource(CONNECT_URI)).contents[0]
+    assert content.mime_type == UI_MIME_TYPE
+    assert isinstance(content.content, str)
+    assert content.content.lstrip().startswith("<!doctype html>")
+
+
+async def test_setup_tool_links_to_the_card() -> None:
+    """Tool-linked resource URI is readable, and both spellings point at it."""
+    mcp = create_public_server()
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    meta = tools["setup.connect"].meta or {}
+    ui = meta.get("ui") or {}
+    assert ui.get("resourceUri") == CONNECT_URI
+    assert meta.get(OPENAI_TEMPLATE_META_KEY) == CONNECT_URI
+    # Visibility stays unset, so the tool remains callable by the model.
+    assert "visibility" not in ui
+    assert (await mcp.read_resource(CONNECT_URI)).contents
+
+
+async def test_setup_tool_carries_invocation_status_text() -> None:
+    """Tool invocation metadata: flat keys plus the nested object, each ≤ 64."""
+    tools = {tool.name: tool for tool in await create_public_server().list_tools()}
+    meta = tools["setup.connect"].meta or {}
+    for key in (OPENAI_INVOKING_META_KEY, OPENAI_INVOKED_META_KEY):
+        assert isinstance(meta.get(key), str)
+        assert 1 <= len(meta[key]) <= 64
+    assert meta[OPENAI_TOOL_INVOCATION_META_KEY] == {
+        "invoking": meta[OPENAI_INVOKING_META_KEY],
+        "invoked": meta[OPENAI_INVOKED_META_KEY],
+    }
+
+
+@pytest.mark.parametrize("base_url", [None, "https://mcp.speko.ai/"])
+async def test_connect_card_metadata_is_complete(
+    monkeypatch: pytest.MonkeyPatch, base_url: str | None
+) -> None:
+    """View metadata complete and domain declared, on list and read alike, and
+    never `ui.domain`, which Claude only accepts as its own hashed value."""
+    if base_url is None:
+        monkeypatch.delenv(BASE_URL_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(BASE_URL_ENV_VAR, base_url)
+    mcp = create_public_server()
+    resources = {str(resource.uri): resource for resource in await mcp.list_resources()}
+    listed = resources[CONNECT_URI].get_meta()
+    read = (await mcp.read_resource(CONNECT_URI)).contents[0].meta or {}
+    for meta in (listed, read):
+        assert meta[OPENAI_WIDGET_DESCRIPTION_META_KEY]
+        assert "domain" not in (meta.get("ui") or {})
+        if base_url is None:
+            assert OPENAI_WIDGET_DOMAIN_META_KEY not in meta
+        else:
+            assert meta[OPENAI_WIDGET_DOMAIN_META_KEY] == "https://mcp.speko.ai"
+
+
+async def test_connect_card_loads_nothing_from_the_network() -> None:
+    """CSP coverage: with no literal external origin in the HTML there is
+    nothing a CSP grant would have to cover. Every URL arrives in the tool's
+    structured result instead."""
+    html = (await create_public_server().read_resource(CONNECT_URI)).contents[0].content
+    assert isinstance(html, str)
+    assert not re.search(r"https?://", html)
+    assert not re.search(r"""<script[^>]+\bsrc\s*=""", html)
+    assert not re.search(r"""<link[^>]+\bhref\s*=""", html)
+
+
+async def test_connect_card_follows_the_host_handshake() -> None:
+    """Initializes, acknowledges, renders tool results, and reports its size so
+    a host never frames it at zero height."""
+    html = (await create_public_server().read_resource(CONNECT_URI)).contents[0].content
+    for method in (
+        "ui/initialize",
+        "ui/notifications/initialized",
+        "ui/notifications/tool-result",
+        "ui/notifications/size-changed",
+        "ui/open-link",
+    ):
+        assert method in html
+
+
+@pytest.mark.parametrize("client", [None, "cursor"])
+async def test_setup_connect_returns_the_steps(client: str | None) -> None:
+    mcp = create_public_server()
+    arguments = {} if client is None else {"client": client}
+    result = await mcp.call_tool("setup.connect", arguments)
+    structured = result.structured_content
+    assert structured is not None
+    assert structured["endpoint"] == MCP_ENDPOINT
+    assert structured["selected"] == client
+    assert [entry["id"] for entry in structured["clients"]] == [
+        "claude-code",
+        "codex",
+        "opencode",
+        "cursor",
+        "other",
+    ]
+    assert all(MCP_ENDPOINT in entry["snippet"] for entry in structured["clients"])
+    # A host without MCP Apps gets the steps themselves, not an acknowledgment.
+    text = result.content[0].text
+    assert MCP_ENDPOINT in text
+    assert structured["installer"] in text
+    if client == "cursor":
+        assert "Cursor" in text
+        assert "Claude Code" not in text

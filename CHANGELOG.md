@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The public docs endpoint presents the same identity as `/mcp`: title "Speko" (was "Speko Docs") and one shared description, "Make and take phone calls with voice agents, transcribe audio, and turn text into speech from one Speko account. Build and test agents and manage phone numbers."
+- The public docs endpoint has a "Connect Speko" card. Its read-only tool `setup.connect` returns the hosted endpoint, the `npx @spekoai/mcp@latest init` installer, how sign-in works, and a ready-to-paste setup snippet for Claude Code, Codex, OpenCode, Cursor and other clients, taken from the MCP quickstart. In an MCP Apps host the result renders in `ui://speko/connect.html`, a self-contained card with client tabs and copy buttons that loads nothing from the network. Text-only hosts get the same steps as text. `/mcp` does not list the tool or the card.
+- `docs.search` `limit` describes how to use it (keep it small for a targeted lookup, raise it to survey a topic) instead of how many results it returns.
+
 ## 0.2.43
 
 - Both MCP endpoints identify as `speko` in `serverInfo`, with a title ("Speko", and "Speko Docs" for the public docs endpoint), a description, `websiteUrl` https://docs.speko.ai and the speko.ai icons. `serverInfo.version` is this package's version; it used to report fastmcp's (4.0.0b3).

@@ -118,8 +118,9 @@ async def search_docs(
             ge=1,
             le=20,
             description=(
-                "How many of the best-matching docs to return. Raise it when "
-                "the first hits miss the topic."
+                "Breadth of the search: keep it small for a targeted lookup, "
+                "raise it to survey a topic or when the top results miss what "
+                "you need."
             ),
         ),
     ] = 5,

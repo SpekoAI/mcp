@@ -22,7 +22,7 @@ from starlette.types import Message as ASGIMessage
 from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
-from spekoai_mcp.apps import register_apps
+from spekoai_mcp.apps import register_apps, register_public_apps
 from spekoai_mcp.attribution import (
     InvocationAttributionMiddleware,
     observed_host,
@@ -45,6 +45,7 @@ from spekoai_mcp.http_client import (
 from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
+from spekoai_mcp.setup_tools import register_setup_tools
 from spekoai_mcp.support_handoff import SupportHandoffMiddleware
 from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
 
@@ -56,7 +57,8 @@ DOCS_URL = "https://docs.speko.dev/quickstart/mcp"
 
 # `serverInfo` identity, advertised during the handshake. Directories and
 # catalogs (Manufact's among them) read the title, description, website and
-# icon from here.
+# icon from here. Both the authenticated and the public docs endpoint present
+# the same Speko identity.
 SERVER_NAME = "speko"
 WEBSITE_URL = "https://docs.speko.ai"
 SERVER_ICONS = [
@@ -65,14 +67,9 @@ SERVER_ICONS = [
 ]
 SERVER_TITLE = "Speko"
 SERVER_DESCRIPTION = (
-    "Voice agents that make and take phone calls, plus transcription, speech "
-    "synthesis and speech-to-speech across many providers' models, all from "
-    "one Speko account."
-)
-PUBLIC_SERVER_TITLE = "Speko Docs"
-PUBLIC_SERVER_DESCRIPTION = (
-    "Read-only search and reading of Speko's API, SDK, adapter and migration "
-    "docs. No sign-in required."
+    "Make and take phone calls with voice agents, transcribe audio, and turn "
+    "text into speech from one Speko account. Build and test agents and manage "
+    "phone numbers."
 )
 
 # `GET /` answers 200 and forwards browsers to the docs with a meta refresh
@@ -161,6 +158,10 @@ PUBLIC_INSTRUCTIONS = "\n\n".join(
         or field name but not the document slug.
         """,
         """
+        When the user asks how to install or connect Speko in an MCP client,
+        call setup.connect; it shows the endpoint and per-client setup steps.
+        """,
+        """
         This endpoint never exposes account data or write tools and requires no
         authentication. Use the authenticated operational MCP endpoint at
         https://mcp.speko.ai/mcp for agents, calls, sessions, phone numbers,
@@ -247,9 +248,11 @@ def create_public_server() -> FastMCP:
         website_url=WEBSITE_URL,
         icons=SERVER_ICONS,
     )
-    _set_server_identity(mcp, title=PUBLIC_SERVER_TITLE, description=PUBLIC_SERVER_DESCRIPTION)
+    _set_server_identity(mcp, title=SERVER_TITLE, description=SERVER_DESCRIPTION)
     register_docs_tools(mcp)
+    register_setup_tools(mcp)
     register_resources(mcp)
+    register_public_apps(mcp)
     mcp.add_middleware(InvocationAttributionMiddleware(profile="public"))
     return mcp
 

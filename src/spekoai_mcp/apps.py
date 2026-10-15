@@ -64,18 +64,29 @@ OPENAI_INVOKING_META_KEY = "openai/toolInvocation/invoking"
 OPENAI_INVOKED_META_KEY = "openai/toolInvocation/invoked"
 OPENAI_TOOL_INVOCATION_META_KEY = "openai/toolInvocation"
 
-_AUDIO_PLAYER_INVOKING = "Synthesizing speech…"
-_AUDIO_PLAYER_INVOKED = "Synthesized speech"
 
-AUDIO_PLAYER_META: dict[str, Any] = {
-    OPENAI_TEMPLATE_META_KEY: AUDIO_PLAYER_URI,
-    OPENAI_INVOKING_META_KEY: _AUDIO_PLAYER_INVOKING,
-    OPENAI_INVOKED_META_KEY: _AUDIO_PLAYER_INVOKED,
-    OPENAI_TOOL_INVOCATION_META_KEY: {
-        "invoking": _AUDIO_PLAYER_INVOKING,
-        "invoked": _AUDIO_PLAYER_INVOKED,
-    },
-}
+def _tool_view_meta(uri: str, *, invoking: str, invoked: str) -> dict[str, Any]:
+    """Tool-side `_meta` for a tool whose result renders in a view."""
+    return {
+        OPENAI_TEMPLATE_META_KEY: uri,
+        OPENAI_INVOKING_META_KEY: invoking,
+        OPENAI_INVOKED_META_KEY: invoked,
+        OPENAI_TOOL_INVOCATION_META_KEY: {"invoking": invoking, "invoked": invoked},
+    }
+
+
+AUDIO_PLAYER_META = _tool_view_meta(
+    AUDIO_PLAYER_URI, invoking="Synthesizing speech…", invoked="Synthesized speech"
+)
+
+# The public docs endpoint's one view: setup steps for connecting a client to
+# Speko, bound to `setup.connect` (`setup_tools.py`). Static content, so it
+# needs no CSP grant, permission or account data.
+CONNECT_URI = "ui://speko/connect.html"
+CONNECT_APP = AppConfig(resource_uri=CONNECT_URI)
+CONNECT_META = _tool_view_meta(
+    CONNECT_URI, invoking="Preparing setup steps…", invoked="Setup steps ready"
+)
 
 # Resource-side ChatGPT keys. `openai/widgetDomain` is the alias for
 # `_meta.ui.domain` (see the module docstring for why the standard key stays
@@ -96,6 +107,12 @@ AUDIO_PLAYER_WIDGET_DESCRIPTION = (
     "describe or repeat it."
 )
 
+CONNECT_WIDGET_DESCRIPTION = (
+    "Shows the user how to connect an MCP client to Speko: the endpoint, a "
+    "one-line installer, and a copyable setup snippet per client. The card "
+    "presents the steps, so do not repeat them in full."
+)
+
 
 def _widget_domain() -> str | None:
     """The deployment's origin, or None when no public URL is configured."""
@@ -105,8 +122,10 @@ def _widget_domain() -> str | None:
     return f"{parts.scheme}://{parts.netloc}"
 
 
-def _audio_player_meta() -> dict[str, str]:
-    meta = {OPENAI_WIDGET_DESCRIPTION_META_KEY: AUDIO_PLAYER_WIDGET_DESCRIPTION}
+def _view_resource_meta(widget_description: str) -> dict[str, str]:
+    """Resource-side `_meta` for a view: its description and, when the
+    deployment has a public origin, its ChatGPT widget domain."""
+    meta = {OPENAI_WIDGET_DESCRIPTION_META_KEY: widget_description}
     if domain := _widget_domain():
         meta[OPENAI_WIDGET_DOMAIN_META_KEY] = domain
     return meta
@@ -128,7 +147,24 @@ def register_apps(mcp: FastMCP) -> None:
             "controls with the resolved provider, model and duration. "
             "A clip too long to embed is offered as its download link."
         ),
-        meta=_audio_player_meta(),
+        meta=_view_resource_meta(AUDIO_PLAYER_WIDGET_DESCRIPTION),
     )
     def audio_player() -> str:
         return _read_app("audio_player.html")
+
+
+def register_public_apps(mcp: FastMCP) -> None:
+    """Views served by the unauthenticated docs endpoint."""
+
+    @mcp.resource(
+        CONNECT_URI,
+        name="app_connect",
+        title="Connect Speko",
+        description=(
+            "Setup card for `setup.connect`. Shows the Speko MCP endpoint, the "
+            "installer command, and per-client setup snippets with copy buttons."
+        ),
+        meta=_view_resource_meta(CONNECT_WIDGET_DESCRIPTION),
+    )
+    def connect_card() -> str:
+        return _read_app("connect.html")
