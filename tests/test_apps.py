@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import re
 
+import pytest
 from fastmcp.apps import UI_MIME_TYPE
 
-from spekoai_mcp.apps import AUDIO_PLAYER_URI, OPENAI_TEMPLATE_META_KEY
+from spekoai_mcp.apps import (
+    AUDIO_PLAYER_URI,
+    BASE_URL_ENV_VAR,
+    OPENAI_INVOKED_META_KEY,
+    OPENAI_INVOKING_META_KEY,
+    OPENAI_TEMPLATE_META_KEY,
+    OPENAI_TOOL_INVOCATION_META_KEY,
+    OPENAI_WIDGET_DESCRIPTION_META_KEY,
+    OPENAI_WIDGET_DOMAIN_META_KEY,
+)
 from spekoai_mcp.server import create_public_server, create_server
 
 
@@ -70,3 +80,73 @@ async def test_player_html_loads_nothing_from_the_network() -> None:
     assert not re.search(r"""<script[^>]+\bsrc\s*=""", html)
     assert not re.search(r"""<link[^>]+\bhref\s*=""", html)
     assert "//unpkg.com" not in html
+
+
+async def _player_resource_meta() -> tuple[dict, dict]:
+    """The player's `_meta` as `resources/list` and `resources/read` serve it."""
+    mcp = create_server()
+    resources = {str(resource.uri): resource for resource in await mcp.list_resources()}
+    listed = resources[AUDIO_PLAYER_URI].get_meta()
+    result = await mcp.read_resource(AUDIO_PLAYER_URI)
+    read = result.contents[0].meta or {}
+    return listed, read
+
+
+async def test_player_declares_the_deployment_origin_for_chatgpt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ChatGPT will not accept an app with UI for submission without a domain.
+
+    Each profile is its own service on its own host, so the deployment's
+    origin is unique to that app. Path and trailing slash are stripped: the
+    value is an origin, not a URL.
+    """
+    monkeypatch.setenv(BASE_URL_ENV_VAR, "https://mcp.speko.ai/")
+    for meta in await _player_resource_meta():
+        assert meta[OPENAI_WIDGET_DOMAIN_META_KEY] == "https://mcp.speko.ai"
+        assert meta[OPENAI_WIDGET_DESCRIPTION_META_KEY]
+
+
+async def test_player_omits_the_domain_without_a_public_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A local or API-key-only run has no public origin to claim."""
+    monkeypatch.delenv(BASE_URL_ENV_VAR, raising=False)
+    for meta in await _player_resource_meta():
+        assert OPENAI_WIDGET_DOMAIN_META_KEY not in meta
+        assert meta[OPENAI_WIDGET_DESCRIPTION_META_KEY]
+
+
+@pytest.mark.parametrize("base_url", [None, "https://mcp.speko.ai"])
+async def test_player_never_sets_the_standard_ui_domain(
+    monkeypatch: pytest.MonkeyPatch, base_url: str | None
+) -> None:
+    """Claude refuses to render the app unless `_meta.ui.domain` is its own
+    `{hash}.claudemcpcontent.com` value, so an HTTPS origin there would trade
+    the ChatGPT fix for a broken player in Claude.
+    """
+    if base_url is None:
+        monkeypatch.delenv(BASE_URL_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(BASE_URL_ENV_VAR, base_url)
+    for meta in await _player_resource_meta():
+        assert "domain" not in (meta.get("ui") or {})
+
+
+async def test_synthesize_tool_carries_chatgpt_status_text() -> None:
+    """ChatGPT shows these while the tool runs and after; it caps each at 64."""
+    mcp = create_server()
+    tools = {tool.name: tool for tool in await mcp.list_tools()}
+    meta = tools["audio.synthesize"].meta or {}
+    for key in (OPENAI_INVOKING_META_KEY, OPENAI_INVOKED_META_KEY):
+        assert isinstance(meta.get(key), str)
+        assert 1 <= len(meta[key]) <= 64
+    # The nested spelling Manufact's checklist describes, with the same text.
+    assert meta[OPENAI_TOOL_INVOCATION_META_KEY] == {
+        "invoking": meta[OPENAI_INVOKING_META_KEY],
+        "invoked": meta[OPENAI_INVOKED_META_KEY],
+    }
+    other = tools["audio.transcribe"].meta or {}
+    assert OPENAI_INVOKING_META_KEY not in other
+    assert OPENAI_INVOKED_META_KEY not in other
+    assert OPENAI_TOOL_INVOCATION_META_KEY not in other

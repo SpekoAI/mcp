@@ -637,7 +637,7 @@ APP_CONFIG_BY_FUNCTION: dict[str, AppConfig] = {
 
 # Extra `_meta` merged alongside the app binding, for hosts that read their own
 # key rather than the standard one.
-APP_META_BY_FUNCTION: dict[str, dict[str, str]] = {
+APP_META_BY_FUNCTION: dict[str, dict[str, Any]] = {
     "synthesize_speech": AUDIO_PLAYER_META,
 }
 
@@ -2499,35 +2499,33 @@ async def test_call_agent(
 ) -> ToolResult:
     """Start an agent-to-agent test call.
 
-    Dispatches the agent under test plus a caller (a persona synthesized from
-    `objective`, or another agent via `caller_agent_id`) into ONE LiveKit room with
-    NO phone/SIP leg — so it CANNOT hairpin the way dialing the agent's own number
-    does. Returns immediately with a RUN id and status 'queued' - NOT a session id.
-    Review it in THREE separately bounded phases, polling about every 5 seconds.
-    (1) Get the session id: poll agents.test_call.get(agent_id, runId) until
-    `run.result.testCall.agentSessionId` appears - the worker publishes it once the
-    call actually starts. RECORD that id the first time you see it and keep using
-    it: the worker REPLACES `run.result` on timeout, retry and abort, so a later
-    read can lose the id while the session itself lives on. If `run.status` reaches
-    passed, failed or incomplete and you never saw an id, the call never started -
-    report what `run.result` says. If it reaches aborted, the run hit its deadline
-    or ran out of retries and its result was overwritten: a session may well exist,
-    so recover it before reporting nothing. List candidates with
-    agents.calls.list(agent_id, since=<dispatch time>), then IDENTIFY the right one
-    by reading calls.get on each until `metadata.evalRunId` equals this runId and
-    `metadata.runKind` is 'test_call'. Never just take the newest - another call on
-    the same agent can start after your dispatch, and reviewing it would report the
-    wrong transcript and recording as this test call's.
-    Otherwise give up after ~24 checks. Never pass the run id to a call or session
-    tool. (2) Wait for the call: poll calls.get(agentSessionId) until it reports
-    the call ended, then read sessions.transcript.get(agentSessionId). Bound THIS
-    phase by ttl_seconds PLUS ~60s of worker startup headroom - that sum is the
-    run's own deadline - never by a check count.
-    (3) Get the recording: it finalizes AFTER the call ends, so
-    KEEP polling calls.get for a FURTHER ~24 checks, until `recording_status` reads
-    'ready', and only then call calls.recording.get(agentSessionId) - calling it
-    earlier returns 404 by design. Stop at once if `recording_status` is failed,
-    suppressed or discarded: that recording will never exist.
+    Puts the agent under test and a caller (a persona synthesized from
+    `objective`, or another agent via `caller_agent_id`) in ONE LiveKit room with
+    NO phone/SIP leg, so it cannot hairpin like dialing the agent's own number.
+    Returns at once with a RUN id in status 'queued' - NOT a session id. Never pass
+    the run id to a call or session tool. Review in THREE separately bounded
+    phases, polling about every 5 seconds.
+    (1) Session id: poll agents.test_call.get(agent_id, runId) until
+    `run.result.testCall.agentSessionId` appears (once the call starts). RECORD
+    that id the first time you see it: the worker REPLACES `run.result` on
+    timeout, retry and abort, so a later read can lose the id while the session
+    lives on. If `run.status` reaches passed, failed or incomplete with no id
+    seen, the call never started - report what `run.result` says. If it reaches
+    aborted (deadline or retries exhausted), the result was overwritten and a
+    session may well exist, so recover it before reporting none: list
+    agents.calls.list(agent_id, since=<dispatch time>) and read calls.get on each
+    until `metadata.evalRunId` equals this runId and `metadata.runKind` is
+    'test_call'. Never just take the newest - another call on the same agent can
+    start after your dispatch. Otherwise give up after ~24 checks.
+    (2) Call: poll calls.get(agentSessionId) until it reports the call ended, then
+    read sessions.transcript.get(agentSessionId). Bound THIS phase by the run's
+    own deadline, ttl_seconds PLUS ~60s of worker startup headroom, never by a
+    check count.
+    (3) Recording: it finalizes AFTER the call ends, so KEEP polling calls.get for
+    a FURTHER ~24 checks until `recording_status` reads 'ready', and only then
+    call calls.recording.get(agentSessionId) - earlier it returns 404 by design.
+    Stop at once if `recording_status` is failed, suppressed or discarded: that
+    recording will never exist.
     Provide exactly one of objective / caller_agent_id / caller_system_prompt.
     """
     body: dict[str, Any] = {}
