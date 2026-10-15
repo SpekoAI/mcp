@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.2.41
 
 - The `audio.synthesize` player declares what ChatGPT needs to accept an app with UI for submission. The resource carries `openai/widgetDomain` (the deployment's origin, taken from `SPEKOAI_MCP_BASE_URL`) and `openai/widgetDescription`, and the tool carries `openai/toolInvocation/invoking` and `invoked` status text, also sent as a nested `openai/toolInvocation` object, the shape Manufact's publishing checklist describes. `_meta.ui.domain` stays unset, because Claude accepts only its own hashed `claudemcpcontent.com` value there and refuses to render the app otherwise.
 - The `agents.test_call` description is shorter: it was 2,266 bytes, over the 2,048-character cap Claude Code applied before v2.1.296. It keeps every polling and recovery rule. A test now holds every tool description and the server instructions to 2,048 bytes on every profile.
+- `support.ticket.create` and the server instructions limit tickets to problems with Speko itself, never the assistant or another product. The agent shows the user the exact summary and details and gets their yes before sending.
+- The `sessions.create` and `agents.update` body descriptions say when the keypad tool arms on outbound calls: when answering-machine detection or the menu wording identifies an automated menu, or, with profile `ivr`, when AMD ends without a human verdict. It never arms with `telephony.amd` disabled.
 
 ## 0.2.40
 
