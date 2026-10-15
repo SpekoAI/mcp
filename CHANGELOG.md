@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.45
 
 - `docs.search` `limit` and `setup.connect` `client` describe what the value means and does, not how big to make it or when to leave it out; the schema already carries the bounds, default and optionality. The `client` description is also corrected: the card opens on that client's setup and the text reply lists only its steps (it said the setup was "shown first", but the order never changes). A test keeps constraint wording out of the public tools' constrained inputs.
 
