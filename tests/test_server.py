@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -148,6 +149,40 @@ async def test_public_server_is_docs_and_setup_only() -> None:
         "spekoai://docs/index",
         CONNECT_URI,
     ]
+
+
+# Wording that restates a constraint the schema already carries. Manufact's
+# catalog graded `docs.search.limit` and `setup.connect.client` down for it
+# ("remove validation rules already expressed in this field's schema"), even
+# for size advice like "keep it small" and optionality like "omit it".
+_CONSTRAINT_WORDING = re.compile(
+    r"\b(default|defaults|optional|omit|minimum|maximum|at most|at least|"
+    r"keep it small|raise it)\b|\d",
+    re.IGNORECASE,
+)
+
+
+def _is_constrained(field: dict[str, object]) -> bool:
+    if any(key in field for key in ("minimum", "maximum", "default", "enum")):
+        return True
+    variants = field.get("anyOf")
+    return isinstance(variants, list) and any(
+        isinstance(variant, dict) and variant.get("type") == "null" for variant in variants
+    )
+
+
+async def test_public_input_descriptions_do_not_restate_their_schema() -> None:
+    """Constrained inputs describe meaning and effect; bounds, defaults and
+    optionality stay in the schema."""
+    for tool in await create_public_server().list_tools():
+        for name, field in tool.parameters.get("properties", {}).items():
+            if not _is_constrained(field):
+                continue
+            description = field.get("description") or ""
+            assert description, f"{tool.name}.{name} has no description"
+            assert not _CONSTRAINT_WORDING.search(description), (
+                f"{tool.name}.{name} restates its schema: {description!r}"
+            )
 
 
 async def test_tools_expose_quality_metadata() -> None:

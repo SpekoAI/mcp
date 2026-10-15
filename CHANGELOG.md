@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `docs.search` `limit` and `setup.connect` `client` describe what the value means and does, not how big to make it or when to leave it out; the schema already carries the bounds, default and optionality. The `client` description is also corrected: the card opens on that client's setup and the text reply lists only its steps (it said the setup was "shown first", but the order never changes). A test keeps constraint wording out of the public tools' constrained inputs.
+
 ## 0.2.44
 
 - The public docs endpoint presents the same identity as `/mcp`: title "Speko" (was "Speko Docs") and one shared description, "Make and take phone calls with voice agents, transcribe audio, and turn text into speech from one Speko account. Build and test agents and manage phone numbers."

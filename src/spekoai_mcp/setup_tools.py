@@ -162,8 +162,8 @@ async def connect_speko(
         ClientId | None,
         Field(
             description=(
-                "The MCP client the user is setting up, when they named one. "
-                "Its setup is shown first; omit it to show every client."
+                "The MCP client the user is setting up. The card opens on its "
+                "setup, and the text reply lists only its steps."
             )
         ),
     ] = None,
