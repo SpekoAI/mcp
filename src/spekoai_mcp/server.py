@@ -92,7 +92,11 @@ INSTRUCTIONS = "\n\n".join(
         Put the trace_id and any agent, session or call ids in the ticket, and
         give the user the ticketUrl it returns. The team replies on the ticket:
         a result warning SUPPORT_REPLY_UNREAD means a reply is waiting, read it
-        with support.ticket.get and answer with support.ticket.reply.
+        with support.ticket.get and answer with support.ticket.reply. Tickets
+        are only for problems with Speko itself, never for the assistant or
+        another product. Show the user the exact summary and details and get
+        their yes before calling support.ticket.create, and leave out personal
+        details the Speko problem does not need.
         """,
     ]
 )
