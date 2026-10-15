@@ -51,3 +51,13 @@ async def test_public_server_fits_claude_code_fields() -> None:
         if _size(tool.description) > CLAUDE_CODE_FIELD_BYTES
     }
     assert oversized == {}
+
+
+async def test_create_session_body_description_fits_claude_code_fields() -> None:
+    """The `body` field of `sessions.create` carries the whole request contract
+    and sits close to the cap (2,025 bytes on 2026-10-15). The checks above
+    measure tool descriptions only, so pin this one field directly."""
+    mcp = create_server()
+    tool = next(t for t in await mcp.list_tools() if t.name == "sessions.create")
+
+    assert _size(tool.parameters["properties"]["body"]["description"]) <= CLAUDE_CODE_FIELD_BYTES

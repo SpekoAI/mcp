@@ -2599,7 +2599,8 @@ async def create_session(
                 "defaults to 's2s' if the referenced agent's run mode is "
                 "'s2s', else 'cascade'), voice (string), "
                 "systemPrompt (string), firstMessage (string <=2000 chars; "
-                "null or '' opens the session listening), llm "
+                "null or '' opens the session listening; for mode 's2s' only "
+                "openai gpt-live without a graph honours it), llm "
                 "({temperature?: 0-2, maxTokens?: int}), ttsOptions "
                 "({sampleRate?: int, speed?: number, workload?: "
                 "'conversation'|'transcription'|'narration', "
@@ -2633,8 +2634,53 @@ async def create_session(
 ) -> ToolResult:
     """Create a browser/WebRTC or server-to-server voice session."""
     validate_create_session_body(body)
+    sent_first_message = "firstMessage" in body
     apply_directory_disclosure(body)
+    # Disclosure fills an absent `firstMessage`. An S2S session used to drop that
+    # fill on the floor (the S2S body had no such field), so the call opened with
+    # its agent's greeting. The S2S body now honours `firstMessage`; dropping the
+    # fill keeps those sessions opening exactly as they did. A caller-sent value
+    # keeps its disclosure.
+    if not sent_first_message and "firstMessage" in body and await _session_runs_s2s(body):
+        del body["firstMessage"]
     return await call("POST", "/v1/sessions", body=body, text="Created session.")
+
+
+async def _session_runs_s2s(body: dict[str, Any]) -> bool:
+    """Whether POST /v1/sessions will run `body` as S2S.
+
+    An explicit `mode` decides. With none, the server takes the agent's
+    `runMode` (sessions.ts), so read it -- from the draft when the session runs
+    on it (`useDraft`/`use_draft`), because the server overlays the draft
+    before it picks the mode: a key the draft carries wins, a missing one
+    keeps the deployed value. A failed lookup answers False, which keeps
+    today's body.
+    """
+    mode = body.get("mode")
+    if mode is not None:
+        return mode == "s2s"
+    agent_id = body.get("agentId")
+    if not isinstance(agent_id, str) or not agent_id:
+        return False
+    agent_path = f"/v1/agents/{http_client.path_segment(agent_id)}"
+    try:
+        run_mode = (await http_client.call_speko_api("GET", agent_path)).get("runMode")
+        if body.get("useDraft") is True or body.get("use_draft") is True:
+            versions = await http_client.call_speko_api_any("GET", f"{agent_path}/versions")
+            draft = next(
+                (
+                    v
+                    for v in (versions if isinstance(versions, list) else [])
+                    if isinstance(v, dict) and v.get("status") == "draft"
+                ),
+                None,
+            )
+            config = draft.get("session_config") if draft else None
+            if isinstance(config, dict) and "runMode" in config:
+                run_mode = config["runMode"]
+    except (http_client.SpekoApiError, http_client.SpekoAuthError):
+        return False
+    return run_mode == "s2s"
 
 
 async def create_phone_session(

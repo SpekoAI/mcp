@@ -387,6 +387,165 @@ async def test_connector_profile_discloses_on_the_real_phone_call_path(
     assert DISCLOSURE_RULE in body["systemPrompt"]
 
 
+@pytest.fixture
+def session_api(monkeypatch: pytest.MonkeyPatch):
+    """POST /v1/sessions plus GET /v1/agents/{id}[/versions], with each agent's
+    runMode set per test (`agents[...] = "s2s"`) and its draft's session_config
+    in `drafts[...]`; an unknown agent is a 404."""
+    calls: list[dict[str, Any]] = []
+    agents: dict[str, str] = {}
+    drafts: dict[str, dict[str, Any]] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8") or "{}")
+        calls.append({"method": request.method, "path": request.url.path, "body": body})
+        if request.method == "GET" and request.url.path.startswith("/v1/agents/"):
+            rest = request.url.path.removeprefix("/v1/agents/")
+            agent_id, _, sub = rest.partition("/")
+            if agent_id not in agents:
+                return json_response({"error": "not found"}, status_code=404)
+            if sub == "versions":
+                live = {"status": "live", "session_config": {"runMode": agents[agent_id]}}
+                if agent_id not in drafts:
+                    return json_response([live])
+                return json_response(
+                    [{"status": "draft", "session_config": drafts[agent_id]}, live]
+                )
+            return json_response({"id": agent_id, "runMode": agents[agent_id]})
+        return json_response({"sessionId": "sess_1"})
+
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test-token")
+    )
+    http_client._TEST_TRANSPORT = httpx.MockTransport(handler)
+    try:
+        yield SimpleNamespace(calls=calls, agents=agents, drafts=drafts)
+    finally:
+        http_client._TEST_TRANSPORT = None
+
+
+def _sent_session(api: SimpleNamespace) -> dict[str, Any]:
+    sent = [c for c in api.calls if c["method"] == "POST" and c["path"] == "/v1/sessions"]
+    assert len(sent) == 1, api.calls
+    return sent[0]["body"]
+
+
+_GPT_LIVE = {"mode": "s2s", "s2s": {"provider": "openai", "model": "gpt-live-1"}}
+
+
+async def test_directory_s2s_session_without_a_greeting_reaches_the_api_without_one(
+    session_api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The S2S body now honours `firstMessage`. Disclosure's fill of an absent
+    one used to be dropped there, so it must not start replacing the greeting."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+
+    await create_server().call_tool("sessions.create", {"body": dict(_GPT_LIVE)})
+
+    body = _sent_session(session_api)
+    assert "firstMessage" not in body
+    # The rest of the disclosure body is as it was.
+    assert body["systemPrompt"] == DISCLOSURE_RULE
+    assert not any(c["method"] == "GET" for c in session_api.calls)
+
+
+@pytest.mark.parametrize(
+    ("run_mode", "fabricated"),
+    [("s2s", False), ("cascade", True), (None, True)],
+)
+async def test_directory_session_with_mode_omitted_reads_the_agents_run_mode(
+    session_api: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    run_mode: str | None,
+    fabricated: bool,
+) -> None:
+    """With no `mode` the server runs the agent's `runMode`. A GPT-Live agent's
+    session keeps its stored greeting; a cascade agent's, and a failed lookup
+    (None: the agent 404s), keep today's disclosure opener."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+    if run_mode is not None:
+        session_api.agents["agent_1"] = run_mode
+
+    await create_server().call_tool("sessions.create", {"body": {"agentId": "agent_1"}})
+
+    body = _sent_session(session_api)
+    if fabricated:
+        assert body["firstMessage"] == DISCLOSURE_OPENER
+    else:
+        assert "firstMessage" not in body
+
+
+@pytest.mark.parametrize(
+    ("draft_flag", "deployed", "draft", "fabricated"),
+    [
+        # A draft that switches a cascade agent to GPT-Live runs as S2S.
+        ("useDraft", "cascade", {"runMode": "s2s"}, False),
+        # The reverse switch runs as cascade and keeps today's opener.
+        ("use_draft", "s2s", {"runMode": "cascade"}, True),
+        # A draft that leaves runMode alone keeps the deployed mode.
+        ("useDraft", "s2s", {"firstMessage": "Draft hi"}, False),
+        ("useDraft", "cascade", {"firstMessage": "Draft hi"}, True),
+        # No draft at all: the deployed agent decides, as on the server.
+        ("useDraft", "s2s", None, False),
+    ],
+)
+async def test_directory_session_on_a_draft_reads_the_drafts_run_mode(
+    session_api: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    draft_flag: str,
+    deployed: str,
+    draft: dict[str, Any] | None,
+    fabricated: bool,
+) -> None:
+    """The server overlays the draft before it picks the mode, so the MCP
+    must read the same mode or it fabricates (or drops) the wrong greeting."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+    session_api.agents["agent_1"] = deployed
+    if draft is not None:
+        session_api.drafts["agent_1"] = draft
+
+    await create_server().call_tool(
+        "sessions.create", {"body": {"agentId": "agent_1", draft_flag: True}}
+    )
+
+    body = _sent_session(session_api)
+    if fabricated:
+        assert body["firstMessage"] == DISCLOSURE_OPENER
+    else:
+        assert "firstMessage" not in body
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {**_GPT_LIVE, "firstMessage": "Hi, this is Ava."},
+        {"mode": "cascade", "intent": {"language": "en"}},
+    ],
+)
+async def test_directory_disclosure_is_unchanged_where_the_caller_chose(
+    session_api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, body: dict[str, Any]
+) -> None:
+    """A greeting the caller sent keeps its disclosure prefix, and a cascade
+    session keeps the opener fill, exactly as before."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "muse")
+
+    await create_server().call_tool("sessions.create", {"body": dict(body)})
+
+    sent = _sent_session(session_api)
+    assert sent["firstMessage"].startswith(DISCLOSURE_OPENER)
+    assert not any(c["method"] == "GET" for c in session_api.calls)
+
+
+async def test_non_directory_session_body_passes_through_untouched(
+    session_api: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+
+    await create_server().call_tool("sessions.create", {"body": dict(_GPT_LIVE)})
+
+    assert _sent_session(session_api) == _GPT_LIVE
+
+
 async def test_update_agent_rejects_empty_body_before_api(
     speko_api_mock: list[dict[str, object]],
 ) -> None:
