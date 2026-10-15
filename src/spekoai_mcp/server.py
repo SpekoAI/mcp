@@ -11,8 +11,10 @@ from importlib.resources import files
 from fastmcp import FastMCP
 from fastmcp.server.auth import AuthProvider
 from fastmcp.server.http import RequestContextMiddleware
+from mcp.types import Icon
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.routing import Mount, Route
@@ -52,6 +54,27 @@ MCP_PROTOCOL_VERSION = "2026-07-28"
 
 DOCS_URL = "https://docs.speko.dev/quickstart/mcp"
 
+# `serverInfo` identity, advertised during the handshake. Directories and
+# catalogs (Manufact's among them) read the title, description, website and
+# icon from here.
+SERVER_NAME = "speko"
+WEBSITE_URL = "https://docs.speko.ai"
+SERVER_ICONS = [
+    Icon(src="https://speko.ai/icon.svg", mime_type="image/svg+xml", sizes=["any"]),
+    Icon(src="https://speko.ai/apple-icon.png", mime_type="image/png", sizes=["180x180"]),
+]
+SERVER_TITLE = "Speko"
+SERVER_DESCRIPTION = (
+    "Voice agents that make and take phone calls, plus transcription, speech "
+    "synthesis and speech-to-speech across many providers' models, all from "
+    "one Speko account."
+)
+PUBLIC_SERVER_TITLE = "Speko Docs"
+PUBLIC_SERVER_DESCRIPTION = (
+    "Read-only search and reading of Speko's API, SDK, adapter and migration "
+    "docs. No sign-in required."
+)
+
 # `GET /` answers 200 and forwards browsers to the docs with a meta refresh
 # rather than a 307. Each host's origin is the audio player's
 # `openai/widgetDomain` (`apps.py`), and Manufact's `view-domain-responds`
@@ -69,6 +92,10 @@ ROOT_PAGE = f"""<!doctype html>
 </body>
 </html>
 """
+# Response headers a browser MCP client must read: the OAuth challenge and the
+# protocol-version header. The server is sessionless, so no Mcp-Session-Id.
+CORS_EXPOSE_HEADERS = ["WWW-Authenticate", "Mcp-Protocol-Version"]
+
 HEADER_MISMATCH = -32020
 # Cap on the inbound User-Agent, used both for the legacy-protocol log line and
 # for the X-Speko-Client-UA header forwarded to Platform. Platform re-bounds it
@@ -152,6 +179,28 @@ def _glama_manifest() -> str:
     return (files("spekoai_mcp") / "_well_known" / "glama.json").read_text(encoding="utf-8")
 
 
+def _package_version() -> str:
+    """This package's version, for `serverInfo.version`.
+
+    Imported at call time: `spekoai_mcp/__init__.py` imports this module before
+    it defines `__version__`. Without it, fastmcp reports its own version.
+    """
+    from spekoai_mcp import __version__
+
+    return __version__
+
+
+def _set_server_identity(mcp: FastMCP, *, title: str, description: str) -> None:
+    """Set `serverInfo.title` and `serverInfo.description`.
+
+    The MCP SDK's low-level server carries both into the handshake's
+    `Implementation`, but fastmcp 4.0.0b3's constructor exposes neither, so
+    they are set on the low-level server before it serves a request.
+    """
+    mcp._mcp_server.title = title
+    mcp._mcp_server.description = description
+
+
 def create_server(auth: AuthProvider | None = None) -> FastMCP:
     """Build the Speko MCP server: authenticated operational tools plus the
     docs self-serve surface (docs.search + spekoai://docs/* resources).
@@ -164,10 +213,14 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     # healthy instance whose MCP requests fail later in middleware.
     default_profile()
     mcp: FastMCP = FastMCP(
-        name="spekoai",
+        name=SERVER_NAME,
+        version=_package_version(),
         instructions=INSTRUCTIONS,
+        website_url=WEBSITE_URL,
+        icons=SERVER_ICONS,
         auth=auth,
     )
+    _set_server_identity(mcp, title=SERVER_TITLE, description=SERVER_DESCRIPTION)
     register_action_tools(mcp)
     register_generated_action_tools(mcp)
     register_docs_tools(mcp)
@@ -188,9 +241,13 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
 def create_public_server() -> FastMCP:
     """Build the unauthenticated, read-only documentation MCP surface."""
     mcp: FastMCP = FastMCP(
-        name="spekoai-docs",
+        name=SERVER_NAME,
+        version=_package_version(),
         instructions=PUBLIC_INSTRUCTIONS,
+        website_url=WEBSITE_URL,
+        icons=SERVER_ICONS,
     )
+    _set_server_identity(mcp, title=PUBLIC_SERVER_TITLE, description=PUBLIC_SERVER_DESCRIPTION)
     register_docs_tools(mcp)
     register_resources(mcp)
     mcp.add_middleware(InvocationAttributionMiddleware(profile="public"))
@@ -242,7 +299,23 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
             Mount("/", app=protocol_app),
         ],
-        middleware=[Middleware(RequestContextMiddleware)],  # type: ignore[arg-type]
+        middleware=[
+            # Outermost, so a browser's preflight is answered before the
+            # POST-only guard (which returns 405) and before auth. Browser MCP
+            # clients such as Manufact's catalog review could not read the 401
+            # or its WWW-Authenticate challenge, so OAuth never started. Any
+            # origin is safe: tokens travel in the Authorization header, never
+            # in cookies, so credentials stay off.
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["*"],
+                expose_headers=CORS_EXPOSE_HEADERS,
+                max_age=600,
+            ),
+            Middleware(RequestContextMiddleware),  # type: ignore[arg-type]
+        ],
         lifespan=lifespan,
     )
     app.state.path = MCP_PATH

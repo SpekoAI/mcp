@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Both MCP endpoints identify as `speko` in `serverInfo`, with a title ("Speko", and "Speko Docs" for the public docs endpoint), a description, `websiteUrl` https://docs.speko.ai and the speko.ai icons. `serverInfo.version` is this package's version; it used to report fastmcp's (4.0.0b3).
+- Browser MCP clients can connect. Every MCP host answers CORS preflights and exposes `WWW-Authenticate` and `Mcp-Protocol-Version`. A preflight to `/mcp` used to get a 405, and a browser could not read the 401 challenge, so OAuth from a web client (Manufact's catalog review among them) never started. Any origin is allowed without credentials; tokens travel in the `Authorization` header, never in cookies.
+- `docs.search` describes what `limit` means instead of repeating its bounds, and its result fields say what each value holds: the doc kinds, example package names, and that scores compare only within one response.
+
 ## 0.2.42
 
 - `GET /` on every MCP host answers 200 with a page that forwards browsers to the MCP quickstart, instead of a 307 to it. The host's origin is the audio player's `openai/widgetDomain`, and Manufact's `view-domain-responds` check failed on the redirect. `POST /` still serves the public docs MCP.

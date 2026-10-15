@@ -12,6 +12,7 @@ from fastmcp.server.auth import AccessToken, MultiAuth, RemoteAuthProvider, Toke
 from starlette.testclient import TestClient
 
 import spekoai_mcp.http_client as http_client
+from spekoai_mcp import __version__
 from spekoai_mcp.action_tools import ACTION_TOOL_NAMES
 from spekoai_mcp.docs_tools import DOCS_TOOL_NAMES
 from spekoai_mcp.profiles import (
@@ -372,7 +373,7 @@ def test_public_mcp_root_post_alias_lists_docs_without_authentication() -> None:
         )
 
     assert initialize.status_code == 200
-    assert initialize.json()["result"]["serverInfo"]["name"] == "spekoai-docs"
+    assert initialize.json()["result"]["serverInfo"]["name"] == "speko"
     assert tools.status_code == 200
     assert [tool["name"] for tool in tools.json()["result"]["tools"]] == DOCS_TOOL_NAMES
     assert resources.status_code == 200
@@ -470,6 +471,89 @@ def test_legacy_oauth_initialize_gets_json_challenge() -> None:
         in challenge
     )
     assert 'scope="openid profile email"' in challenge
+
+
+def _assert_server_identity(info: dict[str, object], *, title: str) -> None:
+    """Directories (Manufact's catalog among them) score these fields."""
+    assert info["name"] == "speko"
+    assert info["title"] == title
+    assert info["description"]
+    # The package's own version, not fastmcp's (the default when unset).
+    assert info["version"] == __version__
+    assert info["websiteUrl"] == "https://docs.speko.ai"
+    icons = info["icons"]
+    assert isinstance(icons, list)
+    assert {"src": "https://speko.ai/icon.svg", "mimeType": "image/svg+xml", "sizes": ["any"]} in (
+        icons
+    )
+
+
+def test_browser_clients_can_preflight_and_read_the_oauth_challenge() -> None:
+    """A browser MCP client (Manufact's catalog review, a web inspector) must
+    preflight `/mcp` and read the 401's challenge, or it never starts OAuth.
+    The preflight used to hit the POST-only guard and get a 405.
+    """
+    origin = "https://manufact.com"
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        preflight = client.options(
+            MCP_PATH,
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type,mcp-protocol-version",
+            },
+        )
+        challenge = client.post(
+            MCP_PATH,
+            headers={
+                "Origin": origin,
+                **{
+                    key: value
+                    for key, value in modern_headers("server/discover").items()
+                    if key != "Authorization"
+                },
+            },
+            json=modern_request("server/discover"),
+        )
+        authorized = client.post(
+            MCP_PATH,
+            headers={"Origin": origin, **modern_headers("server/discover")},
+            json=modern_request("server/discover"),
+        )
+
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == "*"
+    assert "POST" in preflight.headers["access-control-allow-methods"]
+    assert "authorization" in preflight.headers["access-control-allow-headers"].lower()
+    # Bearer tokens, never cookies: credentials stay off with a wildcard origin.
+    assert "access-control-allow-credentials" not in preflight.headers
+
+    assert challenge.status_code == 401
+    assert challenge.headers["access-control-allow-origin"] == "*"
+    exposed = challenge.headers["access-control-expose-headers"].lower()
+    assert "www-authenticate" in exposed
+    assert challenge.headers["www-authenticate"].startswith("Bearer")
+
+    assert authorized.status_code == 200
+    assert authorized.headers["access-control-allow-origin"] == "*"
+
+
+def test_both_endpoints_advertise_the_speko_identity() -> None:
+    public_headers = legacy_headers()
+    public_headers.pop("Authorization")
+    with TestClient(create_app(auth=StubVerifier())) as client:
+        discover = client.post(
+            MCP_PATH,
+            headers=modern_headers("server/discover"),
+            json=modern_request("server/discover"),
+        )
+        public = client.post("/", headers=public_headers, json=legacy_initialize_request())
+
+    # The modern protocol carries serverInfo in discover's `_meta`.
+    _assert_server_identity(
+        discover.json()["result"]["_meta"]["io.modelcontextprotocol/serverInfo"], title="Speko"
+    )
+    _assert_server_identity(public.json()["result"]["serverInfo"], title="Speko Docs")
 
 
 def test_modern_discover_is_json_only_and_sessionless() -> None:

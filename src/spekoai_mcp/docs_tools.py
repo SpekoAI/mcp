@@ -36,21 +36,39 @@ SEARCH_DOCS_OUTPUT_SCHEMA = {
                 "properties": {
                     "slug": {
                         "type": "string",
-                        "description": "Doc slug readable via spekoai://docs/{slug}.",
+                        "description": (
+                            "Doc id. Read the full document as the spekoai://docs/{slug} resource."
+                        ),
                     },
                     "title": {"type": "string", "description": "Document title."},
                     "package_name": {
                         "type": "string",
-                        "description": "Package or docs bundle this hit came from.",
+                        "description": (
+                            "Package or docs bundle the doc belongs to, e.g. "
+                            "@spekoai/sdk, spekoai (Python) or docs.speko.dev."
+                        ),
                     },
-                    "kind": {"type": "string", "description": "Document category."},
+                    "kind": {
+                        "type": "string",
+                        "description": (
+                            "Document type: guide (migration guides), llms (hosted "
+                            "docs export), quickstart, or readme (package README)."
+                        ),
+                    },
                     "score": {
                         "type": "number",
-                        "description": "Relevance score; higher is better.",
+                        "description": (
+                            "Keyword-match relevance; higher is better. Compare "
+                            "scores only within one response."
+                        ),
                     },
                     "snippet": {
                         "type": "string",
-                        "description": "Excerpt around the first match.",
+                        "description": (
+                            "Text around the first exact match of the query, or the start "
+                            "of the doc when only individual words matched. Use it to "
+                            "judge the hit before reading it."
+                        ),
                     },
                 },
                 "required": ["slug", "title", "package_name", "kind", "score", "snippet"],
@@ -96,7 +114,14 @@ async def search_docs(
     ],
     limit: Annotated[
         int,
-        Field(ge=1, le=20, description="Max hits to return. Defaults to 5."),
+        Field(
+            ge=1,
+            le=20,
+            description=(
+                "How many of the best-matching docs to return. Raise it when "
+                "the first hits miss the topic."
+            ),
+        ),
     ] = 5,
 ) -> dict[str, list[search.DocHit]]:
     """Search bundled Speko docs. Returns slug, title, score, snippet.
