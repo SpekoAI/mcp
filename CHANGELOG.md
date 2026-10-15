@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.42
 
 - `GET /` on every MCP host answers 200 with a page that forwards browsers to the MCP quickstart, instead of a 307 to it. The host's origin is the audio player's `openai/widgetDomain`, and Manufact's `view-domain-responds` check failed on the redirect. `POST /` still serves the public docs MCP.
 
