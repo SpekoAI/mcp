@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `GET /` on every MCP host answers 200 with a page that forwards browsers to the MCP quickstart, instead of a 307 to it. The host's origin is the audio player's `openai/widgetDomain`, and Manufact's `view-domain-responds` check failed on the redirect. `POST /` still serves the public docs MCP.
+
 ## 0.2.41
 
 - The `audio.synthesize` player declares what ChatGPT needs to accept an app with UI for submission. The resource carries `openai/widgetDomain` (the deployment's origin, taken from `SPEKOAI_MCP_BASE_URL`) and `openai/widgetDescription`, and the tool carries `openai/toolInvocation/invoking` and `invoked` status text, also sent as a nested `openai/toolInvocation` object, the shape Manufact's publishing checklist describes. `_meta.ui.domain` stays unset, because Claude accepts only its own hashed `claudemcpcontent.com` value there and refuses to render the app otherwise.

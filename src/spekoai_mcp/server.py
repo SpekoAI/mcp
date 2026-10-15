@@ -14,7 +14,7 @@ from fastmcp.server.http import RequestContextMiddleware
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.routing import Mount, Route
 from starlette.types import Message as ASGIMessage
 from starlette.types import Receive, Scope, Send
@@ -49,6 +49,26 @@ from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
 MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
 MCP_PROTOCOL_VERSION = "2026-07-28"
+
+DOCS_URL = "https://docs.speko.dev/quickstart/mcp"
+
+# `GET /` answers 200 and forwards browsers to the docs with a meta refresh
+# rather than a 307. Each host's origin is the audio player's
+# `openai/widgetDomain` (`apps.py`), and Manufact's `view-domain-responds`
+# check failed on the redirect on 2026-10-15 even though it ended at a 200.
+ROOT_PAGE = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Speko MCP server</title>
+<meta http-equiv="refresh" content="0; url={DOCS_URL}">
+<link rel="canonical" href="{DOCS_URL}">
+</head>
+<body>
+<p>Speko MCP server. Setup guide: <a href="{DOCS_URL}">{DOCS_URL}</a></p>
+</body>
+</html>
+"""
 HEADER_MISMATCH = -32020
 # Cap on the inbound User-Agent, used both for the legacy-protocol log line and
 # for the X-Speko-Client-UA header forwarded to Platform. Platform re-bounds it
@@ -197,8 +217,8 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
 
-    async def docs_redirect(_: Request) -> RedirectResponse:
-        return RedirectResponse("https://docs.speko.dev/quickstart/mcp", status_code=307)
+    async def docs_landing(_: Request) -> HTMLResponse:
+        return HTMLResponse(ROOT_PAGE)
 
     async def glama_manifest(_: Request) -> Response:
         return Response(_glama_manifest(), media_type="application/json")
@@ -217,7 +237,7 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
 
     app = Starlette(
         routes=[
-            Route("/", endpoint=docs_redirect, methods=["GET"]),
+            Route("/", endpoint=docs_landing, methods=["GET"]),
             Route("/health", endpoint=health_check, methods=["GET"]),
             Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
             Mount("/", app=protocol_app),

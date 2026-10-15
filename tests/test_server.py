@@ -20,6 +20,7 @@ from spekoai_mcp.profiles import (
     DEFAULT_PROFILE_ENV_VAR,
 )
 from spekoai_mcp.server import (
+    DOCS_URL,
     MCP_PATH,
     MCP_PROTOCOL_VERSION,
     PUBLIC_MCP_PATH,
@@ -377,11 +378,17 @@ def test_public_mcp_root_post_alias_lists_docs_without_authentication() -> None:
     assert resources.status_code == 200
     assert resources.json()["result"]["resources"][0]["uri"] == "spekoai://docs/index"
 
-    # GET / remains the human-facing documentation redirect.
+    # GET / stays human-facing: a 200 page that forwards browsers to the docs.
+    # Not a redirect, because the origin is the audio player's widget domain
+    # and Manufact's `view-domain-responds` check fails a 3xx.
     with TestClient(create_app(auth=StubVerifier()), follow_redirects=False) as client:
-        redirect = client.get("/")
-    assert redirect.status_code == 307
-    assert redirect.headers["location"] == "https://docs.speko.dev/quickstart/mcp"
+        landing = client.get("/")
+        head = client.head("/")
+    assert landing.status_code == 200
+    assert landing.headers["content-type"].startswith("text/html")
+    assert f'http-equiv="refresh" content="0; url={DOCS_URL}"' in landing.text
+    assert f'href="{DOCS_URL}"' in landing.text
+    assert head.status_code == 200
 
 
 def test_asgi_mcp_auth_path_is_not_mounted() -> None:
