@@ -151,10 +151,8 @@ async def test_public_server_is_docs_and_setup_only() -> None:
     ]
 
 
-# Wording that restates a constraint the schema already carries. Manufact's
-# catalog graded `docs.search.limit` and `setup.connect.client` down for it
-# ("remove validation rules already expressed in this field's schema"), even
-# for size advice like "keep it small" and optionality like "omit it".
+# Wording that restates a constraint the schema already carries: bounds,
+# defaults, optionality, or advice on how big to make a bounded number.
 _CONSTRAINT_WORDING = re.compile(
     r"\b(default|defaults|optional|omit|minimum|maximum|at most|at least|"
     r"keep it small|raise it)\b|\d",

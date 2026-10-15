@@ -118,8 +118,8 @@ async def search_docs(
             ge=1,
             le=20,
             description=(
-                "Number of ranked docs in the result, best match first; each "
-                "further hit matches the query less closely."
+                "How many docs this call returns, best match first. Fewer come "
+                "back when fewer docs match."
             ),
         ),
     ] = 5,

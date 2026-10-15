@@ -253,15 +253,12 @@ async def test_connect_card_follows_the_host_handshake() -> None:
         assert method in html
 
 
-@pytest.mark.parametrize("client", [None, "cursor"])
-async def test_setup_connect_returns_the_steps(client: str | None) -> None:
+async def test_setup_connect_returns_the_steps() -> None:
     mcp = create_public_server()
-    arguments = {} if client is None else {"client": client}
-    result = await mcp.call_tool("setup.connect", arguments)
+    result = await mcp.call_tool("setup.connect", {})
     structured = result.structured_content
     assert structured is not None
     assert structured["endpoint"] == MCP_ENDPOINT
-    assert structured["selected"] == client
     assert [entry["id"] for entry in structured["clients"]] == [
         "claude-code",
         "codex",
@@ -274,6 +271,4 @@ async def test_setup_connect_returns_the_steps(client: str | None) -> None:
     text = result.content[0].text
     assert MCP_ENDPOINT in text
     assert structured["installer"] in text
-    if client == "cursor":
-        assert "Cursor" in text
-        assert "Claude Code" not in text
+    assert all(entry["snippet"] in text for entry in structured["clients"])

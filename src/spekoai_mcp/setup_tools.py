@@ -10,12 +10,11 @@ The steps mirror the "Install in your tool" section of the MCP quickstart,
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
 from mcp.types import TextContent, ToolAnnotations
-from pydantic import Field
 
 from spekoai_mcp.apps import CONNECT_APP, CONNECT_META
 
@@ -29,8 +28,6 @@ AUTH_NOTE = (
     "OAuth browser sign-in. For automation, send a Speko Platform API key in "
     "the Authorization header as Bearer <key> instead."
 )
-
-ClientId = Literal["claude-code", "codex", "opencode", "cursor", "other"]
 
 CLIENTS: list[dict[str, str]] = [
     {
@@ -95,7 +92,7 @@ CLIENTS: list[dict[str, str]] = [
 _CLIENT_SCHEMA = {
     "type": "object",
     "properties": {
-        "id": {"type": "string", "description": "Client id, as accepted by `client`."},
+        "id": {"type": "string", "description": "Stable client id."},
         "name": {"type": "string", "description": "Client display name."},
         "instructions": {
             "type": "string",
@@ -128,46 +125,31 @@ CONNECT_OUTPUT_SCHEMA: dict[str, Any] = {
         },
         "auth": {"type": "string", "description": "How the client signs in."},
         "docsUrl": {"type": "string", "description": "Full setup guide."},
-        "selected": {
-            "type": ["string", "null"],
-            "description": "The client asked for, or null when none was named.",
-        },
         "clients": {
             "type": "array",
             "description": "Setup for every supported client, in display order.",
             "items": _CLIENT_SCHEMA,
         },
     },
-    "required": ["endpoint", "installer", "auth", "docsUrl", "selected", "clients"],
+    "required": ["endpoint", "installer", "auth", "docsUrl", "clients"],
     "additionalProperties": False,
 }
 
 
 def _steps_text(payload: dict[str, Any]) -> str:
     """The same steps as plain text, for hosts that do not render the card."""
-    shown = [c for c in payload["clients"] if c["id"] == payload["selected"]] or payload["clients"]
     lines = [
         f"Speko MCP endpoint: {payload['endpoint']}",
         f"Guided installer: {payload['installer']}",
         f"Sign-in: {payload['auth']}",
     ]
-    for client in shown:
+    for client in payload["clients"]:
         lines += ["", f"{client['name']}: {client['instructions']}", client["snippet"]]
     lines += ["", f"Full guide: {payload['docsUrl']}"]
     return "\n".join(lines)
 
 
-async def connect_speko(
-    client: Annotated[
-        ClientId | None,
-        Field(
-            description=(
-                "The MCP client the user is setting up. The card opens on its "
-                "setup, and the text reply lists only its steps."
-            )
-        ),
-    ] = None,
-) -> ToolResult:
+async def connect_speko() -> ToolResult:
     """Show how to connect an MCP client to Speko.
 
     Use this when the user asks how to install, add or connect Speko in an
@@ -181,7 +163,6 @@ async def connect_speko(
         "installer": INSTALLER,
         "auth": AUTH_NOTE,
         "docsUrl": SETUP_DOCS_URL,
-        "selected": client,
         "clients": [dict(entry) for entry in CLIENTS],
     }
     return ToolResult(
