@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.43
 
 - Both MCP endpoints identify as `speko` in `serverInfo`, with a title ("Speko", and "Speko Docs" for the public docs endpoint), a description, `websiteUrl` https://docs.speko.ai and the speko.ai icons. `serverInfo.version` is this package's version; it used to report fastmcp's (4.0.0b3).
 - Browser MCP clients can connect. Every MCP host answers CORS preflights and exposes `WWW-Authenticate` and `Mcp-Protocol-Version`. A preflight to `/mcp` used to get a 405, and a browser could not read the 401 challenge, so OAuth from a web client (Manufact's catalog review among them) never started. Any origin is allowed without credentials; tokens travel in the `Authorization` header, never in cookies.
