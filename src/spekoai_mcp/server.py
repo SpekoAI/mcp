@@ -142,6 +142,12 @@ INSTRUCTIONS = "\n\n".join(
         their yes before calling support.ticket.create, and leave out personal
         details the Speko problem does not need.
         """,
+        """
+        Using a carrier or VoIP number the user already has (Twilio, Telnyx,
+        Vonage) needs no ticket and no SIP gateway: they import it in the
+        dashboard under Phone numbers > Import number > Add carrier connection.
+        The SIP gateway is only for numbers behind their own PBX.
+        """,
     ]
 )
 

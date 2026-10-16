@@ -140,6 +140,12 @@ def test_instructions_offer_a_ticket_before_email() -> None:
     assert "instead of sending them to email" in INSTRUCTIONS
 
 
+def test_instructions_send_bring_your_own_number_to_dashboard_import() -> None:
+    # Carrier/VoIP numbers are self-serve; only an own-PBX setup needs the gateway.
+    assert "Import number > Add carrier connection" in INSTRUCTIONS
+    assert "needs no ticket and no SIP gateway" in INSTRUCTIONS
+
+
 @pytest.mark.parametrize(
     "message",
     [

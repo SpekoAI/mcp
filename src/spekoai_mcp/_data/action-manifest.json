@@ -20702,7 +20702,7 @@
     {
       "id": "phone_numbers.sip_gateway.get",
       "version": 1,
-      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), the numbers routed through the gateway, numbers awaiting ownership verification by a test call, and the PBX outbound calls from gateway numbers go through (host, port, login; never its password). Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard; the outbound PBX only by Speko staff.",
+      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), the numbers routed through the gateway, numbers awaiting ownership verification by a test call, and the PBX outbound calls from gateway numbers go through (host, port, login; never its password). The SIP gateway is only for numbers that sit behind the customer's own PBX or phone system. To use a number from a carrier or VoIP provider (Twilio, Telnyx, Vonage, a SIP trunk provider), the user imports it themselves in the dashboard under Phone numbers > Import number > Add carrier connection (Twilio numbers can use Connect Twilio there); that needs no access request and no SIP gateway. Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard; the outbound PBX only by Speko staff.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
