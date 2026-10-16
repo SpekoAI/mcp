@@ -106,6 +106,7 @@ WRITE_TOOL_NAMES = {
     "sessions.end",
     "support.ticket.create",
     "support.ticket.reply",
+    "support.ticket.rate",
 }
 
 

@@ -302,6 +302,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "support.ticket.list",
     "support.ticket.get",
     "support.ticket.reply",
+    "support.ticket.rate",
 ]
 
 # Manifest-generated actions that appear on the DEFAULT surface and have no
@@ -317,6 +318,7 @@ DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "support.ticket.list",
     "support.ticket.get",
     "support.ticket.reply",
+    "support.ticket.rate",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES
@@ -443,6 +445,7 @@ BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "support.ticket.list",
     "support.ticket.get",
     "support.ticket.reply",
+    "support.ticket.rate",
 ]
 
 # The Replit preset, published as `https://replit.speko.ai/mcp`.
@@ -531,6 +534,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     "sessions.end",
     "support.ticket.create",
     "support.ticket.reply",
+    "support.ticket.rate",
 ]
 
 _REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFEST_TOOL_NAMES

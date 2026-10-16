@@ -23470,7 +23470,7 @@
     {
       "id": "support.ticket.get",
       "version": 1,
-      "description": "Read one support ticket and its conversation. ticket carries the original summary and details the user sent; messages holds every reply after that, oldest first, each with author customer or team (the Speko support team). timeline holds when the latest message was sent and, when they happened since, when the team reviewed it, replied and resolved the ticket. Reading marks the team replies as read, so unreadReplies drops to 0. Answer with support.ticket.reply. Returns 404 SUPPORT_TICKET_NOT_FOUND for an id outside this organization.",
+      "description": "Read one support ticket and its conversation. ticket carries the original summary and details the user sent; messages holds every reply after that, oldest first, each with author customer or team (the Speko support team). timeline holds when the latest message was sent and, when they happened since, when the team reviewed it, replied and resolved the ticket. rating is the rating given with support.ticket.rate, null until then. Reading marks the team replies as read, so unreadReplies drops to 0. Answer with support.ticket.reply. Returns 404 SUPPORT_TICKET_NOT_FOUND for an id outside this organization.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -23599,6 +23599,38 @@
                       "resolvedAt"
                     ],
                     "additionalProperties": false
+                  },
+                  "rating": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "score": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "comment": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "ratedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "score",
+                          "comment",
+                          "ratedAt"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -23613,7 +23645,8 @@
                   "ticketUrl",
                   "details",
                   "related",
-                  "timeline"
+                  "timeline",
+                  "rating"
                 ],
                 "additionalProperties": false
               },
@@ -23795,6 +23828,147 @@
               "ticketId",
               "messageId",
               "status"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "muse",
+        "customer",
+        "chatgpt",
+        "connector",
+        "replit",
+        "default"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "support.ticket.rate",
+      "version": 1,
+      "description": "Rate how the Speko team handled a resolved support ticket. score is 1-5 (1 very poor, 5 excellent); comment is optional (up to 2,000 characters) and says what could have been better. Rate from what the user told you, or from what you saw while working the ticket with them; if you are not sure, ask the user. A rating is for a resolved ticket only: returns 409 SUPPORT_TICKET_NOT_RESOLVED while the ticket is open. Rating again replaces the earlier rating. Returns 404 SUPPORT_TICKET_NOT_FOUND for an id outside this organization.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "ticketId",
+          "score"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "ticketId": {
+                "type": "string"
+              },
+              "score": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "ratedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ticketId",
+              "score",
+              "ratedAt"
             ],
             "additionalProperties": false
           },
