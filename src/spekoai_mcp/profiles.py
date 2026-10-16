@@ -254,7 +254,9 @@ DIRECTORY_WITHHELD_TOOL_NAMES: frozenset[str] = (
 # said — plus the two one-shot audio tools. Everything that is account
 # administration, agent dev-ops, document ingestion, vendor migration, or
 # destructive is out: not because OpenAI forbids it, but because a focused tool
-# set is what the review gate scores and what the model routes well over.
+# set is what the review gate scores and what the model routes well over. The
+# one destructive tool kept is sessions.end: a call the plugin places needs a
+# way to hang it up.
 #
 # Same referenced-tool rule as the builder preset: every tool a KEPT tool's
 # description names must itself be kept. That pulls in agents.preview_stacks

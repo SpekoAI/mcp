@@ -75,6 +75,7 @@ async def test_a_live_session_can_be_ended_through_mcp(profile, api_calls, monke
     assert api_calls == [("POST", "/v1/actions/sessions.end", {"session_id": session_id})]
     tool = next(tool for tool in await mcp.list_tools() if tool.name == "sessions.end")
     assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is True
     assert tool.annotations.idempotent_hint is True
 
 

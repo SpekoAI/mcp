@@ -210,7 +210,8 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
 ) -> None:
     """OpenAI names missing or wrong action labels as a common cause of
     rejection, so every advertised tool must carry a title, an output schema
-    and all three hints — with the reads marked read-only and the writes not."""
+    and all three hints — with the reads marked read-only, the writes not, and
+    hanging up a live call (sessions.end) the only destructive tool."""
     _force_deployment_profile(monkeypatch, "chatgpt")
     tools = await create_server().list_tools()
     assert all(tool.title for tool in tools)
@@ -236,8 +237,8 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
         assert by_name[read_only].annotations.read_only_hint is True, read_only
     for write in ("agents.create", "agents.test_call", "sessions.phone.create"):
         assert by_name[write].annotations.read_only_hint is False, write
-    for name, tool in by_name.items():
-        assert tool.annotations.destructive_hint is False, name
+    destructive = {name for name, tool in by_name.items() if tool.annotations.destructive_hint}
+    assert destructive == {"sessions.end"}
 
 
 # --- the other surfaces are untouched ---------------------------------------

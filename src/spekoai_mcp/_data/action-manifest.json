@@ -23070,7 +23070,7 @@
         ],
         "additionalProperties": false
       },
-      "effect": "execute",
+      "effect": "destructive",
       "requiredScopes": [
         "speko:execute"
       ],
