@@ -20702,7 +20702,7 @@
     {
       "id": "phone_numbers.sip_gateway.get",
       "version": 1,
-      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), the numbers routed through the gateway, numbers awaiting ownership verification by a test call, and the PBX outbound calls from gateway numbers go through (host, port, login; never its password). The SIP gateway is only for numbers that sit behind the customer's own PBX or phone system. To use a number from a carrier or VoIP provider (Twilio, Telnyx, Vonage, a SIP trunk provider), the user imports it themselves in the dashboard under Phone numbers > Import number > Add carrier connection (Twilio numbers can use Connect Twilio there); that needs no access request and no SIP gateway. Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard; the outbound PBX only by Speko staff.",
+      "description": "Read this workspace's static-IP SIP gateway setup: connection details (gateway IP, SIP domain/realm, ports), the SIP login username and auth mode (never its password), the numbers routed through the gateway, numbers awaiting ownership verification by a test call, and the PBX outbound calls from gateway numbers go through (host, port, login; never its password). The SIP gateway is only for numbers that sit behind the customer's own PBX or phone system. To use a number from a carrier or VoIP provider (Twilio, Telnyx, Vonage, a SIP trunk provider), no access request, SIP gateway or support ticket is needed: connect the carrier with phone_numbers.sip_connections.create, then attach the number with phone_numbers.import (or the dashboard: Phone numbers > Import number > Add carrier connection; Twilio numbers can use Connect Twilio there). Requires SIP gateway access on the workspace. Logins and numbers are managed only in the dashboard; the outbound PBX only by Speko staff.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -21173,6 +21173,734 @@
         "api-key"
       ],
       "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.sip_connections.create",
+      "version": 1,
+      "description": "Connect the customer's own carrier or SIP trunk (Telnyx, Twilio, Odorik or any VoIP provider) as a carrier connection. This is how a customer brings their own number: create the connection here, then attach the number with phone_numbers.import. It is self-serve and needs neither the static-IP SIP gateway (a separate, gated feature) nor a support ticket; it is the same as Phone Numbers → Import number → Add carrier connection in the dashboard. host is the carrier SIP domain or IP without sip:// or a port; port defaults to 5060 and transport to udp. At least one of allow_inbound and allow_outbound must be true, and a number imported later can only use the directions enabled here. auth_username and auth_password are the SIP digest login the carrier issued; auth_password is a secret, stored encrypted and never returned by this or any other tool (has_auth_password says whether one is set), and it should not be repeated back in replies. Outbound calls leave through the carrier, so the carrier decides which destinations are allowed and which caller IDs it accepts. Calls over a connection like this carry no Speko telephony fee and the number no monthly fee; only the per-minute agent rate applies. Creating a connection places no call and charges nothing. Existing connections are the installations of the sip_connection app in integrations.list. Errors: ACTION_INPUT_INVALID with the failing field.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "provider": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "host": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "port": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "transport": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "allow_inbound": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "allow_outbound": {
+            "$ref": "#/$defs/__schema7"
+          },
+          "auth_username": {
+            "$ref": "#/$defs/__schema9"
+          },
+          "auth_password": {
+            "$ref": "#/$defs/__schema11"
+          },
+          "provider_label": {
+            "$ref": "#/$defs/__schema13"
+          },
+          "display_name": {
+            "$ref": "#/$defs/__schema15"
+          }
+        },
+        "required": [
+          "provider",
+          "host",
+          "port",
+          "transport",
+          "allow_inbound",
+          "allow_outbound"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "default": "generic",
+            "description": "Carrier preset. \"generic\" for any carrier that is not Telnyx or Twilio.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "__schema1": {
+            "type": "string",
+            "enum": [
+              "generic",
+              "telnyx",
+              "twilio"
+            ]
+          },
+          "__schema2": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^[^\\s/:]+$",
+            "description": "Carrier SIP domain or IP, without sip:// or a port, e.g. \"sip.odorik.cz\"."
+          },
+          "__schema3": {
+            "default": 5060,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "__schema4": {
+            "default": "udp",
+            "type": "string",
+            "enum": [
+              "udp",
+              "tcp"
+            ]
+          },
+          "__schema5": {
+            "default": false,
+            "description": "Accept calls the carrier sends to Speko.",
+            "$ref": "#/$defs/__schema6"
+          },
+          "__schema6": {
+            "type": "boolean"
+          },
+          "__schema7": {
+            "default": false,
+            "description": "Place calls out through the carrier.",
+            "$ref": "#/$defs/__schema8"
+          },
+          "__schema8": {
+            "type": "boolean"
+          },
+          "__schema9": {
+            "description": "SIP digest username the carrier issued.",
+            "$ref": "#/$defs/__schema10"
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "__schema11": {
+            "description": "SIP digest password. Secret: never returned.",
+            "$ref": "#/$defs/__schema12"
+          },
+          "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "__schema13": {
+            "description": "Carrier name shown on numbers, e.g. \"Odorik\". Defaults to the provider or host.",
+            "$ref": "#/$defs/__schema14"
+          },
+          "__schema14": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "__schema15": {
+            "description": "Connection name. Defaults to provider_label.",
+            "$ref": "#/$defs/__schema16"
+          },
+          "__schema16": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "connected",
+                  "disconnected",
+                  "error"
+                ]
+              },
+              "display_name": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "generic",
+                  "telnyx",
+                  "twilio"
+                ]
+              },
+              "provider_label": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "udp",
+                  "tcp"
+                ]
+              },
+              "allow_inbound": {
+                "type": "boolean"
+              },
+              "allow_outbound": {
+                "type": "boolean"
+              },
+              "has_auth_username": {
+                "type": "boolean"
+              },
+              "has_auth_password": {
+                "type": "boolean"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "display_name",
+              "provider",
+              "provider_label",
+              "host",
+              "port",
+              "transport",
+              "allow_inbound",
+              "allow_outbound",
+              "has_auth_username",
+              "has_auth_password",
+              "created_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [
+        "auth_password"
+      ],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.import",
+      "version": 1,
+      "description": "Import a number the customer already owns at their own carrier, routed over a carrier connection from phone_numbers.sip_connections.create. Self-serve: no SIP gateway, ownership test call or support ticket is involved, nothing is bought, and the number carries no monthly fee (its nextChargeAt is never charged); calls over it bill only the per-minute agent rate, with no Speko telephony fee. direction (inbound, outbound or both; default both) must be enabled on the connection. Outbound calls from the number go through the carrier, which decides allowed destinations and whether it accepts the number as caller ID. agent_id links the agent that answers inbound calls. For inbound, the carrier must also send calls for the number to Speko: the result setupStatus.forwardingSipUri is the SIP URI to give the carrier, and setupStatus.issues lists anything still missing (missing_inbound_dispatch_config means no agent_id yet). Change the agent or label later with phone_numbers.update; release it with phone_numbers.delete, which leaves the number at the carrier. Errors: SIP_CONNECTION_NOT_FOUND (unknown or disconnected connection id), SIP_DIRECTION_NOT_ALLOWED (the connection does not allow that direction), NUMBER_ALREADY_EXISTS (the number is already registered in Speko), LIVEKIT_TRUNK_SYNC_FAILED (the SIP routing could not be built; check host, port and transport, then retry).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "e164": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$",
+            "description": "The number the carrier gave the customer, in E.164."
+          },
+          "sip_connection_installation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "id from phone_numbers.sip_connections.create, or an installation of the sip_connection app in integrations.list."
+          },
+          "direction": {
+            "default": "both",
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound",
+              "both"
+            ]
+          },
+          "agent_id": {
+            "description": "Agent that answers inbound calls to this number.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "dispatch_metadata_template": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "e164",
+          "sip_connection_installation_id",
+          "direction"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "e164": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "managed",
+                  "sip_trunk"
+                ]
+              },
+              "sipIngress": {
+                "default": "direct",
+                "type": "string",
+                "enum": [
+                  "direct",
+                  "gateway"
+                ]
+              },
+              "providerResourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "telnyxPhoneNumberId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sipTrunkId": {
+                "type": "null"
+              },
+              "sipConnectionInstallationId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sipProviderName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": "string"
+              },
+              "dispatchMetadataTemplate": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "agentId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "routeToBrokerId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sms10dlcProfileId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "smsCampaignId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "smsAssignmentStatus": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "smsAssignmentUpdatedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "setupStatus": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ready",
+                      "action_required",
+                      "suspended"
+                    ]
+                  },
+                  "inboundReady": {
+                    "type": "boolean"
+                  },
+                  "outboundReady": {
+                    "type": "boolean"
+                  },
+                  "agentReady": {
+                    "type": "boolean"
+                  },
+                  "forwardingRequired": {
+                    "type": "boolean"
+                  },
+                  "forwardingSipUri": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "sipConnectionReady": {
+                    "type": "boolean"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "status",
+                  "inboundReady",
+                  "outboundReady",
+                  "agentReady",
+                  "forwardingRequired",
+                  "forwardingSipUri",
+                  "sipConnectionReady",
+                  "issues"
+                ],
+                "additionalProperties": false
+              },
+              "nextChargeAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "lastChargedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "suspendedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "billingSuspendedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "complianceSuspendedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "suspensionReason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "billing",
+                      "compliance"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              }
+            },
+            "required": [
+              "id",
+              "organizationId",
+              "e164",
+              "source",
+              "sipIngress",
+              "providerResourceId",
+              "telnyxPhoneNumberId",
+              "sipTrunkId",
+              "sipConnectionInstallationId",
+              "sipProviderName",
+              "direction",
+              "dispatchMetadataTemplate",
+              "agentId",
+              "routeToBrokerId",
+              "label",
+              "sms10dlcProfileId",
+              "smsCampaignId",
+              "smsAssignmentStatus",
+              "smsAssignmentUpdatedAt",
+              "setupStatus",
+              "nextChargeAt",
+              "lastChargedAt",
+              "suspendedAt",
+              "billingSuspendedAt",
+              "complianceSuspendedAt",
+              "suspensionReason",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
       "execution": "sync",
       "profiles": [
         "customer"
@@ -22366,7 +23094,7 @@
     {
       "id": "support.ticket.create",
       "version": 1,
-      "description": "Open a support ticket with the Speko team on behalf of the signed-in user. Only for problems with Speko itself (calls, agents, phone numbers, billing, the dashboard or API); never for problems with the assistant, its app or any other product, which Speko cannot see or fix. Before calling, show the user the exact summary and details you will send and get their explicit yes; never file a ticket the user did not confirm. Each ticket is emailed to the user and read by the Speko team, so leave out personal, legal, medical or financial details that the Speko problem does not need. One problem, one ticket: add new information to an open ticket with support.ticket.reply instead of opening another. summary is one line (3-200 characters); details is the full description (up to 4,000 characters). category is billing, calls, setup or other (default other). related optionally carries ids the team should look at: sessionId, callId, agentId, phoneNumber. Ids only: recordings and transcripts are never attached. Returns ticketId, expectedResponse and ticketUrl, the dashboard page where the user can follow the conversation; share that link with the user. The user also receives a confirmation email. The team replies on the ticket: read replies with support.ticket.get and answer with support.ticket.reply. Returns 429 SUPPORT_TICKET_RATE_LIMITED after too many tickets in a short time; the error says when to retry, or names the tickets the organization just opened: reply on one of those instead. A ticket is stored even when the team notification is delayed, so a success never needs a resend.",
+      "description": "Open a support ticket with the Speko team on behalf of the signed-in user. Only for problems with Speko itself (calls, agents, phone numbers, billing, the dashboard or API); never for problems with the assistant, its app or any other product, which Speko cannot see or fix. Not for turning on the SIP gateway to bring the user's own carrier or number: that needs no enablement (dashboard Phone Numbers → Import number, or phone_numbers.sip_connections.create then phone_numbers.import where available). Before calling, show the user the exact summary and details you will send and get their explicit yes; never file a ticket the user did not confirm. Each ticket is emailed to the user and read by the Speko team, so leave out personal, legal, medical or financial details that the Speko problem does not need. One problem, one ticket: add new information to an open ticket with support.ticket.reply instead of opening another. summary is one line (3-200 characters); details is the full description (up to 4,000 characters). category is billing, calls, setup or other (default other). related optionally carries ids the team should look at: sessionId, callId, agentId, phoneNumber. Ids only: recordings and transcripts are never attached. Returns ticketId, expectedResponse and ticketUrl, the dashboard page where the user can follow the conversation; share that link with the user. The user also receives a confirmation email. The team replies on the ticket: read replies with support.ticket.get and answer with support.ticket.reply. Returns 429 SUPPORT_TICKET_RATE_LIMITED after too many tickets in a short time; the error says when to retry, or names the tickets the organization just opened: reply on one of those instead. A ticket is stored even when the team notification is delayed, so a success never needs a resend.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

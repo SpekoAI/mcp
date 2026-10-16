@@ -58,8 +58,11 @@ names:
   monitor operations;
 - sessions and calls: create, list, inspect, transcript, recording, and test
   call operations;
-- phone numbers, knowledge bases, evals, migration helpers, audio helpers, and
-  `docs.search`.
+- phone numbers, including bringing your own carrier:
+  `phone_numbers.sip_connections.create` connects a customer SIP trunk and
+  `phone_numbers.import` attaches a number that rides it, with no SIP gateway
+  or support ticket;
+- knowledge bases, evals, migration helpers, audio helpers, and `docs.search`.
 
 ### Builder profile
 

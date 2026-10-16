@@ -1077,3 +1077,174 @@ def session_config() -> dict[str, object]:
 
 def eval_body() -> dict[str, object]:
     return {"name": "Regression", "expected_behavior": "Say hello."}
+
+
+# --- bring your own carrier --------------------------------------------------
+
+SIP_PASSWORD = "odorik-digest-secret"
+SIP_CONNECTION_ID = "5b0f6f7e-3c1d-4e2a-9b8c-7d6e5f4a3b21"
+BYO_CARRIER_TOOLS = ("phone_numbers.sip_connections.create", "phone_numbers.import")
+
+
+@pytest.fixture
+def byo_carrier_api(monkeypatch: pytest.MonkeyPatch):
+    """Platform's action endpoint as the two BYO-carrier actions answer it."""
+    calls: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8") or "{}")
+        calls.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "idempotency_key": request.headers.get("idempotency-key"),
+                "body": body,
+            }
+        )
+        if request.url.path.endswith("/phone_numbers.sip_gateway.get"):
+            return json_response(
+                {
+                    "error": {
+                        "code": "SIP_GATEWAY_DISABLED",
+                        "message": "SIP gateway access is not enabled for this organization.",
+                        "retryable": False,
+                        "nextAction": (
+                            "To bring your own carrier, SIP trunk or number, no gateway is "
+                            "needed: call phone_numbers.sip_connections.create, then "
+                            "phone_numbers.import."
+                        ),
+                    }
+                },
+                status_code=403,
+            )
+        if request.url.path.endswith("/phone_numbers.sip_connections.create"):
+            # The real summary: whether a password is set, never the password.
+            return json_response(
+                {
+                    "kind": "result",
+                    "data": {
+                        "id": SIP_CONNECTION_ID,
+                        "status": "connected",
+                        "display_name": "Odorik",
+                        "provider": "generic",
+                        "provider_label": "Odorik",
+                        "host": "sip.odorik.cz",
+                        "port": 5060,
+                        "transport": "udp",
+                        "allow_inbound": True,
+                        "allow_outbound": True,
+                        "has_auth_username": True,
+                        "has_auth_password": True,
+                        "created_at": "2026-10-16T09:00:00.000Z",
+                    },
+                    "warnings": [],
+                    "resourceLinks": [],
+                }
+            )
+        return json_response({"kind": "result", "data": {"e164": body.get("e164")}})
+
+    monkeypatch.setattr(
+        http_client, "get_access_token", lambda: SimpleNamespace(token="sk_test-token")
+    )
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "customer")
+    http_client._TEST_TRANSPORT = httpx.MockTransport(handler)
+    try:
+        yield calls
+    finally:
+        http_client._TEST_TRANSPORT = None
+
+
+async def test_sip_connection_create_posts_the_action_and_never_echoes_the_password(
+    byo_carrier_api: list[dict[str, Any]],
+) -> None:
+    result = await create_server().call_tool(
+        "phone_numbers.sip_connections.create",
+        {
+            "host": "sip.odorik.cz",
+            "allow_inbound": True,
+            "allow_outbound": True,
+            "auth_username": "1234567",
+            "auth_password": SIP_PASSWORD,
+            "provider_label": "Odorik",
+        },
+    )
+
+    [call] = byo_carrier_api
+    assert call["method"] == "POST"
+    assert call["path"] == "/v1/actions/phone_numbers.sip_connections.create"
+    assert call["body"]["auth_password"] == SIP_PASSWORD
+    # Each call inserts a connection, so a retry must carry a replay key.
+    assert call["idempotency_key"] and call["idempotency_key"].startswith("mcp-")
+    rendered = json.dumps(result.structured_content) + "".join(
+        block.text for block in result.content if hasattr(block, "text")
+    )
+    assert SIP_PASSWORD not in rendered
+    assert result.structured_content["data"]["has_auth_password"] is True
+
+
+async def test_phone_number_import_posts_the_contract_body(
+    byo_carrier_api: list[dict[str, Any]],
+) -> None:
+    await create_server().call_tool(
+        "phone_numbers.import",
+        {
+            "e164": "+420212345678",
+            "sip_connection_installation_id": SIP_CONNECTION_ID,
+            "direction": "both",
+            "agent_id": "agent_1",
+        },
+    )
+
+    [call] = byo_carrier_api
+    assert call["path"] == "/v1/actions/phone_numbers.import"
+    assert call["body"] == {
+        "e164": "+420212345678",
+        "sip_connection_installation_id": SIP_CONNECTION_ID,
+        "direction": "both",
+        "agent_id": "agent_1",
+    }
+
+
+def test_sip_connection_password_is_a_declared_secret() -> None:
+    from spekoai_mcp.action_manifest import action_entries
+
+    entries = {entry["id"]: entry for entry in action_entries()}
+    assert entries["phone_numbers.sip_connections.create"]["secretInputPaths"] == ["auth_password"]
+    output = json.dumps(entries["phone_numbers.sip_connections.create"]["outputSchema"])
+    assert '"auth_password"' not in output
+
+
+@pytest.mark.parametrize(
+    ("profile", "served"),
+    [
+        ("customer", True),
+        (None, False),
+        ("muse", False),
+        ("connector", False),
+        ("chatgpt", False),
+        ("replit", False),
+        ("builder", False),
+    ],
+)
+async def test_byo_carrier_tools_are_served_where_phone_numbers_are_managed(
+    monkeypatch: pytest.MonkeyPatch, profile: str | None, served: bool
+) -> None:
+    if profile is None:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
+    names = {tool.name for tool in await create_server().list_tools()}
+    assert all((name in names) is served for name in BYO_CARRIER_TOOLS)
+
+
+async def test_sip_gateway_disabled_points_at_import_not_a_ticket(
+    byo_carrier_api: list[dict[str, Any]],
+) -> None:
+    with pytest.raises(ToolError) as error:
+        await create_server().call_tool("phone_numbers.sip_gateway.get", {})
+
+    message = str(error.value)
+    assert "SIP_GATEWAY_DISABLED" in message
+    assert "phone_numbers.import" in message
+    # Nothing in it says "contact support", so no ticket step is appended.
+    assert "support=" not in message

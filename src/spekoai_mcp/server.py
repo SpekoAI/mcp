@@ -144,9 +144,10 @@ INSTRUCTIONS = "\n\n".join(
         """,
         """
         Using a carrier or VoIP number the user already has (Twilio, Telnyx,
-        Vonage) needs no ticket and no SIP gateway: they import it in the
-        dashboard under Phone numbers > Import number > Add carrier connection.
-        The SIP gateway is only for numbers behind their own PBX.
+        Vonage) needs no ticket and no SIP gateway: connect it with
+        phone_numbers.sip_connections.create then phone_numbers.import, or
+        the dashboard's Import number > Add carrier connection. The SIP
+        gateway is only for a PBX.
         """,
     ]
 )
