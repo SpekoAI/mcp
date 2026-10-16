@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.49
+
+- `support.ticket.rate` rates how the Speko team handled a resolved ticket: `score` 1-5 and an optional `comment` on what could have been better. It returns 409 `SUPPORT_TICKET_NOT_RESOLVED` while the ticket is open, and rating again replaces the earlier rating. It is served wherever `support.ticket.reply` is. The `SUPPORT_TICKET_RESOLVED` warning asks the agent to rate once a ticket is resolved, and `support.ticket.get` returns the `rating`.
+
 ## 0.2.48
 
 - `sessions.end` is marked destructive (`destructiveHint: true`) on every profile: it hangs up a live call, which cannot be undone. `capabilities.search` and `capabilities.describe` report its effect as `destructive` (was `execute`). Scopes, principals, idempotency and the profiles that serve it are unchanged.
