@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.47
 
 - Customers can bring their own carrier and number from chat. `phone_numbers.sip_connections.create` adds a carrier connection (host, port, transport, directions, SIP digest login) and `phone_numbers.import` attaches a number the customer owns to it, the same steps as Phone Numbers > Import number in the dashboard. Neither needs the SIP gateway or a support ticket. Both are served on the customer host only. The SIP password is a declared secret: Platform redacts it from the stored execution and no tool returns it; results say only `has_auth_password`.
 - `phone_numbers.sip_gateway.get`, its `SIP_GATEWAY_DISABLED` error, `support.ticket.create` and the server instructions say that bringing your own carrier or number needs no gateway enablement and no ticket, and name the import path. Five tickets asked support to enable the gateway for exactly this.
