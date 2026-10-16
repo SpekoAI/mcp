@@ -1,0 +1,530 @@
+"""FastMCP v4 server exposing OAuth/API-key authenticated stateless tools."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
+from functools import lru_cache
+from importlib.resources import files
+
+from fastmcp import FastMCP
+from fastmcp.server.auth import AuthProvider
+from fastmcp.server.http import RequestContextMiddleware
+from mcp.types import Icon
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from starlette.routing import Mount, Route
+from starlette.types import Message as ASGIMessage
+from starlette.types import Receive, Scope, Send
+
+from spekoai_mcp.action_tools import register_action_tools
+from spekoai_mcp.apps import register_apps, register_public_apps
+from spekoai_mcp.attribution import (
+    InvocationAttributionMiddleware,
+    observed_host,
+    reset_current_host,
+    set_current_host,
+)
+from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
+from spekoai_mcp.builder_tools import register_builder_tools
+from spekoai_mcp.credit_exhaustion import CreditExhaustedMiddleware
+from spekoai_mcp.docs_tools import register_docs_tools
+from spekoai_mcp.generated_action_tools import register_generated_action_tools
+from spekoai_mcp.http_client import (
+    ANTHROPIC_CLIENT_MAX_LENGTH,
+    bounded_printable,
+    reset_current_anthropic_client,
+    reset_current_client_ua,
+    set_current_anthropic_client,
+    set_current_client_ua,
+)
+from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
+from spekoai_mcp.prompts import register_prompts
+from spekoai_mcp.resources import register_resources
+from spekoai_mcp.setup_tools import register_setup_tools
+from spekoai_mcp.support_handoff import SupportHandoffMiddleware
+from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
+
+MCP_PATH = DEFAULT_MCP_PATH
+PUBLIC_MCP_PATH = "/.well-known/mcp"
+MCP_PROTOCOL_VERSION = "2026-07-28"
+
+DOCS_URL = "https://docs.speko.dev/quickstart/mcp"
+
+# `serverInfo` identity, advertised during the handshake. Directories and
+# catalogs (Manufact's among them) read the title, description, website and
+# icon from here. Both the authenticated and the public docs endpoint present
+# the same Speko identity.
+SERVER_NAME = "speko"
+WEBSITE_URL = "https://docs.speko.ai"
+SERVER_ICONS = [
+    Icon(src="https://speko.ai/icon.svg", mime_type="image/svg+xml", sizes=["any"]),
+    Icon(src="https://speko.ai/apple-icon.png", mime_type="image/png", sizes=["180x180"]),
+]
+SERVER_TITLE = "Speko"
+SERVER_DESCRIPTION = (
+    "Make and take phone calls with voice agents, transcribe audio, and turn "
+    "text into speech from one Speko account. Build and test agents and manage "
+    "phone numbers."
+)
+
+# `GET /` answers 200 and forwards browsers to the docs with a meta refresh
+# rather than a 307. Each host's origin is the audio player's
+# `openai/widgetDomain` (`apps.py`), and Manufact's `view-domain-responds`
+# check failed on the redirect on 2026-10-15 even though it ended at a 200.
+ROOT_PAGE = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Speko MCP server</title>
+<meta http-equiv="refresh" content="0; url={DOCS_URL}">
+<link rel="canonical" href="{DOCS_URL}">
+</head>
+<body>
+<p>Speko MCP server. Setup guide: <a href="{DOCS_URL}">{DOCS_URL}</a></p>
+</body>
+</html>
+"""
+# Response headers a browser MCP client must read: the OAuth challenge and the
+# protocol-version header. The server is sessionless, so no Mcp-Session-Id.
+CORS_EXPOSE_HEADERS = ["WWW-Authenticate", "Mcp-Protocol-Version"]
+
+HEADER_MISMATCH = -32020
+# Cap on the inbound User-Agent, used both for the legacy-protocol log line and
+# for the X-Speko-Client-UA header forwarded to Platform. Platform re-bounds it
+# at 200 (MAX_PROPERTY_LENGTH); this tighter cap keeps the header small.
+USER_AGENT_MAX_LENGTH = 128
+
+logger = logging.getLogger(__name__)
+
+INSTRUCTIONS = "\n\n".join(
+    " ".join(paragraph.split())
+    for paragraph in [
+        """
+        Speko MCP is the authenticated operational interface for Speko voice-AI
+        accounts.
+        """,
+        """
+        Use these tools to inspect organization state, manage agents, deploy
+        versions, create sessions and phone calls, retrieve transcripts and
+        recordings, manage phone numbers and knowledge bases, run evals, and
+        build or migrate SessionConfig drafts.
+        """,
+        """
+        Docs are available in-band: call docs.search(query) to find SDK usage,
+        API body shapes, and migration steps across the bundled Speko docs,
+        then read the matching spekoai://docs/{slug} resource.
+        spekoai://docs/index lists every bundled doc. If a write tool rejects
+        a body, search the failing field name before retrying.
+        """,
+        """
+        All tools require the hosted MCP endpoint at /mcp. Interactive clients
+        may use OAuth; automation may supply a Speko API key as Authorization:
+        Bearer sk_*. Tool names use
+        domain.action dot notation, for example agents.list, sessions.create,
+        docs.search, and knowledge_bases.documents.create.
+        """,
+        """
+        When the user is blocked by something only the Speko team can fix (an
+        error says to contact support, a feature is not enabled for the
+        workspace, a billing problem, or a platform bug), offer to open a
+        ticket with support.ticket.create instead of sending them to email.
+        Put the trace_id and any agent, session or call ids in the ticket, and
+        give the user the ticketUrl it returns. The team replies on the ticket:
+        a result warning SUPPORT_REPLY_UNREAD means a reply is waiting, read it
+        with support.ticket.get and answer with support.ticket.reply. Tickets
+        are only for problems with Speko itself, never for the assistant or
+        another product. Show the user the exact summary and details and get
+        their yes before calling support.ticket.create, and leave out personal
+        details the Speko problem does not need.
+        """,
+        """
+        Using a carrier or VoIP number the user already has (Twilio, Telnyx,
+        Vonage) needs no ticket and no SIP gateway: connect it with
+        phone_numbers.sip_connections.create then phone_numbers.import, or
+        the dashboard's Import number > Add carrier connection. The SIP
+        gateway is only for a PBX.
+        """,
+    ]
+)
+
+PUBLIC_INSTRUCTIONS = "\n\n".join(
+    " ".join(paragraph.split())
+    for paragraph in [
+        """
+        Speko Docs MCP is the public, read-only discovery surface for Speko's
+        voice-AI API, SDKs, adapters, quickstarts, and migration guides.
+        """,
+        """
+        Read spekoai://docs/index first, then read the matching
+        spekoai://docs/{slug} resource. Use docs.search when you know the job
+        or field name but not the document slug.
+        """,
+        """
+        When the user asks how to install or connect Speko in an MCP client,
+        call setup.connect; it shows the endpoint and per-client setup steps.
+        """,
+        """
+        This endpoint never exposes account data or write tools and requires no
+        authentication. Use the authenticated operational MCP endpoint at
+        https://mcp.speko.ai/mcp for agents, calls, sessions, phone numbers,
+        knowledge bases, evals, and organization state.
+        """,
+    ]
+)
+
+
+@lru_cache(maxsize=1)
+def _glama_manifest() -> str:
+    """The Glama connector manifest, bundled in the wheel and served at
+    `/.well-known/glama.json`. Hosting it here means glama.ai validates the
+    connector against the hosted MCP origin (mcp.speko.dev) rather than the
+    marketing site."""
+    return (files("spekoai_mcp") / "_well_known" / "glama.json").read_text(encoding="utf-8")
+
+
+def _package_version() -> str:
+    """This package's version, for `serverInfo.version`.
+
+    Imported at call time: `spekoai_mcp/__init__.py` imports this module before
+    it defines `__version__`. Without it, fastmcp reports its own version.
+    """
+    from spekoai_mcp import __version__
+
+    return __version__
+
+
+def _set_server_identity(mcp: FastMCP, *, title: str, description: str) -> None:
+    """Set `serverInfo.title` and `serverInfo.description`.
+
+    The MCP SDK's low-level server carries both into the handshake's
+    `Implementation`, but fastmcp 4.0.0b3's constructor exposes neither, so
+    they are set on the low-level server before it serves a request.
+    """
+    mcp._mcp_server.title = title
+    mcp._mcp_server.description = description
+
+
+def create_server(auth: AuthProvider | None = None) -> FastMCP:
+    """Build the Speko MCP server: authenticated operational tools plus the
+    docs self-serve surface (docs.search + spekoai://docs/* resources).
+
+    One image serves host-bound tool profiles (see `profiles.py`). Builder-only
+    tools are registered LAST so the legacy default profile's tool ordering
+    stays byte-identical after the middleware filters them out."""
+    # Validate deployment configuration before the hosted app and its health
+    # endpoint exist. A misspelled profile must crash startup, not produce a
+    # healthy instance whose MCP requests fail later in middleware.
+    default_profile()
+    mcp: FastMCP = FastMCP(
+        name=SERVER_NAME,
+        version=_package_version(),
+        instructions=INSTRUCTIONS,
+        website_url=WEBSITE_URL,
+        icons=SERVER_ICONS,
+        auth=auth,
+    )
+    _set_server_identity(mcp, title=SERVER_TITLE, description=SERVER_DESCRIPTION)
+    register_action_tools(mcp)
+    register_generated_action_tools(mcp)
+    register_docs_tools(mcp)
+    register_resources(mcp)
+    register_apps(mcp)
+    register_prompts(mcp)
+    register_builder_tools(mcp)
+    mcp.add_middleware(InvocationAttributionMiddleware())
+    mcp.add_middleware(ToolProfileMiddleware())
+    mcp.add_middleware(CreditExhaustedMiddleware())
+    mcp.add_middleware(SupportHandoffMiddleware())
+    # Innermost, so it logs the tool's own failure before the credit/support
+    # rewrites above lengthen the message.
+    mcp.add_middleware(ToolErrorLogMiddleware())
+    return mcp
+
+
+def create_public_server() -> FastMCP:
+    """Build the unauthenticated, read-only documentation MCP surface."""
+    mcp: FastMCP = FastMCP(
+        name=SERVER_NAME,
+        version=_package_version(),
+        instructions=PUBLIC_INSTRUCTIONS,
+        website_url=WEBSITE_URL,
+        icons=SERVER_ICONS,
+    )
+    _set_server_identity(mcp, title=SERVER_TITLE, description=SERVER_DESCRIPTION)
+    register_docs_tools(mcp)
+    register_setup_tools(mcp)
+    register_resources(mcp)
+    register_public_apps(mcp)
+    mcp.add_middleware(InvocationAttributionMiddleware(profile="public"))
+    return mcp
+
+
+def create_app(auth: AuthProvider | None = None) -> Starlette:
+    """Create the hosted ASGI app with public docs and protected operations."""
+    if auth is None:
+        auth = build_auth(mcp_path=MCP_PATH)
+    mcp = create_server(auth=auth)
+    mcp_app = mcp.http_app(
+        path=MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+    )
+    public_mcp = create_public_server()
+    public_mcp_app = public_mcp.http_app(
+        path=PUBLIC_MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+    )
+
+    async def health_check(_: Request) -> PlainTextResponse:
+        return PlainTextResponse("OK")
+
+    async def docs_landing(_: Request) -> HTMLResponse:
+        return HTMLResponse(ROOT_PAGE)
+
+    async def glama_manifest(_: Request) -> Response:
+        return Response(_glama_manifest(), media_type="application/json")
+
+    @asynccontextmanager
+    async def lifespan(_: Starlette) -> AsyncGenerator[None, None]:
+        async with AsyncExitStack() as stack:
+            await stack.enter_async_context(mcp_app.lifespan(mcp_app))
+            await stack.enter_async_context(public_mcp_app.lifespan(public_mcp_app))
+            yield
+
+    protocol_app = MCPPathRouter(
+        protected=MCPProtocolGuard(mcp_app, path=MCP_PATH),
+        public=MCPProtocolGuard(public_mcp_app, path=PUBLIC_MCP_PATH),
+    )
+
+    app = Starlette(
+        routes=[
+            Route("/", endpoint=docs_landing, methods=["GET"]),
+            Route("/health", endpoint=health_check, methods=["GET"]),
+            Route("/.well-known/glama.json", endpoint=glama_manifest, methods=["GET"]),
+            Mount("/", app=protocol_app),
+        ],
+        middleware=[
+            # Outermost, so a browser's preflight is answered before the
+            # POST-only guard (which returns 405) and before auth. Browser MCP
+            # clients such as Manufact's catalog review could not read the 401
+            # or its WWW-Authenticate challenge, so OAuth never started. Any
+            # origin is safe: tokens travel in the Authorization header, never
+            # in cookies, so credentials stay off.
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=["*"],
+                expose_headers=CORS_EXPOSE_HEADERS,
+                max_age=600,
+            ),
+            Middleware(RequestContextMiddleware),  # type: ignore[arg-type]
+        ],
+        lifespan=lifespan,
+    )
+    app.state.path = MCP_PATH
+    app.state.transport_type = mcp_app.state.transport_type
+    app.state.fastmcp_server = mcp
+    app.state.auth_mcp_server = mcp
+    app.state.public_mcp_server = public_mcp
+    return app
+
+
+ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
+
+
+class MCPProtocolGuard:
+    """Keep the hosted endpoint POST-only and sessionless across both MCP eras."""
+
+    def __init__(self, app: ASGIApp, *, path: str = MCP_PATH) -> None:
+        self.app = app
+        self.path = path
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") != self.path:
+            await self.app(scope, receive, send)
+            return
+
+        # Bind the harness identity for this request. Set here, at the ASGI
+        # edge, because it is the only place the raw HTTP headers are still in
+        # scope — by the time a tool handler runs, FastMCP has decoded the
+        # JSON-RPC body and the transport headers are gone. Reset in `finally`
+        # so a ContextVar cannot leak across requests on a reused worker task.
+        ua_token = set_current_client_ua(self._sanitized_user_agent(scope))
+        anthropic_token = set_current_anthropic_client(self._anthropic_client(scope))
+        host_token = set_current_host(observed_host(scope.get("headers", [])))
+        try:
+            await self._dispatch(scope, receive, send)
+        finally:
+            reset_current_host(host_token)
+            reset_current_anthropic_client(anthropic_token)
+            reset_current_client_ua(ua_token)
+
+    async def _dispatch(self, scope: Scope, receive: Receive, send: Send) -> None:
+
+        if scope.get("method") != "POST":
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32600, "message": "POST required"},
+                },
+                status_code=405,
+                headers={"Allow": "POST"},
+            )
+            await response(scope, receive, send)
+            return
+
+        headers = scope.get("headers", [])
+        versions = [
+            value.decode("latin-1")
+            for name, value in headers
+            if name.lower() == b"mcp-protocol-version"
+        ]
+        has_session = any(name.lower() == b"mcp-session-id" for name, _ in headers)
+        if len(versions) > 1 or has_session:
+            if has_session:
+                message = "Mcp-Session-Id is not supported"
+            else:
+                message = "MCP-Protocol-Version header appears more than once"
+            await self._jsonrpc_error(scope, receive, send, HEADER_MISMATCH, message)
+            return
+        await self._call_json_app(
+            scope,
+            receive,
+            send,
+            legacy_candidate=not versions,
+        )
+
+    async def _call_json_app(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        *,
+        legacy_candidate: bool,
+    ) -> None:
+        """Keep transport-level authentication failures JSON-only too."""
+        messages: list[ASGIMessage] = []
+
+        async def capture(message: ASGIMessage) -> None:
+            messages.append(message)
+
+        await self.app(scope, receive, capture)
+        start = next(
+            (message for message in messages if message["type"] == "http.response.start"),
+            None,
+        )
+        if start is not None and 200 <= start["status"] < 300 and legacy_candidate:
+            user_agent = self._sanitized_user_agent(scope)
+            logger.info(
+                "mcp_legacy_protocol_request_accepted protocol_era=legacy user_agent=%r",
+                user_agent,
+                extra={
+                    "event": "mcp_legacy_protocol_request_accepted",
+                    "protocol_era": "legacy",
+                    "user_agent": user_agent,
+                },
+            )
+        if start is not None and start["status"] in {401, 403}:
+            headers = {
+                name.decode("latin-1"): value.decode("latin-1")
+                for name, value in start.get("headers", [])
+                if name.lower() not in {b"content-length", b"content-type"}
+            }
+            response = JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32001, "message": "Authentication required"},
+                },
+                status_code=start["status"],
+                headers=headers,
+            )
+            await response(scope, receive, send)
+            return
+        for message in messages:
+            await send(message)
+
+    @staticmethod
+    def _anthropic_client(scope: Scope) -> str:
+        """Anthropic's surface header (ClaudeCode, ClaudeAI, Cowork), or "".
+
+        The only vendor header seen in the wild: Claude Code, claude.ai and Cowork
+        can all send the same clientInfo.name, and this is what tells them apart.
+        """
+        raw = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"x-anthropic-client"
+            ),
+            "",
+        )
+        return bounded_printable(raw, ANTHROPIC_CLIENT_MAX_LENGTH)
+
+    @staticmethod
+    def _sanitized_user_agent(scope: Scope) -> str:
+        raw = next(
+            (
+                value.decode("latin-1")
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"user-agent"
+            ),
+            "",
+        )
+        printable = "".join(character if character.isprintable() else "?" for character in raw)
+        # Strip after the cut: a cut on a space leaves trailing whitespace,
+        # which httpx refuses to send as X-Speko-Client-UA.
+        return printable[:USER_AGENT_MAX_LENGTH].strip()
+
+    @staticmethod
+    async def _jsonrpc_error(
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        code: int,
+        message: str,
+        *,
+        data: dict[str, object] | None = None,
+    ) -> None:
+        error: dict[str, object] = {"code": code, "message": message}
+        if data is not None:
+            error["data"] = data
+        response = JSONResponse(
+            {"jsonrpc": "2.0", "id": None, "error": error},
+            status_code=400,
+        )
+        await response(scope, receive, send)
+
+
+class MCPPathRouter:
+    """Route the public well-known MCP without weakening the product server."""
+
+    def __init__(self, *, protected: ASGIApp, public: ASGIApp) -> None:
+        self.protected = protected
+        self.public = public
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path")
+        if path == PUBLIC_MCP_PATH:
+            await self.public(scope, receive, send)
+            return
+        if path == "/":
+            # Some MCP discovery clients normalize a declared server URL to its
+            # origin before opening the transport. Keep GET / as the human docs
+            # redirect, but make POST / a path alias for the same public,
+            # read-only docs server. The authenticated product surface remains
+            # exclusively at /mcp.
+            alias_scope = dict(scope)
+            alias_scope["path"] = PUBLIC_MCP_PATH
+            alias_scope["raw_path"] = PUBLIC_MCP_PATH.encode("ascii")
+            await self.public(alias_scope, receive, send)
+            return
+        await self.protected(scope, receive, send)
