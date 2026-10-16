@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.48
+
+- `sessions.end` is marked destructive (`destructiveHint: true`) on every profile: it hangs up a live call, which cannot be undone. `capabilities.search` and `capabilities.describe` report its effect as `destructive` (was `execute`). Scopes, principals, idempotency and the profiles that serve it are unchanged.
+- The `mcp` SDK is 2.2.0 (was 2.0.0).
+
 ## 0.2.47
 
 - Customers can bring their own carrier and number from chat. `phone_numbers.sip_connections.create` adds a carrier connection (host, port, transport, directions, SIP digest login) and `phone_numbers.import` attaches a number the customer owns to it, the same steps as Phone Numbers > Import number in the dashboard. Neither needs the SIP gateway or a support ticket. Both are served on the customer host only. The SIP password is a declared secret: Platform redacts it from the stored execution and no tool returns it; results say only `has_auth_password`.
