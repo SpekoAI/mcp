@@ -2314,9 +2314,16 @@ async def create_agent_tool(
                 "{kind:'webhook', url: string URL, secret: string (>=8 "
                 "chars), headers?: object, timeoutMs?: 100-4000, "
                 "responseMode?: 'sync'|'async', asyncAck?: string} | "
-                "{kind:'builtin', name: string, config?: any} | "
+                "{kind:'builtin', name: one of search_knowledge_base, "
+                "transfer_call, end_call, send_sms, config?: any} | "
                 "{kind:'integration', installationId: uuid, appKey: "
-                "string, actionKey: string, config?: any}}. Optional: " + TOOL_SIMULATION_FIELD_DOC
+                "string, actionKey: string, config?: any}}. Builtins are "
+                "only the platform tools listed; any other builtin name is "
+                "rejected (422 BUILTIN_UNKNOWN). There is no builtin web "
+                "search: use a webhook source for that and anything else. "
+                "Never register send_dtmf; the runtime creates the keypad "
+                "tool, steered by turnHandling.dtmfToolDescription. Optional: "
+                + TOOL_SIMULATION_FIELD_DOC
             )
         ),
     ],

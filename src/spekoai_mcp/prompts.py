@@ -592,7 +592,8 @@ def register_prompts(mcp: FastMCP) -> None:
                 "Config conversion:\n"
                 f"{config_step}\n\n"
                 "If `unmappable_tools` is non-empty, stop and map each item "
-                "explicitly to a Speko webhook tool, builtin tool, or "
+                "explicitly to a Speko webhook tool, builtin tool (only "
+                "search_knowledge_base, transfer_call, end_call, send_sms), or "
                 "SDK-side handler. Never silently drop tools or pretend a "
                 "provider-specific function was migrated."
             ),

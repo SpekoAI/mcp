@@ -23,7 +23,7 @@ Use this guide when converting a Pipecat pipeline to Speko.
 - Pipeline prompt/context -> `systemPrompt`
 - language settings -> `intent.language`
 - provider service classes -> `stackPreferences.allowedProviders`
-- custom processors -> SDK-side code or Speko webhook/builtin tools
+- custom processors -> SDK-side code or Speko webhook tools (builtins are only `search_knowledge_base`, `transfer_call`, `end_call`, `send_sms`)
 - transport setup -> Speko client/session creation
 
 ## Do Not

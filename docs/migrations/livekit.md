@@ -16,7 +16,7 @@ Use this guide when converting a LiveKit Agents worker to Speko.
 3. If a config file exists, read it and call `migration.external_config.parse(format="livekit", raw=<file contents>)`.
 4. Map every unmappable tool to one of:
    - a Speko webhook tool,
-   - a Speko builtin tool,
+   - a Speko builtin tool (only `search_knowledge_base`, `transfer_call`, `end_call`, `send_sms`; there is no builtin web search),
    - SDK-side tool handling that stays in the LiveKit worker.
 5. Update the worker to construct Speko components with the Speko SDK/client/adapter pattern.
 6. Call `create_session` against the draft or deployed agent.
