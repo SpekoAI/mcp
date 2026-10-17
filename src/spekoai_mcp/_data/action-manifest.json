@@ -1923,6 +1923,12 @@
                   },
                   "multiOrgCreation": {
                     "$ref": "#/$defs/__schema0"
+                  },
+                  "agentsByok": {
+                    "default": {
+                      "enabled": false
+                    },
+                    "$ref": "#/$defs/__schema0"
                   }
                 },
                 "required": [
@@ -1934,7 +1940,8 @@
                   "imessageIntegration",
                   "agentDuplication",
                   "telnyxCallControlHandoff",
-                  "multiOrgCreation"
+                  "multiOrgCreation",
+                  "agentsByok"
                 ],
                 "additionalProperties": false
               }
