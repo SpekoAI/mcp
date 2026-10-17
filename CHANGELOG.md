@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.50
+
+- `agents.tools.create` lists the four builtin tools (`search_knowledge_base`, `transfer_call`, `end_call`, `send_sms`) and says there is no builtin web search; anything else is a `webhook` or `custom_code` tool. The server now rejects an unknown builtin name with 422 `BUILTIN_UNKNOWN` (#3273). Migration guidance names the same builtins.
+- `phone_numbers.sip_connections.create` takes optional `fromUser`, `callerIdHeader` (`none` | `p-asserted-identity` | `p-preferred-identity`) and `dialFormat` (`e164` | `e164_without_plus`) for carriers that identify the account by the SIP From user (#3276).
+
 ## 0.2.49
 
 - `support.ticket.rate` rates how the Speko team handled a resolved ticket: `score` 1-5 and an optional `comment` on what could have been better. It returns 409 `SUPPORT_TICKET_NOT_RESOLVED` while the ticket is open, and rating again replaces the earlier rating. It is served wherever `support.ticket.reply` is. The `SUPPORT_TICKET_RESOLVED` warning asks the agent to rate once a ticket is resolved, and `support.ticket.get` returns the `rating`.
