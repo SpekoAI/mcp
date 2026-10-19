@@ -2938,10 +2938,13 @@ async def search_available_phone_numbers(
 ) -> ToolResult:
     """Search phone numbers available to buy.
 
-    PRICES are Speko's retail prices, the ones a purchase charges:
-    ``upfrontCostUsd`` is the one-time setup ($1) and ``monthlyCostUsd`` the
-    monthly rental ($2/month), both debited from prepaid credits. Quote them
-    from the result, not from memory.
+    PRICES are per number and are the ones a purchase charges:
+    ``upfrontCostUsd`` is the one-time setup and ``monthlyCostUsd`` the monthly
+    rental, both debited from prepaid credits. Most numbers are $1 setup and
+    $2/month; a number the carrier charges more for (``aboveStandardPrice:
+    true``, e.g. a vanity toll-free number) costs the carrier's price and can
+    only be bought by the owner in the dashboard. Quote them from the result,
+    not from memory.
 
     Results with ``warm: true`` come first: Speko already holds them activated,
     so they can place calls the moment they are bought. Prefer one when the
@@ -2991,12 +2994,16 @@ async def create_phone_number(
     ],
 ) -> ToolResult:
     """Buy (provision) a phone number. PAID — tell the owner the price and get
-    their OK first: $1 setup plus $2/month, debited from prepaid workspace
-    credits (setup plus the first month now). The number renews monthly until
-    it is released with phone_numbers.delete (or receptionist.cancel for a
-    receptionist's number). Calls are billed at $0.09 per connected minute from
-    prepaid credits. The search result's upfrontCostUsd/monthlyCostUsd are the
-    exact prices."""
+    their OK first: the search result's upfrontCostUsd (setup) and
+    monthlyCostUsd (rental) are the exact prices, $1 setup plus $2/month for
+    most numbers, debited from prepaid workspace credits (setup plus the first
+    month now). A number with aboveStandardPrice cannot be bought from here:
+    it is refused with 403 PHONE_NUMBER_PRICE_REQUIRES_DASHBOARD and its quote,
+    so tell the owner its price and that they can buy it on the Phone numbers
+    page of the dashboard, or pick a standard-price number.
+    The number renews monthly until it is released with phone_numbers.delete
+    (or receptionist.cancel for a receptionist's number). Calls are billed at
+    $0.09 per connected minute from prepaid credits."""
     return await call("POST", "/v1/phone-numbers", body=body, text="Created phone number.")
 
 

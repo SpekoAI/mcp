@@ -7045,6 +7045,18 @@
                     "gpt-live"
                   ]
                 },
+                "ringTimeoutSeconds": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "backgroundAudio": {
                   "anyOf": [
                     {
@@ -7900,6 +7912,18 @@
                   "llm",
                   "jev",
                   "gpt-live"
+                ]
+              },
+              "ringTimeoutSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "backgroundAudio": {
@@ -8927,6 +8951,18 @@
                       "llm",
                       "jev",
                       "gpt-live"
+                    ]
+                  },
+                  "ringTimeoutSeconds": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "backgroundAudio": {
@@ -18847,7 +18883,7 @@
     {
       "id": "receptionist.go_live",
       "version": 1,
-      "description": "Put an agent live as the business’s phone receptionist in one call: get a number (buy a new US/Canadian number, optionally by area code, or reuse one the workspace owns), link the agent to it for inbound calls in the same database write, enable outbound calling from it, deploy the agent, and return carrier-specific call-forwarding codes plus the exact codes that undo them. A purchased number always has the agent attached; there is no state in which it exists without one. PRICE — tell the owner and get their OK before calling with number_source \"new\": a new number costs $1 setup plus $2/month, debited from prepaid workspace credits (setup plus the first month at purchase). It renews monthly until released with receptionist.cancel or phone_numbers.delete; pausing keeps the number and keeps billing it. Calls are billed at $0.09 per connected minute from prepaid credits. number_source \"existing\" buys nothing. status \"action_required\" means nothing was bought or changed and requiredAction says what the owner must do: PHONE_NUMBER_KYB_REQUIRED / _ATTESTATION_REQUIRED / _REJECTED / _REVOKED / _REVIEW_HOLD (business verification, with a link), BUY_PHONE_NUMBERS_DISABLED_FOR_ORG, or INSUFFICIENT_BALANCE (add credits with billing.checkout.create, then call again). Errors: AGENT_NOT_FOUND, AGENT_ALREADY_HAS_NUMBER (the agent already answers another number; pass that number as phone_number_id), PHONE_NUMBER_IN_USE (the chosen number answers to another agent or a person), NO_NUMBERS_AVAILABLE (try another area code), DEPLOY_BLOCKED, KEPT_NUMBER_IN_USE (the kept number of a paused receptionist now answers another agent or a person; pass a number explicitly), RECEPTIONIST_RUNTIME_UNSUPPORTED (receptionists are not available on the call runtime of this workspace yet; nothing was bought or deployed). Next: receptionist.verify_forwarding once the owner has dialed the forwarding code.",
+      "description": "Put an agent live as the business’s phone receptionist in one call: get a number (buy a new US/Canadian number, optionally by area code, or reuse one the workspace owns), link the agent to it for inbound calls in the same database write, enable outbound calling from it, deploy the agent, and return carrier-specific call-forwarding codes plus the exact codes that undo them. A purchased number always has the agent attached; there is no state in which it exists without one. PRICE — tell the owner and get their OK before calling with number_source \"new\": a new number costs $1 setup plus $2/month, debited from prepaid workspace credits (setup plus the first month at purchase); a named e164 the carrier prices higher is refused with PHONE_NUMBER_PRICE_CONFIRMATION_REQUIRED. It renews monthly until released with receptionist.cancel or phone_numbers.delete; pausing keeps the number and keeps billing it. Calls are billed at $0.09 per connected minute from prepaid credits. number_source \"existing\" buys nothing. status \"action_required\" means nothing was bought or changed and requiredAction says what the owner must do: PHONE_NUMBER_KYB_REQUIRED / _ATTESTATION_REQUIRED / _REJECTED / _REVOKED / _REVIEW_HOLD (business verification, with a link), BUY_PHONE_NUMBERS_DISABLED_FOR_ORG, or INSUFFICIENT_BALANCE (add credits with billing.checkout.create, then call again). Errors: AGENT_NOT_FOUND, AGENT_ALREADY_HAS_NUMBER (the agent already answers another number; pass that number as phone_number_id), PHONE_NUMBER_IN_USE (the chosen number answers to another agent or a person), NO_NUMBERS_AVAILABLE (try another area code), DEPLOY_BLOCKED, KEPT_NUMBER_IN_USE (the kept number of a paused receptionist now answers another agent or a person; pass a number explicitly), RECEPTIONIST_RUNTIME_UNSUPPORTED (receptionists are not available on the call runtime of this workspace yet; nothing was bought or deployed). Next: receptionist.verify_forwarding once the owner has dialed the forwarding code.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
