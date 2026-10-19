@@ -318,6 +318,17 @@ NO_PROVIDER_AVAILABLE_NEXT_STEP = (
     "drop sampleRate, check the language code (e.g. 'en' or 'en-US'), and remove or "
     "correct any model or allowedProviders pin."
 )
+# Every provider for the request refused the text length before any provider
+# call, so the identical text returns the identical 422. The generic 422 step
+# says "change the request", which a model reads as "rephrase"; this one names
+# the change that works. Prod 2026-09-19..10-19: 44 of 79 timed-out synthesize
+# calls followed an earlier failure from the same org within 30 minutes.
+TEXT_TOO_LONG_CODE = "TEXT_TOO_LONG"
+TEXT_TOO_LONG_NEXT_STEP = (
+    "The text is too long for one synthesis. Split it at sentence ends into parts of "
+    "at most maxChars characters (see the message above), call synthesize_speech once "
+    "per part, and give the user every audio link in order. Do not retry the same text."
+)
 UNPROCESSABLE_NEXT_STEP = (
     "Speko could not process this request as sent. Change it using the message above; "
     "do not retry it unchanged."
@@ -1846,6 +1857,8 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 422:
         if (exc.code or "") == NO_PROVIDER_AVAILABLE_CODE and path == "/v1/synthesize":
             return NO_PROVIDER_AVAILABLE_NEXT_STEP
+        if (exc.code or "") == TEXT_TOO_LONG_CODE and path == "/v1/synthesize":
+            return TEXT_TOO_LONG_NEXT_STEP
         return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP

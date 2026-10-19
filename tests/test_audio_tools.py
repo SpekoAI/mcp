@@ -239,6 +239,33 @@ async def test_synthesize_no_provider_says_change_the_request_not_retry(
     assert "Retry the Speko MCP request" not in message
 
 
+async def test_synthesize_text_too_long_says_split_the_text_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same text returns the same 422, so the step names the split, not a retry."""
+
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
+        raise http_client.SpekoApiError(
+            422,
+            "Text is 8000 characters, and no provider for this request can synthesize it in "
+            "one request. Split the text into parts of at most 3861 characters and send each "
+            "part as its own request.",
+            code="TEXT_TOO_LONG",
+        )
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    with pytest.raises(ToolError) as raised:
+        await action_tools.synthesize_speech({"text": "x" * 8000, "intent": {"language": "en"}})
+    message = str(raised.value)
+    assert action_tools.TEXT_TOO_LONG_NEXT_STEP in message
+    assert "3861 characters" in message
+    assert "Retry the Speko MCP request" not in message
+
+
 def test_phone_purchase_gate_codes_do_not_invite_an_auth_retry() -> None:
     for code in (
         "PHONE_NUMBER_KYB_REQUIRED",
