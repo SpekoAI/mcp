@@ -2912,8 +2912,28 @@ async def list_phone_numbers() -> ToolResult:
 
 
 async def search_available_phone_numbers(
-    area_code: Annotated[str | None, Field(description="Optional 3-digit US area code.")] = None,
+    country: Annotated[
+        Literal["US", "CA"] | None,
+        Field(
+            description=(
+                "'US' or 'CA' (Canada). Omit to infer it from area_code: a "
+                "Canadian area code searches Canada, anything else the US."
+            )
+        ),
+    ] = None,
+    area_code: Annotated[
+        str | None, Field(description="Optional 3-digit US or Canadian area code.")
+    ] = None,
     locality: Annotated[str | None, Field(description="Optional locality/city filter.")] = None,
+    state: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Optional two-letter US state (e.g. 'TX') or, with country 'CA', "
+                "Canadian province (e.g. 'ON')."
+            )
+        ),
+    ] = None,
     limit: Annotated[int | None, Field(description="Maximum available numbers to return.")] = None,
 ) -> ToolResult:
     """Search phone numbers available to buy.
@@ -2942,7 +2962,13 @@ async def search_available_phone_numbers(
         "GET",
         http_client.with_query(
             "/v1/phone-numbers/available",
-            {"areaCode": area_code, "locality": locality, "limit": limit},
+            {
+                "country": country,
+                "areaCode": area_code,
+                "locality": locality,
+                "state": state,
+                "limit": limit,
+            },
         ),
         text="Retrieved available phone numbers.",
     )

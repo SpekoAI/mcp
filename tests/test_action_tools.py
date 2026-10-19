@@ -152,7 +152,10 @@ async def test_action_tools_cover_expected_api_paths(
     await mcp.call_tool("calls.get", {"call_id": "7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"})
     await mcp.call_tool("calls.recording.get", {"call_id": "7f3e2a10-5b4c-4d8e-9a1f-2c3b4d5e6f70"})
     await mcp.call_tool("phone_numbers.list", {})
-    await mcp.call_tool("phone_numbers.available.search", {"area_code": "415", "limit": 2})
+    await mcp.call_tool(
+        "phone_numbers.available.search",
+        {"country": "CA", "area_code": "416", "state": "ON", "limit": 2},
+    )
     await mcp.call_tool("phone_numbers.create", {"body": {"e164": "+12015550123"}})
     await mcp.call_tool(
         "phone_numbers.get", {"phone_number_id": "11111111-1111-4111-8111-111111111111"}
@@ -217,7 +220,7 @@ async def test_action_tools_cover_expected_api_paths(
     available = next(
         call for call in speko_api_mock if call["path"] == "/v1/phone-numbers/available"
     )
-    assert available["query"] == "areaCode=415&limit=2"
+    assert available["query"] == "country=CA&areaCode=416&state=ON&limit=2"
 
 
 async def test_list_sessions_takes_agent_id_like_every_other_tool(
