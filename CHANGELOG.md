@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.51
+
+- `phone_numbers.available.search` takes optional `country` (`US` | `CA`) and `state` (US state or Canadian province code). Without `country`, a Canadian area code such as 519 or 416 now searches Canada instead of returning US numbers (#3314).
+- `phone_numbers.sip_connections.create` takes `inbound_auth` (`digest` | `ip_allowlist`) and `inbound_allowed_addresses`, so carriers that can't answer a digest challenge (for example voip.ms SIP URI routing) can be accepted by their signaling IPs (#3289).
+- Agent and phone-call config accept `ringTimeoutSeconds` (20-45) for outbound calls (#3293).
+
 ## 0.2.50
 
 - `agents.tools.create` lists the four builtin tools (`search_knowledge_base`, `transfer_call`, `end_call`, `send_sms`) and says there is no builtin web search; anything else is a `webhook` or `custom_code` tool. The server now rejects an unknown builtin name with 422 `BUILTIN_UNKNOWN` (#3273). Migration guidance names the same builtins.
