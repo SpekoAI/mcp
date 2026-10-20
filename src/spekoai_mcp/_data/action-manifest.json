@@ -24260,6 +24260,3241 @@
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
+    },
+    {
+      "id": "sms.conversations.list",
+      "version": 1,
+      "description": "List SMS threads in this workspace, most recent activity first. A thread is one contact (remote_phone_number) texting one workspace number (phone_number_id). assigned_agent_id on each thread is the agent handling it now: the thread override (agent_override_id) when set, otherwise the agent on its number. Filter agent_id is an agent inbox: threads that agent handles now plus threads it ever sent or received a message in, so a thread can appear for an agent whose number has since moved to another agent (assigned_agent_id then names the new one). Filter assigned_agent_id matches only threads the agent handles now. An empty data array is a normal result. next_cursor is null on the last page; pass it back as cursor for the next one. Read a thread with sms.conversations.messages.list.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "spam"
+            ]
+          },
+          "phone_number_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assigned_agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "assigned_user_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "campaign_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "recipient": {
+            "description": "Contact number in E.164, such as +12025550123.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "unread": {
+            "description": "true returns only threads with unread messages.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "last_message_after": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page. Omit for the first page.",
+            "$ref": "#/$defs/__schema2"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "limit"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$"
+          },
+          "__schema1": {
+            "type": "boolean"
+          },
+          "__schema2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "phone_number_id": {
+                      "type": "string"
+                    },
+                    "remote_phone_number": {
+                      "type": "string"
+                    },
+                    "campaign_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "campaign_snapshot": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "open",
+                        "closed",
+                        "spam"
+                      ]
+                    },
+                    "automation_status": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "enabled",
+                        "paused"
+                      ]
+                    },
+                    "assigned_user_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "assigned_agent_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agent_override_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "unread_count": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "recipient_timezone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "last_inbound_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "last_outbound_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "last_message_at": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "content_redacted_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "updated_at": {
+                      "$ref": "#/$defs/__schema0"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "phone_number_id",
+                    "remote_phone_number",
+                    "campaign_id",
+                    "campaign_snapshot",
+                    "status",
+                    "automation_status",
+                    "assigned_user_id",
+                    "assigned_agent_id",
+                    "agent_override_id",
+                    "unread_count",
+                    "recipient_timezone",
+                    "last_inbound_at",
+                    "last_outbound_at",
+                    "last_message_at",
+                    "content_redacted_at",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "data",
+              "next_cursor"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.conversations.get",
+      "version": 1,
+      "description": "Get one SMS thread. assigned_agent_id is the agent handling it now (agent_override_id when set, otherwise the agent on its number; null means no agent and no auto-replies). automation_status \"paused\" means a person took the thread over. Returns CONVERSATION_NOT_FOUND (404) for an id outside this workspace.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "phone_number_id": {
+                "type": "string"
+              },
+              "remote_phone_number": {
+                "type": "string"
+              },
+              "campaign_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_snapshot": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "closed",
+                  "spam"
+                ]
+              },
+              "automation_status": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "enabled",
+                  "paused"
+                ]
+              },
+              "assigned_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assigned_agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "agent_override_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "unread_count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "recipient_timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_inbound_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_outbound_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_message_at": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "content_redacted_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updated_at": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "id",
+              "phone_number_id",
+              "remote_phone_number",
+              "campaign_id",
+              "campaign_snapshot",
+              "status",
+              "automation_status",
+              "assigned_user_id",
+              "assigned_agent_id",
+              "agent_override_id",
+              "unread_count",
+              "recipient_timezone",
+              "last_inbound_at",
+              "last_outbound_at",
+              "last_message_at",
+              "content_redacted_at",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.conversations.messages.list",
+      "version": 1,
+      "description": "Read the messages in one SMS thread. Each page is in chronological order (oldest first) and holds the newest messages not yet returned; next_cursor pages back to older messages and is null once the start of the thread is reached. agent_id on a message is the agent that handled the thread when it was written, which can differ from the thread's current agent. origin tells a person (dashboard, api) from an agent (agent_auto_reply, agent_tool) and the contact (telnyx). text is null after the thread was redacted. Returns CONVERSATION_NOT_FOUND (404) for an id outside this workspace.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page. Omit for the first page.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "conversation_id",
+          "limit"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "conversation_id": {
+                      "type": "string"
+                    },
+                    "batch_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "phone_number_id": {
+                      "type": "string"
+                    },
+                    "from_phone_number_id": {
+                      "type": "string"
+                    },
+                    "agent_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "inbound",
+                        "outbound"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "api",
+                        "dashboard",
+                        "agent_tool",
+                        "agent_auto_reply",
+                        "telnyx"
+                      ]
+                    },
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "campaign_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "brand_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "campaign_snapshot": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "consent_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "consent_basis": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "explicit",
+                            "inbound_conversation",
+                            "keyword"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipient_timezone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "requested_send_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effective_send_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "terminal_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "scheduled",
+                        "submitting",
+                        "accepted",
+                        "sent",
+                        "delivered",
+                        "delivery_failed",
+                        "rejected",
+                        "submission_unknown",
+                        "canceled",
+                        "received",
+                        "delivery_unconfirmed"
+                      ]
+                    },
+                    "provider_status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "encoding": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimated_segments": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "segment_count": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "estimated": {
+                      "type": "object",
+                      "properties": {
+                        "encoding": {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        "units": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "segments": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "per_segment": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "encoding",
+                        "units",
+                        "segments",
+                        "per_segment"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "charged_micro_usd": {
+                      "type": "string"
+                    },
+                    "provider_cost_micro_usd": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "metadata": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "detail": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "detail"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "updated_at": {
+                      "$ref": "#/$defs/__schema1"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "conversation_id",
+                    "batch_id",
+                    "phone_number_id",
+                    "from_phone_number_id",
+                    "agent_id",
+                    "direction",
+                    "origin",
+                    "from",
+                    "to",
+                    "text",
+                    "campaign_id",
+                    "brand_id",
+                    "campaign_snapshot",
+                    "consent_id",
+                    "consent_basis",
+                    "recipient_timezone",
+                    "requested_send_at",
+                    "effective_send_at",
+                    "terminal_at",
+                    "status",
+                    "provider_status",
+                    "encoding",
+                    "estimated_segments",
+                    "segment_count",
+                    "estimated",
+                    "charged_micro_usd",
+                    "provider_cost_micro_usd",
+                    "metadata",
+                    "error",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "data",
+              "next_cursor"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "gsm7",
+              "ucs2"
+            ]
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.conversations.update",
+      "version": 1,
+      "description": "Partially update one SMS thread: only the fields sent are written. assigned_agent_id pins an agent to this thread; null clears the pin so the thread follows the agent on its number again. automation_status \"enabled\" lets the handling agent auto-reply to inbound texts, \"paused\" records a human takeover, \"disabled\" turns replies off. INVALID_ASSIGNEE (422) means the agent or user is not in this workspace; CONVERSATION_NOT_FOUND (404) means the thread is not; SMS_THREAD_AGENT_CHANGED (409) means expected_agent_id no longer handles it.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "status": {
+            "$ref": "#/$defs/__schema1"
+          },
+          "assigned_agent_id": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "assigned_user_id": {
+            "$ref": "#/$defs/__schema3"
+          },
+          "automation_status": {
+            "$ref": "#/$defs/__schema4"
+          },
+          "recipient_timezone": {
+            "$ref": "#/$defs/__schema5"
+          },
+          "expected_agent_id": {
+            "$ref": "#/$defs/__schema6"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "__schema1": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "spam"
+            ]
+          },
+          "__schema2": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema3": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema4": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled",
+              "paused"
+            ]
+          },
+          "__schema5": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema6": {
+            "description": "Set when acting for one agent, such as from its inbox. The write is refused with SMS_THREAD_AGENT_CHANGED (409) once a different agent handles the thread.",
+            "$ref": "#/$defs/__schema7"
+          },
+          "__schema7": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "phone_number_id": {
+                "type": "string"
+              },
+              "remote_phone_number": {
+                "type": "string"
+              },
+              "campaign_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_snapshot": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "closed",
+                  "spam"
+                ]
+              },
+              "automation_status": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "enabled",
+                  "paused"
+                ]
+              },
+              "assigned_user_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "assigned_agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "agent_override_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "unread_count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "recipient_timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_inbound_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_outbound_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_message_at": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "content_redacted_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updated_at": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "id",
+              "phone_number_id",
+              "remote_phone_number",
+              "campaign_id",
+              "campaign_snapshot",
+              "status",
+              "automation_status",
+              "assigned_user_id",
+              "assigned_agent_id",
+              "agent_override_id",
+              "unread_count",
+              "recipient_timezone",
+              "last_inbound_at",
+              "last_outbound_at",
+              "last_message_at",
+              "content_redacted_at",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:write"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.conversations.reply",
+      "version": 1,
+      "description": "Queue a text in an existing SMS thread, from the thread number to its contact. When the contact texted within the last 24 hours the reply is conversational: no consent record or timezone is needed. Otherwise it is proactive and needs an active consent record (CONSENT_REQUIRED, 422) and a recipient timezone (RECIPIENT_TIMEZONE_REQUIRED, 422). The result has status \"queued\", or \"scheduled\" with effective_send_at at the next allowed time when the message falls inside quiet hours. A queued reply is checked again just before submission and can still be deferred by quiet hours or throughput limits, or rejected, so \"queued\" does not mean sent; sms.messages.get reports whether it was sent and delivered. Refusals: SMS_FEATURE_DISABLED (403, SMS is not enabled for the workspace), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (the sending number has no approved 10DLC campaign yet), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "send_at": {
+            "description": "Schedule for later, up to 90 days ahead. Omit to send now.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "consent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recipient_timezone": {
+            "description": "IANA timezone such as America/Chicago, used for quiet hours.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema3"
+            }
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Caller-chosen key. Reusing it with the same input returns the message already created instead of sending again; reusing it with different input fails with IDEMPOTENCY_CONFLICT."
+          },
+          "expected_agent_id": {
+            "description": "Set when acting for one agent, such as from its inbox. The write is refused with SMS_THREAD_AGENT_CHANGED (409) once a different agent handles the thread.",
+            "$ref": "#/$defs/__schema4"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "text",
+          "idempotency_key"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {},
+          "__schema4": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "batch_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "phone_number_id": {
+                "type": "string"
+              },
+              "from_phone_number_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "inbound",
+                  "outbound"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "api",
+                  "dashboard",
+                  "agent_tool",
+                  "agent_auto_reply",
+                  "telnyx"
+                ]
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "brand_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_snapshot": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "consent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "consent_basis": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "explicit",
+                      "inbound_conversation",
+                      "keyword"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "recipient_timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requested_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "effective_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "terminal_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "scheduled",
+                  "submitting",
+                  "accepted",
+                  "sent",
+                  "delivered",
+                  "delivery_failed",
+                  "rejected",
+                  "submission_unknown",
+                  "canceled",
+                  "received",
+                  "delivery_unconfirmed"
+                ]
+              },
+              "provider_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "encoding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "estimated_segments": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "segment_count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "estimated": {
+                "type": "object",
+                "properties": {
+                  "encoding": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "units": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "segments": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "per_segment": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "encoding",
+                  "units",
+                  "segments",
+                  "per_segment"
+                ],
+                "additionalProperties": false
+              },
+              "charged_micro_usd": {
+                "type": "string"
+              },
+              "provider_cost_micro_usd": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "detail": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "updated_at": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "required": [
+              "id",
+              "conversation_id",
+              "batch_id",
+              "phone_number_id",
+              "from_phone_number_id",
+              "agent_id",
+              "direction",
+              "origin",
+              "from",
+              "to",
+              "text",
+              "campaign_id",
+              "brand_id",
+              "campaign_snapshot",
+              "consent_id",
+              "consent_basis",
+              "recipient_timezone",
+              "requested_send_at",
+              "effective_send_at",
+              "terminal_at",
+              "status",
+              "provider_status",
+              "encoding",
+              "estimated_segments",
+              "segment_count",
+              "estimated",
+              "charged_micro_usd",
+              "provider_cost_micro_usd",
+              "metadata",
+              "error",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "gsm7",
+              "ucs2"
+            ]
+          }
+        }
+      },
+      "effect": "execute",
+      "requiredScopes": [
+        "speko:execute"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.messages.list",
+      "version": 1,
+      "description": "List SMS messages across the workspace, newest first. Filter agent_id returns messages written while that agent handled the thread. origin tells a person (dashboard, api) from an agent (agent_auto_reply, agent_tool) and the contact (telnyx). An empty data array is a normal result; next_cursor is null on the last page. For one thread in reading order use sms.conversations.messages.list.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "from_phone_number_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "recipient": {
+            "description": "Destination number in E.164.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "campaign_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agent_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "scheduled",
+              "submitting",
+              "accepted",
+              "sent",
+              "delivered",
+              "delivery_failed",
+              "rejected",
+              "submission_unknown",
+              "canceled",
+              "received",
+              "delivery_unconfirmed"
+            ]
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "inbound",
+              "outbound"
+            ]
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "api",
+              "dashboard",
+              "agent_tool",
+              "agent_auto_reply",
+              "telnyx"
+            ]
+          },
+          "created_after": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "created_before": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page. Omit for the first page.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "limit"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$"
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "conversation_id": {
+                      "type": "string"
+                    },
+                    "batch_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "phone_number_id": {
+                      "type": "string"
+                    },
+                    "from_phone_number_id": {
+                      "type": "string"
+                    },
+                    "agent_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "inbound",
+                        "outbound"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "api",
+                        "dashboard",
+                        "agent_tool",
+                        "agent_auto_reply",
+                        "telnyx"
+                      ]
+                    },
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "campaign_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "brand_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "campaign_snapshot": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "consent_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "consent_basis": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "explicit",
+                            "inbound_conversation",
+                            "keyword"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recipient_timezone": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "requested_send_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "effective_send_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "terminal_at": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema1"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "scheduled",
+                        "submitting",
+                        "accepted",
+                        "sent",
+                        "delivered",
+                        "delivery_failed",
+                        "rejected",
+                        "submission_unknown",
+                        "canceled",
+                        "received",
+                        "delivery_unconfirmed"
+                      ]
+                    },
+                    "provider_status": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "encoding": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "estimated_segments": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "segment_count": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "estimated": {
+                      "type": "object",
+                      "properties": {
+                        "encoding": {
+                          "$ref": "#/$defs/__schema2"
+                        },
+                        "units": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "segments": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "per_segment": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "encoding",
+                        "units",
+                        "segments",
+                        "per_segment"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "charged_micro_usd": {
+                      "type": "string"
+                    },
+                    "provider_cost_micro_usd": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "metadata": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            },
+                            "detail": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "detail"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created_at": {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    "updated_at": {
+                      "$ref": "#/$defs/__schema1"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "conversation_id",
+                    "batch_id",
+                    "phone_number_id",
+                    "from_phone_number_id",
+                    "agent_id",
+                    "direction",
+                    "origin",
+                    "from",
+                    "to",
+                    "text",
+                    "campaign_id",
+                    "brand_id",
+                    "campaign_snapshot",
+                    "consent_id",
+                    "consent_basis",
+                    "recipient_timezone",
+                    "requested_send_at",
+                    "effective_send_at",
+                    "terminal_at",
+                    "status",
+                    "provider_status",
+                    "encoding",
+                    "estimated_segments",
+                    "segment_count",
+                    "estimated",
+                    "charged_micro_usd",
+                    "provider_cost_micro_usd",
+                    "metadata",
+                    "error",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "next_cursor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "data",
+              "next_cursor"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "gsm7",
+              "ucs2"
+            ]
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.messages.get",
+      "version": 1,
+      "description": "Get one SMS message and its delivery state. status moves queued or scheduled -> submitting -> accepted -> sent -> delivered; delivery_failed and rejected carry error.code and error.detail from the carrier; delivery_unconfirmed means the carrier never confirmed and is not a failure. Returns MESSAGE_NOT_FOUND (404) for an id outside this workspace.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "batch_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "phone_number_id": {
+                "type": "string"
+              },
+              "from_phone_number_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "inbound",
+                  "outbound"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "api",
+                  "dashboard",
+                  "agent_tool",
+                  "agent_auto_reply",
+                  "telnyx"
+                ]
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "brand_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_snapshot": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "consent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "consent_basis": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "explicit",
+                      "inbound_conversation",
+                      "keyword"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "recipient_timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requested_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "effective_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "terminal_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "scheduled",
+                  "submitting",
+                  "accepted",
+                  "sent",
+                  "delivered",
+                  "delivery_failed",
+                  "rejected",
+                  "submission_unknown",
+                  "canceled",
+                  "received",
+                  "delivery_unconfirmed"
+                ]
+              },
+              "provider_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "encoding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "estimated_segments": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "segment_count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "estimated": {
+                "type": "object",
+                "properties": {
+                  "encoding": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "units": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "segments": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "per_segment": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "encoding",
+                  "units",
+                  "segments",
+                  "per_segment"
+                ],
+                "additionalProperties": false
+              },
+              "charged_micro_usd": {
+                "type": "string"
+              },
+              "provider_cost_micro_usd": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "detail": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "updated_at": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "required": [
+              "id",
+              "conversation_id",
+              "batch_id",
+              "phone_number_id",
+              "from_phone_number_id",
+              "agent_id",
+              "direction",
+              "origin",
+              "from",
+              "to",
+              "text",
+              "campaign_id",
+              "brand_id",
+              "campaign_snapshot",
+              "consent_id",
+              "consent_basis",
+              "recipient_timezone",
+              "requested_send_at",
+              "effective_send_at",
+              "terminal_at",
+              "status",
+              "provider_status",
+              "encoding",
+              "estimated_segments",
+              "segment_count",
+              "estimated",
+              "charged_micro_usd",
+              "provider_cost_micro_usd",
+              "metadata",
+              "error",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "gsm7",
+              "ucs2"
+            ]
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "sms.messages.send",
+      "version": 1,
+      "description": "Send a proactive text from a workspace number to a contact, starting a thread or adding to the existing one for that number and contact. Proactive sends always need an active consent record for the contact on the number campaign (CONSENT_REQUIRED, 422; consent_id picks a specific record) and a recipient timezone from recipient_timezone, the consent record, the thread, or the workspace default (RECIPIENT_TIMEZONE_REQUIRED, 422). A send requested inside quiet hours is not refused: it returns status \"scheduled\" with effective_send_at at the next allowed time. To answer a contact who texted in the last 24 hours without consent, sms.conversations.reply applies. Refusals: SMS_FEATURE_DISABLED (403, SMS is not enabled for the workspace), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (the sending number has no approved 10DLC campaign yet), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). SMS_THREAD_AGENT_CHANGED (409) means expected_agent_id does not handle the thread. Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice. Delivery progress is on sms.messages.get.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "from_phone_number_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Workspace number to send from."
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$",
+            "description": "Contact number in E.164, such as +12025550123."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "send_at": {
+            "description": "Schedule for later, up to 90 days ahead. Omit to send now.",
+            "$ref": "#/$defs/__schema0"
+          },
+          "consent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recipient_timezone": {
+            "description": "IANA timezone such as America/Chicago, used for quiet hours.",
+            "$ref": "#/$defs/__schema1"
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema3"
+            }
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Caller-chosen key. Reusing it with the same input returns the message already created instead of sending again; reusing it with different input fails with IDEMPOTENCY_CONFLICT."
+          },
+          "expected_agent_id": {
+            "description": "Set when acting for one agent, such as from its inbox. The write is refused with SMS_THREAD_AGENT_CHANGED (409) once a different agent handles the thread.",
+            "$ref": "#/$defs/__schema4"
+          }
+        },
+        "required": [
+          "from_phone_number_id",
+          "to",
+          "text",
+          "idempotency_key"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "string"
+          },
+          "__schema3": {},
+          "__schema4": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "conversation_id": {
+                "type": "string"
+              },
+              "batch_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "phone_number_id": {
+                "type": "string"
+              },
+              "from_phone_number_id": {
+                "type": "string"
+              },
+              "agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "direction": {
+                "type": "string",
+                "enum": [
+                  "inbound",
+                  "outbound"
+                ]
+              },
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "api",
+                  "dashboard",
+                  "agent_tool",
+                  "agent_auto_reply",
+                  "telnyx"
+                ]
+              },
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "text": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "brand_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "campaign_snapshot": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "consent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "consent_basis": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "explicit",
+                      "inbound_conversation",
+                      "keyword"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "recipient_timezone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requested_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "effective_send_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "terminal_at": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema1"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "scheduled",
+                  "submitting",
+                  "accepted",
+                  "sent",
+                  "delivered",
+                  "delivery_failed",
+                  "rejected",
+                  "submission_unknown",
+                  "canceled",
+                  "received",
+                  "delivery_unconfirmed"
+                ]
+              },
+              "provider_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "encoding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "estimated_segments": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "segment_count": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "estimated": {
+                "type": "object",
+                "properties": {
+                  "encoding": {
+                    "$ref": "#/$defs/__schema2"
+                  },
+                  "units": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "segments": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "per_segment": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "encoding",
+                  "units",
+                  "segments",
+                  "per_segment"
+                ],
+                "additionalProperties": false
+              },
+              "charged_micro_usd": {
+                "type": "string"
+              },
+              "provider_cost_micro_usd": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "error": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "code": {
+                        "type": "string"
+                      },
+                      "detail": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "created_at": {
+                "$ref": "#/$defs/__schema1"
+              },
+              "updated_at": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "required": [
+              "id",
+              "conversation_id",
+              "batch_id",
+              "phone_number_id",
+              "from_phone_number_id",
+              "agent_id",
+              "direction",
+              "origin",
+              "from",
+              "to",
+              "text",
+              "campaign_id",
+              "brand_id",
+              "campaign_snapshot",
+              "consent_id",
+              "consent_basis",
+              "recipient_timezone",
+              "requested_send_at",
+              "effective_send_at",
+              "terminal_at",
+              "status",
+              "provider_status",
+              "encoding",
+              "estimated_segments",
+              "segment_count",
+              "estimated",
+              "charged_micro_usd",
+              "provider_cost_micro_usd",
+              "metadata",
+              "error",
+              "created_at",
+              "updated_at"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "__schema1": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "__schema2": {
+            "type": "string",
+            "enum": [
+              "gsm7",
+              "ucs2"
+            ]
+          }
+        }
+      },
+      "effect": "execute",
+      "requiredScopes": [
+        "speko:execute"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "optional",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
     }
   ],
   "legacyMcpActionIds": [

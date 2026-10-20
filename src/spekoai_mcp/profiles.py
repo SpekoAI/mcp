@@ -197,6 +197,12 @@ CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
         "phone_numbers.delete",
         "knowledge_bases.delete",
         "share_cards.create",
+        # Texting a real person is the SMS twin of an undisclosed outbound
+        # call, with no disclosure path to inject. Pinning an agent to a thread
+        # or enabling its automation arms auto-replies. Thread reads stay.
+        "sms.messages.send",
+        "sms.conversations.reply",
+        "sms.conversations.update",
     }
 )
 
@@ -319,6 +325,14 @@ DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "support.ticket.get",
     "support.ticket.reply",
     "support.ticket.rate",
+    "sms.conversations.list",
+    "sms.conversations.get",
+    "sms.conversations.messages.list",
+    "sms.conversations.update",
+    "sms.conversations.reply",
+    "sms.messages.list",
+    "sms.messages.get",
+    "sms.messages.send",
 ]
 
 _CHATGPT_PROFILE_TOOL_SET = frozenset(CHATGPT_PROFILE_TOOL_NAMES) | _CHATGPT_MANIFEST_TOOL_NAMES

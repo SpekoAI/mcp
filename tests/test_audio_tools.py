@@ -27,6 +27,7 @@ from fastmcp.exceptions import NotFoundError, ToolError
 
 import spekoai_mcp.action_tools as action_tools
 import spekoai_mcp.http_client as http_client
+from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.http_client import SpekoRawResponse
 from spekoai_mcp.profiles import (
     CONNECTOR_EXCLUDED_TOOL_NAMES,
@@ -1259,7 +1260,7 @@ async def test_default_profile_still_exposes_synthesis(monkeypatch: pytest.Monke
 
 def test_the_exclusion_set_names_only_real_tools() -> None:
     """A typo here would silently exclude nothing."""
-    known = {tool for tool in action_tools.ACTION_TOOL_NAMES}
+    known = set(action_tools.ACTION_TOOL_NAMES) | {entry["id"] for entry in action_entries()}
     assert CONNECTOR_EXCLUDED_TOOL_NAMES <= known
 
 
