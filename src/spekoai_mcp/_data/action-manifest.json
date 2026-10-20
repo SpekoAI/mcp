@@ -21403,12 +21403,12 @@
             "pattern": "^[A-Za-z0-9_.+-]{1,64}$"
           },
           "__schema19": {
-            "description": "Caller name sent as the SIP From display name on outbound calls, e.g. \"Acme Support\". Set it with from_user so the callee does not see the account name. Omit to send none.",
+            "description": "Caller name sent as the SIP From display name on outbound calls, e.g. \"Acme Support\". Set it with from_user so the callee does not see the account name. Omit (or send \"\") to send none.",
             "$ref": "#/$defs/__schema20"
           },
           "__schema20": {
             "type": "string",
-            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\"<>\\\\]{1,40}$"
+            "pattern": "^$|^[^\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\"<>\\\\]{1,40}$"
           },
           "__schema21": {
             "default": "none",
