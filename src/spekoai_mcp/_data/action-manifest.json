@@ -21226,7 +21226,7 @@
     {
       "id": "phone_numbers.sip_connections.create",
       "version": 1,
-      "description": "Connect the customer's own carrier or SIP trunk (Telnyx, Twilio, Odorik or any VoIP provider) as a carrier connection. This is how a customer brings their own number: create the connection here, then attach the number with phone_numbers.import. It is self-serve and needs neither the static-IP SIP gateway (a separate, gated feature) nor a support ticket; it is the same as Phone Numbers → Import number → Add carrier connection in the dashboard. host is the carrier SIP domain or IP without sip:// or a port; port defaults to 5060 and transport to udp. At least one of allow_inbound and allow_outbound must be true, and a number imported later can only use the directions enabled here. auth_username and auth_password are the SIP digest login the carrier issued; auth_password is a secret, stored encrypted and never returned by this or any other tool (has_auth_password says whether one is set), and it should not be repeated back in replies. Outbound calls send the number in E.164 as the SIP From user and the destination in E.164; a carrier that identifies the account by the From user (voip.ms) needs from_user set to that account, usually with caller_id_header \"p-asserted-identity\" so the number still reaches it, and dial_format \"e164_without_plus\" when it wants digits without the plus. Inbound calls are challenged for auth_username/auth_password by default, so allow_inbound on a generic carrier needs both unless inbound_auth is \"ip_allowlist\"; a carrier that cannot answer a digest challenge (voip.ms SIP URI routing) needs inbound_auth \"ip_allowlist\" with its signaling IPs in inbound_allowed_addresses. Outbound calls leave through the carrier, so the carrier decides which destinations are allowed and which caller IDs it accepts. Calls over a connection like this carry no Speko telephony fee and the number no monthly fee; only the per-minute agent rate applies. Creating a connection places no call and charges nothing. Existing connections are the installations of the sip_connection app in integrations.list. Errors: ACTION_INPUT_INVALID with the failing field.",
+      "description": "Connect the customer's own carrier or SIP trunk (Telnyx, Twilio, Odorik or any VoIP provider) as a carrier connection. This is how a customer brings their own number: create the connection here, then attach the number with phone_numbers.import. Self-serve: no static-IP SIP gateway (a separate, gated feature) and no support ticket; same as Phone Numbers → Import number → Add carrier connection in the dashboard. host is the carrier SIP domain or IP without sip:// or a port; port defaults to 5060 and transport to udp. At least one of allow_inbound and allow_outbound must be true, and a number imported later can only use the directions enabled here. auth_username and auth_password are the SIP digest login the carrier issued; auth_password is a secret, stored encrypted and never returned by any tool (has_auth_password says whether one is set); do not repeat it in replies. Outbound calls send the number in E.164 as the SIP From user and the destination in E.164; a carrier that identifies the account by the From user (voip.ms) needs from_user set to that account, usually with caller_id_header \"p-asserted-identity\" so the number still reaches it, and dial_format \"e164_without_plus\" when it wants digits without the plus; caller_display_name is the name callees see instead of from_user. Inbound calls are challenged for auth_username/auth_password by default, so allow_inbound on a generic carrier needs both unless inbound_auth is \"ip_allowlist\"; a carrier that cannot answer a digest challenge (voip.ms SIP URI routing) needs inbound_auth \"ip_allowlist\" with its signaling IPs in inbound_allowed_addresses. The carrier decides which destinations and caller IDs it accepts. Calls over a connection like this carry no Speko telephony fee and the number no monthly fee; only the per-minute agent rate applies. Creating a connection places no call and charges nothing. Existing connections are sip_connection installations in integrations.list. Errors: ACTION_INPUT_INVALID with the failing field.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -21264,17 +21264,20 @@
           "from_user": {
             "$ref": "#/$defs/__schema17"
           },
-          "caller_id_header": {
+          "caller_display_name": {
             "$ref": "#/$defs/__schema19"
           },
-          "dial_format": {
+          "caller_id_header": {
             "$ref": "#/$defs/__schema21"
           },
-          "inbound_auth": {
+          "dial_format": {
             "$ref": "#/$defs/__schema23"
           },
-          "inbound_allowed_addresses": {
+          "inbound_auth": {
             "$ref": "#/$defs/__schema25"
+          },
+          "inbound_allowed_addresses": {
+            "$ref": "#/$defs/__schema27"
           }
         },
         "required": [
@@ -21385,11 +21388,19 @@
             "pattern": "^[A-Za-z0-9_.+-]{1,64}$"
           },
           "__schema19": {
-            "default": "none",
-            "description": "Also send the number as <sip:+E164@host> in this header. Use with from_user when the carrier reads the caller ID from P-Asserted-Identity or P-Preferred-Identity.",
+            "description": "Caller name sent as the SIP From display name on outbound calls, e.g. \"Acme Support\". Set it with from_user so the callee does not see the account name. Omit to send none.",
             "$ref": "#/$defs/__schema20"
           },
           "__schema20": {
+            "type": "string",
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\"<>\\\\]{1,40}$"
+          },
+          "__schema21": {
+            "default": "none",
+            "description": "Also send the number as <sip:+E164@host> in this header. Use with from_user when the carrier reads the caller ID from P-Asserted-Identity or P-Preferred-Identity.",
+            "$ref": "#/$defs/__schema22"
+          },
+          "__schema22": {
             "type": "string",
             "enum": [
               "none",
@@ -21397,43 +21408,43 @@
               "p-preferred-identity"
             ]
           },
-          "__schema21": {
+          "__schema23": {
             "default": "e164",
             "description": "How the dialed number is sent: \"e164\" (+14155550100) or \"e164_without_plus\" (14155550100, what voip.ms expects).",
-            "$ref": "#/$defs/__schema22"
+            "$ref": "#/$defs/__schema24"
           },
-          "__schema22": {
+          "__schema24": {
             "type": "string",
             "enum": [
               "e164",
               "e164_without_plus"
             ]
           },
-          "__schema23": {
+          "__schema25": {
             "default": "digest",
             "description": "How Speko authenticates calls the carrier sends in. \"digest\" (default) challenges the carrier for auth_username/auth_password. \"ip_allowlist\" accepts calls from inbound_allowed_addresses instead, for carriers that route a number to a SIP URI and never answer a digest challenge (voip.ms). Generic carriers only.",
-            "$ref": "#/$defs/__schema24"
+            "$ref": "#/$defs/__schema26"
           },
-          "__schema24": {
+          "__schema26": {
             "type": "string",
             "enum": [
               "digest",
               "ip_allowlist"
             ]
           },
-          "__schema25": {
+          "__schema27": {
             "description": "The carrier's public SIP signaling IPv4 addresses, or CIDRs no wider than /24, e.g. [\"208.100.60.40\", \"208.100.60.41\"]. Required with inbound_auth \"ip_allowlist\"; private, loopback and link-local ranges are refused.",
-            "$ref": "#/$defs/__schema26"
+            "$ref": "#/$defs/__schema28"
           },
-          "__schema26": {
+          "__schema28": {
             "minItems": 1,
             "maxItems": 10,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/__schema27"
+              "$ref": "#/$defs/__schema29"
             }
           },
-          "__schema27": {
+          "__schema29": {
             "type": "string",
             "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}(\\/\\d{1,2})?$"
           }
@@ -21510,6 +21521,12 @@
                   "null"
                 ]
               },
+              "caller_display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "caller_id_header": {
                 "type": "string",
                 "enum": [
@@ -21562,6 +21579,7 @@
               "has_auth_username",
               "has_auth_password",
               "from_user",
+              "caller_display_name",
               "caller_id_header",
               "dial_format",
               "inbound_auth",
