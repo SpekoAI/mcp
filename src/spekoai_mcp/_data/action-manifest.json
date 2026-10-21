@@ -2757,7 +2757,7 @@
     {
       "id": "api_keys.create",
       "version": 1,
-      "description": "Create a product API key and return its secret in `key` exactly once; it is never retrievable again, so store it immediately. `scopes` is 1 to 6 values from speko:read, write, execute, billing, credentials, compliance, and the key can only do what those scopes allow. `routing_policy`, if set, pins this key to a specific stt/llm/tts provider chain and objective instead of the workspace default; omit it to inherit the default. Available to any workspace member, unlike other credential actions on this surface which require an admin.",
+      "description": "Create a product API key and return its secret in `key` exactly once; it is never retrievable again, so store it immediately. `scopes` is 1 to 6 values from speko:read, write, execute, billing, credentials, compliance, and the key can only do what those scopes allow. `routing_policy`, if set, pins this key to a specific stt/llm/tts provider chain and objective instead of the workspace default; omit it to inherit the default. Available to any workspace member, unlike other credential actions on this surface which require an admin; granting compliance still requires an owner or admin.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
