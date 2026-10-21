@@ -23,6 +23,7 @@ from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
 from spekoai_mcp.apps import register_apps, register_public_apps
+from spekoai_mcp.argument_shape import ArgumentShapeMiddleware
 from spekoai_mcp.attribution import (
     InvocationAttributionMiddleware,
     observed_host,
@@ -240,6 +241,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     mcp.add_middleware(ToolProfileMiddleware())
     mcp.add_middleware(CreditExhaustedMiddleware())
     mcp.add_middleware(SupportHandoffMiddleware())
+    mcp.add_middleware(ArgumentShapeMiddleware())
     # Innermost, so it logs the tool's own failure before the credit/support
     # rewrites above lengthen the message.
     mcp.add_middleware(ToolErrorLogMiddleware())

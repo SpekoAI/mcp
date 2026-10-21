@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Tool arguments with an unambiguous wrong shape are repaired before validation instead of rejected: body fields sent at the top level of a `body` tool (`audio.synthesize`, `sessions.phone.create`, `agents.update`) are wrapped into `body`; a flat tool given a `body`/`path`/`params` wrapper (including a JSON string) is unwrapped; camelCase/snake_case twins (`agentId` -> `agent_id`, `sessionId` -> `session_id`) and a bare `id` for the one required `*_id` argument are renamed. Only an undeclared key is moved onto a declared argument the caller did not send, so conflicts still fail validation.
+- Required-idempotency actions get a fresh idempotency key per invocation. The key hashed the JSON-RPC request id, which restarts on every stateless connection, so a repeated `billing.portal.create` / `billing.checkout.create` / `integrations.connect` replayed an earlier execution and answered 409 `ONE_TIME_SECRET_NOT_REPLAYABLE`.
+- `capabilities.describe` on a tool this server already lists returns that tool's input schema instead of 404 `ACTION_NOT_FOUND`.
+- Clearer next steps: 402 `DESTINATION_REQUIRES_CARD` says to add a card (it used to say to retry); an unknown synthesis voice points at `voices.list`; a synthesis provider stall says retry once, then route around the provider; 422 `BUILTIN_CONFIG_INVALID` shows the `transfer_call` config shape; a private Google Drive link says the owner must share it before the same link can work. Router-served synthesis errors carry the same next steps as Platform ones.
+- Descriptions: agent and phone-call tools say never to send `endCall` (always on; `{enabled: false}` is a 400); `agents.tools.create` documents builtin `config` for `transfer_call` and `search_knowledge_base`; `audio.synthesize` says to take `voice` from `voices.list`.
+- `phone_numbers.available.search` caps `limit` at 50 (Platform's maximum) and accepts country names; `sessions.phone.create` strips spaces, dashes, dots and parentheses from an E.164 `to`.
+
 ## 0.2.51
 
 - `phone_numbers.available.search` takes optional `country` (`US` | `CA`) and `state` (US state or Canadian province code). Without `country`, a Canadian area code such as 519 or 416 now searches Canada instead of returning US numbers (#3314).

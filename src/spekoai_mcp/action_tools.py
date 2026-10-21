@@ -253,6 +253,15 @@ CREATE_PHONE_SESSION_NEXT_STEP = (
     "{'to':'+12015551234','intent':{'language':'en'}}."
 )
 
+# Prod 2026-10-19..21: 24 agents.create/agents.update/sessions.phone.create
+# calls sent endCall {enabled: false} and got the deliberate 400 from
+# apps/server/src/lib/end-call.ts. No tool description said the field was
+# off-limits; models saw `endCall` echoed by agents.get and flipped it.
+END_CALL_NOTE = (
+    "Never send endCall: the end_call tool is always on and {'enabled': false} is "
+    "rejected with 400. To keep the agent from hanging up early, say so in systemPrompt."
+)
+
 UPDATE_AGENT_NEXT_STEP = (
     "For update_agent, pass only the fields to change, for example "
     "{'systemPrompt':'...'} or {'intent':{'language':'es'}}."
@@ -329,6 +338,53 @@ TEXT_TOO_LONG_NEXT_STEP = (
     "at most maxChars characters (see the message above), call synthesize_speech once "
     "per part, and give the user every audio link in order. Do not retry the same text."
 )
+# A grant-only workspace dialled a destination free credit does not cover. The
+# 402 names its own code, so it is not the out-of-credit path, and it fell to
+# the generic "Retry the Speko MCP request" step: prod 2026-10-19..21 has 22 of
+# these, several retried within minutes of each other. Topping up credit does
+# not clear it; a card on file does.
+DESTINATION_REQUIRES_CARD_CODE = "DESTINATION_REQUIRES_CARD"
+DESTINATION_REQUIRES_CARD_NEXT_STEP = (
+    "Free credit does not cover calls to this country. Tell the user to add a payment "
+    f"card at {http_client.BILLING_URL}, then place the call again. Adding credit alone "
+    "does not clear this, and retrying before a card is on file fails the same way."
+)
+
+# The synthesis provider does not know the voice id. Prod 2026-10-19..21: 20
+# ElevenLabs voice_not_found failures, mostly near-miss spellings of public
+# voice ids typed from memory, and one non-UUID id sent to Cartesia.
+VOICE_NOT_FOUND_NEXT_STEP = (
+    "The provider does not have that voice id. Pick a voice from voices.list and pass "
+    "its id exactly (do not type a voice id from memory), or omit voice to use the "
+    "provider's default."
+)
+
+# `transfer_call` builtin config failed the save-time schema. Prod
+# 2026-10-19..21: 12 rejections, every one a guessed shape (`phoneNumber`,
+# `to` at the top level, a bare string destination) because the description
+# said only `config?: any`.
+BUILTIN_CONFIG_INVALID_CODE = "BUILTIN_CONFIG_INVALID"
+BUILTIN_CONFIG_INVALID_NEXT_STEP = (
+    "Fix source.config to the builtin's shape. transfer_call: {'destinations':[{'label':"
+    "'Front desk','to':'+12015551234','mode':'warm'}]} (1-10 destinations, each with a "
+    "label and an E.164 to; optional defaultMode 'warm'|'blind', ringingTimeout seconds, "
+    "fallback {strategy: 'return_to_assistant'|'take_message'|'end_call', message?}). "
+    "search_knowledge_base: {'knowledgeBaseId':'<id>'}."
+)
+
+# The synthesis provider started and then sent no audio within the stall
+# deadline (prod 2026-10-20..21: 56 a day, OpenAI TTS). It is transient and
+# says nothing about the request, so a retry is the right move; the generic
+# fallback did not say whether retrying was safe or how to get around a stuck
+# provider.
+PROVIDER_TIMEOUT_CODE = "PROVIDER_TIMEOUT"
+SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP = (
+    "The voice provider stalled before returning audio; the request itself is fine and "
+    "no audio was delivered. Retry the same request once. If it stalls again, route "
+    "around that provider: drop any model pin, or set constraints.allowedProviders.tts "
+    "to a different provider (for example ['cartesia'] or ['elevenlabs'])."
+)
+
 UNPROCESSABLE_NEXT_STEP = (
     "Speko could not process this request as sent. Change it using the message above; "
     "do not retry it unchanged."
@@ -350,6 +406,7 @@ TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP = (
 # replaces the automatic one. The ChatGPT, connector and Replit profiles serve
 # calling without the purchase tools, so only the Phone numbers page is named there.
 PHONE_NUMBER_PROVISIONING_FAILED_CODE = "PHONE_NUMBER_PROVISIONING_FAILED"
+AVAILABLE_NUMBERS_MAX_LIMIT = 50
 _PHONE_NUMBER_PURCHASE_TOOLS = ("phone_numbers.available.search", "phone_numbers.create")
 
 
@@ -526,6 +583,20 @@ TOOL_SIMULATION_FIELD_DOC = (
 )
 
 _E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+_PHONE_FORMATTING_RE = re.compile(r"[\s().\-\u00a0]")
+
+
+def _strip_phone_formatting(value: Any) -> str | None:
+    """'+1 (201) 555-1234' -> '+12015551234'; anything else is returned as is.
+
+    Only separators are removed. A number without a leading '+' is left alone:
+    adding a country code would be a guess about who gets dialled.
+    """
+    if not isinstance(value, str):
+        return None
+    compact = _PHONE_FORMATTING_RE.sub("", value)
+    return compact if _E164_RE.match(compact) else value
+
 
 ACTION_TOOL_NAME_BY_FUNCTION = {
     "get_organization": "organization.get",
@@ -674,7 +745,8 @@ async def synthesize_speech(
                 "'balanced'|'accuracy'|'latency'|'cost'}). language is a "
                 "lowercase 2-3 letter code with an optional uppercase region: "
                 "'en' or 'en-US', not 'en_US', 'en-us' or 'English'. "
-                "Optional: voice (a vendor-specific voice id; omit it to get "
+                "Optional: voice (a vendor-specific voice id copied from "
+                "voices.list, never typed from memory; omit it to get "
                 "the provider's default), model (upstream model such as "
                 "'eleven_multilingual_v2' or 'sonic-3.5'), speed (0.5-2), "
                 "instructions (speaking-style text, applied only when the "
@@ -710,7 +782,11 @@ async def synthesize_speech(
             return await _synthesize_via_router(router_payload, token=router_token)
         except http_client.SpekoApiError as exc:
             if exc.code not in _ROUTER_FALLBACK_CODES:
-                raise
+                # Same next step as the Platform path: a Router refusal used to
+                # reach the model bare, with no hint at how to fix the request.
+                raise tool_error(
+                    exc, next_step=next_step_for_error(exc, path="/v1/synthesize")
+                ) from exc
 
     try:
         raw = await http_client.call_speko_api_raw(
@@ -1330,10 +1406,15 @@ def _mark_no_speech(payload: dict[str, Any]) -> None:
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024
 _MAX_REDIRECTS = 3
 
+# Prod 2026-10-20: 38 of these in a day, mostly the same links resent. The fix is
+# the user's (a Drive sharing setting); the model can only ask for it, so the
+# message says who acts and that resending first fails identically.
 DRIVE_MESSAGE = (
     "Google requires access to this file, so Speko received Google's web page instead "
     "of the audio. In Google Drive open Share, set General access to 'Anyone with the link', "
-    "then send the same link again."
+    "then send the same link again. Only the file's owner can change this: ask the user to "
+    "do it and confirm before calling again, because the same link fails the same way "
+    "until it is shared."
 )
 _DOCUMENT_TYPES = {
     "text/html": "html",
@@ -1855,6 +1936,10 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         if exc.retryable is False:
             return NON_RETRYABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 422:
+        if (exc.code or "") == BUILTIN_CONFIG_INVALID_CODE:
+            return BUILTIN_CONFIG_INVALID_NEXT_STEP
+        if path == "/v1/synthesize" and _is_unknown_voice(exc):
+            return VOICE_NOT_FOUND_NEXT_STEP
         if (exc.code or "") == NO_PROVIDER_AVAILABLE_CODE and path == "/v1/synthesize":
             return NO_PROVIDER_AVAILABLE_NEXT_STEP
         if (exc.code or "") == TEXT_TOO_LONG_CODE and path == "/v1/synthesize":
@@ -1862,12 +1947,28 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
         return CREDIT_EXHAUSTED_NEXT_STEP
+    if (
+        isinstance(exc, http_client.SpekoApiError)
+        and exc.code == PROVIDER_TIMEOUT_CODE
+        and path == "/v1/synthesize"
+    ):
+        return SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP
+    if isinstance(exc, http_client.SpekoApiError) and exc.code == DESTINATION_REQUIRES_CARD_CODE:
+        return DESTINATION_REQUIRES_CARD_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError):
         if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/transcribe":
             return TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP
         if exc.code == PHONE_NUMBER_PROVISIONING_FAILED_CODE:
             return _phone_provisioning_failed_next_step()
     return "Retry the Speko MCP request or inspect the Speko API response details."
+
+
+_UNKNOWN_VOICE_MARKERS = ("voice_not_found", "voice id must be a valid uuid")
+
+
+def _is_unknown_voice(exc: http_client.SpekoApiError) -> bool:
+    message = str(exc.message or "").lower()
+    return any(marker in message for marker in _UNKNOWN_VOICE_MARKERS)
 
 
 def validate_create_agent_body(body: dict[str, Any]) -> None:
@@ -1961,7 +2062,9 @@ def validate_create_session_body(body: dict[str, Any]) -> None:
 
 
 def validate_create_phone_session_body(body: dict[str, Any]) -> None:
-    to = body.get("to")
+    to = _strip_phone_formatting(body.get("to"))
+    if to is not None:
+        body["to"] = to
     if not isinstance(to, str) or not _E164_RE.match(to):
         raise ToolError(
             "Invalid create_phone_session body: body.to must be an E.164 "
@@ -2181,6 +2284,10 @@ async def create_agent(
 ) -> ToolResult:
     """Create a Speko agent.
 
+    Never send endCall: the end_call tool is always on and {'enabled': false}
+    is rejected with 400. To keep the agent from hanging up early, say so in
+    systemPrompt.
+
     The agent is pinned to the failover stack matching intent.optimizeFor
     (quality / latency / cost) and intent.region. Stack tiers and their
     components for a given description are reported by preview_stacks."""
@@ -2263,7 +2370,8 @@ async def update_agent(
                 "'adaptive'|'vad', minDuration?: int ms, minWords?: int}, "
                 "turnDetection?: boolean|'stt', turnDetector?: "
                 "'smart_turn'|'speko_turn_v1', contextThreshold?: boolean, "
-                "heardBy?: 'content'|'timing', keypad?: boolean, textGate?: boolean, dtmfToolDescription?: "
+                "heardBy?: 'content'|'timing', keypad?: boolean, textGate?: boolean, "
+                "dtmfToolDescription?: "
                 "string, amdPrompt?: string, waitForCallee?: boolean, "
                 "onMachine?: 'hangup'|'leave_message'|'agent_decides', "
                 "voicemailMessage?: string, holdTimeoutSeconds?: int 60-7200 "
@@ -2282,7 +2390,11 @@ async def update_agent(
         ),
     ],
 ) -> ToolResult:
-    """Update one Speko agent."""
+    """Update one Speko agent. Only the fields sent change.
+
+    Never send endCall: the end_call tool is always on and {'enabled': false}
+    is rejected with 400. To keep the agent from hanging up early, say so in
+    systemPrompt."""
     validate_update_agent_body(body)
     apply_directory_disclosure(body, partial=True)
     return await call(
@@ -2331,14 +2443,19 @@ async def create_agent_tool(
                 "chars), headers?: object, timeoutMs?: 100-4000, "
                 "responseMode?: 'sync'|'async', asyncAck?: string} | "
                 "{kind:'builtin', name: one of search_knowledge_base, "
-                "transfer_call, end_call, send_sms, config?: any} | "
+                "transfer_call, end_call, send_sms, config?: object} | "
                 "{kind:'integration', installationId: uuid, appKey: "
                 "string, actionKey: string, config?: any}}. Builtins are "
                 "only the platform tools listed; any other builtin name is "
                 "rejected (422 BUILTIN_UNKNOWN). There is no builtin web "
                 "search: use a webhook source for that and anything else. "
                 "Never register send_dtmf; the runtime creates the keypad "
-                "tool, steered by turnHandling.dtmfToolDescription. Optional: "
+                "tool, steered by turnHandling.dtmfToolDescription. Builtin "
+                "config: transfer_call needs {destinations: [{label: string, "
+                "to: E.164 string, mode?: 'warm'|'blind'}] (1-10), "
+                "defaultMode?, ringingTimeout?: seconds, fallback?: {strategy?: "
+                "'return_to_assistant'|'take_message'|'end_call', message?}}; "
+                "search_knowledge_base needs {knowledgeBaseId}. Optional: "
                 + TOOL_SIMULATION_FIELD_DOC
             )
         ),
@@ -2746,7 +2863,7 @@ async def create_phone_session(
                 "and binds it when agentId is present. Do not collect KYB fields. "
                 "Leave `voice` unset unless it is a value already configured on "
                 "the target agent. An unowned or misspelled voice id is accepted "
-                "here but can fail silently downstream."
+                "here but can fail silently downstream. " + END_CALL_NOTE
             )
         ),
     ],
@@ -2950,7 +3067,10 @@ async def search_available_phone_numbers(
             )
         ),
     ] = None,
-    limit: Annotated[int | None, Field(description="Maximum available numbers to return.")] = None,
+    limit: Annotated[
+        int | None,
+        Field(description="Maximum available numbers to return, 1-50 (larger values return 50)."),
+    ] = None,
 ) -> ToolResult:
     """Search phone numbers available to buy.
 
@@ -2986,7 +3106,9 @@ async def search_available_phone_numbers(
                 "areaCode": area_code,
                 "locality": locality,
                 "state": state,
-                "limit": limit,
+                # Platform caps the search at 50 and answers 400 above it
+                # (6 in prod 2026-10-19..21); a bigger page is never needed.
+                "limit": None if limit is None else max(1, min(limit, AVAILABLE_NUMBERS_MAX_LIMIT)),
             },
         ),
         text="Retrieved available phone numbers.",

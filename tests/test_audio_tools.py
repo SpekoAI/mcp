@@ -40,7 +40,9 @@ MP3 = b"ID3\x04\x00audio-bytes"
 DRIVE_MESSAGE = (
     "Google requires access to this file, so Speko received Google's web page instead of "
     "the audio. In Google Drive open Share, set General access to 'Anyone with the link', "
-    "then send the same link again."
+    "then send the same link again. Only the file's owner can change this: ask the user to "
+    "do it and confirm before calling again, because the same link fails the same way "
+    "until it is shared."
 )
 NO_SPEECH_MESSAGE = (
     "No speech was recognized in the audio. Check the recording before trying again."
@@ -448,8 +450,12 @@ async def test_synthesize_raises_a_router_provider_error_rather_than_retrying(
     monkeypatch.setattr(http_client, "post_router_speech", failing_router)
     monkeypatch.setattr(http_client, "call_speko_api_raw", unreachable)
 
-    with pytest.raises(http_client.SpekoApiError):
+    with pytest.raises(ToolError) as raised:
         await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+    # Raised with a next step, and the Platform error kept as the cause so the
+    # tool_error log line still carries its status and code.
+    assert isinstance(raised.value.__cause__, http_client.SpekoApiError)
+    assert "next_step=" in str(raised.value)
 
 
 # --- linked synthesis (`delivery: 'link'`) ---------------------------------

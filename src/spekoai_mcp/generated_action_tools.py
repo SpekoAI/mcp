@@ -8,7 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import fastmcp_request_ctx
+from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool, ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
@@ -16,7 +16,10 @@ from pydantic import Field
 from spekoai_mcp import http_client
 from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.credit_exhaustion import BALANCE_ACTION_ID, balance_result_text
+from spekoai_mcp.profiles import current_profile, profile_serves_tool
 from spekoai_mcp.tool_text import payload_text
+
+DESCRIBE_ACTION_ID = "capabilities.describe"
 
 
 class ManifestActionTool(Tool):
@@ -24,6 +27,10 @@ class ManifestActionTool(Tool):
     idempotency: str = Field(exclude=True)
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        if self.action_id == DESCRIBE_ACTION_ID:
+            described = await _describe_mcp_tool(arguments.get("actionId"))
+            if described is not None:
+                return described
         idempotency_key = None
         if self.idempotency == "required":
             idempotency_key = _idempotency_key(self.action_id, arguments)
@@ -42,12 +49,74 @@ class ManifestActionTool(Tool):
 
 
 def _idempotency_key(action_id: str, arguments: dict[str, Any]) -> str:
-    """Stay stable for one MCP request without merging later invocations."""
-    request_context = fastmcp_request_ctx.get()
-    request_id = request_context.request_id if request_context is not None else uuid4().hex
+    """One key per tool invocation, never shared with a later invocation.
+
+    The key used to hash the JSON-RPC request id. That id is only unique within
+    one client connection, and this server is stateless HTTP: every new chat
+    starts numbering again, so the same user calling `billing.portal.create`
+    (no arguments) as request 3 twice produced the same key. Platform scopes the
+    key by organization, principal and action, so the second call replayed the
+    first: 409 ONE_TIME_SECRET_NOT_REPLAYABLE for an action with a secret
+    output (14 in prod 2026-10-19..21 across billing.portal.create,
+    billing.checkout.create and integrations.connect), and a silently replayed
+    old result for any other required-idempotency action.
+    """
     canonical = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(f"{action_id}:{request_id}:{canonical}".encode()).hexdigest()
+    digest = hashlib.sha256(f"{action_id}:{uuid4().hex}:{canonical}".encode()).hexdigest()
     return f"mcp-{digest}"
+
+
+async def _describe_mcp_tool(target: Any) -> ToolResult | None:
+    """Answer `capabilities.describe` for a tool this server already lists.
+
+    Platform's registry holds only manifest actions, so describing a
+    hand-written tool (`sessions.phone.create`, `audio.synthesize`,
+    `agents.update`) answered 404 ACTION_NOT_FOUND: 20 times in prod
+    2026-10-19..21, every one a model asking for the schema it needed. The tool
+    is in this server's tools/list, so return its schema here instead.
+    Manifest actions, and anything this profile does not serve, still go to
+    Platform, which owns their contract and authorization.
+    """
+    if not isinstance(target, str) or target in _MANIFEST_ACTION_IDS:
+        return None
+    if not profile_serves_tool(target, current_profile()):
+        return None
+    tool = await get_context().fastmcp.get_tool(target)
+    if tool is None:
+        return None
+    annotations = tool.annotations
+    effect = "read" if annotations is not None and annotations.read_only_hint else "write"
+    if annotations is not None and annotations.destructive_hint:
+        effect = "destructive"
+    warning = (
+        f"{target} is an MCP tool in your tool list, not a registry action. Call it "
+        "directly with arguments matching inputSchema; do not route it through "
+        "another tool."
+    )
+    payload = {
+        "kind": "result",
+        "data": {
+            "action": {
+                "id": target,
+                "version": 1,
+                "description": tool.description or "",
+                "inputSchema": tool.parameters,
+                "outputSchema": tool.output_schema or {},
+                "effect": effect,
+                "requiredScopes": [],
+                "allowedPrincipals": ["oauth-user", "api-key"],
+                "idempotency": "none",
+                "execution": "sync",
+                "profiles": [],
+                "secretInputPaths": [],
+                "secretOutputPaths": [],
+            }
+        },
+        "warnings": [{"code": "MCP_TOOL_NOT_REGISTRY_ACTION", "message": warning}],
+        "resourceLinks": [],
+    }
+    text = f"{warning}\n\ninputSchema: {json.dumps(tool.parameters, separators=(',', ':'))}"
+    return ToolResult(content=[TextContent(type="text", text=text)], structured_content=payload)
 
 
 def _open_output_schema(schema: Any) -> Any:
@@ -73,6 +142,9 @@ def _open_output_schema(schema: Any) -> Any:
 
 def _title(action_id: str) -> str:
     return " ".join(part.replace("_", " ").title() for part in action_id.split("."))
+
+
+_MANIFEST_ACTION_IDS: frozenset[str] = frozenset(entry["id"] for entry in action_entries())
 
 
 def register_generated_action_tools(mcp: FastMCP) -> None:

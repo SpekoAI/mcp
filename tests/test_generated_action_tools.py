@@ -8,20 +8,23 @@ from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.generated_action_tools import _idempotency_key, _open_output_schema
 
 
-def test_idempotency_key_is_stable_per_request_and_distinct_between_requests() -> None:
-    arguments = {"operationId": "00000000-0000-4000-8000-000000000001"}
-    first = fastmcp_request_ctx.set(SimpleNamespace(request_id="request-1"))  # type: ignore[arg-type]
+def test_idempotency_key_is_never_shared_between_invocations() -> None:
+    """JSON-RPC ids restart with every stateless connection, so two chats that
+    each send request 3 with the same arguments must still get distinct keys;
+    a shared key replays the first result (409 ONE_TIME_SECRET_NOT_REPLAYABLE
+    on billing.portal.create in prod)."""
+    arguments: dict[str, object] = {}
+    first = fastmcp_request_ctx.set(SimpleNamespace(request_id=3))  # type: ignore[arg-type]
     try:
-        key = _idempotency_key("operations.cancel", arguments)
-        assert _idempotency_key("operations.cancel", arguments) == key
+        key = _idempotency_key("billing.portal.create", arguments)
     finally:
         fastmcp_request_ctx.reset(first)
-
-    second = fastmcp_request_ctx.set(SimpleNamespace(request_id="request-2"))  # type: ignore[arg-type]
+    second = fastmcp_request_ctx.set(SimpleNamespace(request_id=3))  # type: ignore[arg-type]
     try:
-        assert _idempotency_key("operations.cancel", arguments) != key
+        assert _idempotency_key("billing.portal.create", arguments) != key
     finally:
         fastmcp_request_ctx.reset(second)
+    assert key.startswith("mcp-")
 
 
 def test_open_output_schema_drops_closed_objects_at_every_depth() -> None:
@@ -32,7 +35,9 @@ def test_open_output_schema_drops_closed_objects_at_every_depth() -> None:
             "data": {
                 "type": "object",
                 "additionalProperties": False,
-                "properties": {"items": {"type": "array", "items": {"additionalProperties": False}}},
+                "properties": {
+                    "items": {"type": "array", "items": {"additionalProperties": False}}
+                },
             },
             "extra": {"type": "object", "additionalProperties": {"type": "string"}},
         },
@@ -40,7 +45,9 @@ def test_open_output_schema_drops_closed_objects_at_every_depth() -> None:
     opened = _open_output_schema(schema)
     assert "additionalProperties" not in opened
     assert "additionalProperties" not in opened["properties"]["data"]
-    assert "additionalProperties" not in opened["properties"]["data"]["properties"]["items"]["items"]
+    assert (
+        "additionalProperties" not in opened["properties"]["data"]["properties"]["items"]["items"]
+    )
     # A typed map is a real constraint, not a closed object; it stays.
     assert opened["properties"]["extra"]["additionalProperties"] == {"type": "string"}
     # The manifest entry itself is not mutated.
