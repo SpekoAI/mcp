@@ -339,6 +339,18 @@ async def test_create_phone_session_rejects_non_e164_to_before_api(
     assert speko_api_mock == []
 
 
+async def test_create_phone_session_points_dialer_strings_at_telephony_dtmf(
+    speko_api_mock: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ToolError, match="telephony.dtmf"):
+        await create_server().call_tool(
+            "sessions.phone.create",
+            {"body": {"to": "+12015550123,,1", "agentId": "agent_1"}},
+        )
+
+    assert speko_api_mock == []
+
+
 async def test_call_tools_strip_the_sip_participant_prefix(
     speko_api_mock: list[dict[str, object]],
 ) -> None:

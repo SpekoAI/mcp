@@ -1758,7 +1758,7 @@
     {
       "id": "organization.get",
       "version": 1,
-      "description": "Get the current workspace and its capability flags: features.buyPhoneNumbers, sms10dlc, smsMessaging, imessageIntegration, agentDuplication and others, each as an {enabled} object. retrievalProvider and imessageProvider are null when the corresponding integration is not configured.",
+      "description": "Get the current workspace and its capability flags: features.buyPhoneNumbers, sms10dlc, imessageIntegration, agentDuplication and others, each as an {enabled} object. features.smsSending is {enabled, reason}: every workspace receives SMS, and sending starts once a number is on an approved 10DLC campaign; reason is no_approved_campaign or campaign_billing_suspended while it is off. smsMessaging is deprecated and mirrors smsSending.enabled. retrievalProvider and imessageProvider are null when the corresponding integration is not configured.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -1909,6 +1909,37 @@
                   "smsMessaging": {
                     "$ref": "#/$defs/__schema0"
                   },
+                  "smsSending": {
+                    "default": {
+                      "enabled": false,
+                      "reason": "no_approved_campaign"
+                    },
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "reason": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "no_approved_campaign",
+                              "campaign_billing_suspended"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "enabled",
+                      "reason"
+                    ],
+                    "additionalProperties": false
+                  },
                   "sms10dlcSharedCampaign": {
                     "$ref": "#/$defs/__schema0"
                   },
@@ -1936,6 +1967,7 @@
                   "buyPhoneNumbers",
                   "sms10dlc",
                   "smsMessaging",
+                  "smsSending",
                   "sms10dlcSharedCampaign",
                   "imessageIntegration",
                   "agentDuplication",
@@ -7057,6 +7089,12 @@
                     }
                   ]
                 },
+                "outboundDtmf": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "backgroundAudio": {
                   "anyOf": [
                     {
@@ -7929,6 +7967,12 @@
                   {
                     "type": "null"
                   }
+                ]
+              },
+              "outboundDtmf": {
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "backgroundAudio": {
@@ -8973,6 +9017,12 @@
                       {
                         "type": "null"
                       }
+                    ]
+                  },
+                  "outboundDtmf": {
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "backgroundAudio": {
@@ -25607,7 +25657,7 @@
     {
       "id": "sms.conversations.reply",
       "version": 1,
-      "description": "Queue a text in an existing SMS thread, from the thread number to its contact. When the contact texted within the last 24 hours the reply is conversational: no consent record or timezone is needed. Otherwise it is proactive and needs an active consent record (CONSENT_REQUIRED, 422) and a recipient timezone (RECIPIENT_TIMEZONE_REQUIRED, 422). The result has status \"queued\", or \"scheduled\" with effective_send_at at the next allowed time when the message falls inside quiet hours. A queued reply is checked again just before submission and can still be deferred by quiet hours or throughput limits, or rejected, so \"queued\" does not mean sent; sms.messages.get reports whether it was sent and delivered. Refusals: SMS_FEATURE_DISABLED (403, SMS is not enabled for the workspace), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (the sending number has no approved 10DLC campaign yet), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice.",
+      "description": "Queue a text in an existing SMS thread, from the thread number to its contact. When the contact texted within the last 24 hours the reply is conversational: no consent record or timezone is needed. Otherwise it is proactive and needs an active consent record (CONSENT_REQUIRED, 422) and a recipient timezone (RECIPIENT_TIMEZONE_REQUIRED, 422). The result has status \"queued\", or \"scheduled\" with effective_send_at at the next allowed time when the message falls inside quiet hours. A queued reply is checked again just before submission and can still be deferred by quiet hours or throughput limits, or rejected, so \"queued\" does not mean sent; sms.messages.get reports whether it was sent and delivered. Sending requires an approved 10DLC registration (organization.get features.smsSending). Refusals: SMS_SENDING_NOT_APPROVED (403, no number in the workspace is on an approved campaign yet; register in the dashboard under Settings > SMS compliance), CAMPAIGN_BILLING_SUSPENDED (402, the campaign fee is unpaid), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (409, this number is not ready on the approved campaign), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -27012,7 +27062,7 @@
     {
       "id": "sms.messages.send",
       "version": 1,
-      "description": "Send a proactive text from a workspace number to a contact, starting a thread or adding to the existing one for that number and contact. Proactive sends always need an active consent record for the contact on the number campaign (CONSENT_REQUIRED, 422; consent_id picks a specific record) and a recipient timezone from recipient_timezone, the consent record, the thread, or the workspace default (RECIPIENT_TIMEZONE_REQUIRED, 422). A send requested inside quiet hours is not refused: it returns status \"scheduled\" with effective_send_at at the next allowed time. To answer a contact who texted in the last 24 hours without consent, sms.conversations.reply applies. Refusals: SMS_FEATURE_DISABLED (403, SMS is not enabled for the workspace), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (the sending number has no approved 10DLC campaign yet), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). SMS_THREAD_AGENT_CHANGED (409) means expected_agent_id does not handle the thread. Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice. Delivery progress is on sms.messages.get.",
+      "description": "Send a proactive text from a workspace number to a contact, starting a thread or adding to the existing one for that number and contact. Proactive sends always need an active consent record for the contact on the number campaign (CONSENT_REQUIRED, 422; consent_id picks a specific record) and a recipient timezone from recipient_timezone, the consent record, the thread, or the workspace default (RECIPIENT_TIMEZONE_REQUIRED, 422). A send requested inside quiet hours is not refused: it returns status \"scheduled\" with effective_send_at at the next allowed time. To answer a contact who texted in the last 24 hours without consent, sms.conversations.reply applies. Sending requires an approved 10DLC registration (organization.get features.smsSending). Refusals: SMS_SENDING_NOT_APPROVED (403, no number in the workspace is on an approved campaign yet; register in the dashboard under Settings > SMS compliance), CAMPAIGN_BILLING_SUSPENDED (402, the campaign fee is unpaid), PHONE_NOT_FOUND (404), PHONE_NOT_SMS_READY / CAMPAIGN_NOT_READY / MESSAGING_PROFILE_NOT_READY (409, this number is not ready on the approved campaign), RECIPIENT_SUPPRESSED (409, the contact texted STOP; nothing can be sent until they opt back in), INSUFFICIENT_CREDITS (402), IDEMPOTENCY_CONFLICT (409). SMS_THREAD_AGENT_CHANGED (409) means expected_agent_id does not handle the thread. Each distinct message needs its own idempotency_key; a retry with the same key and input returns the original message instead of sending twice. Delivery progress is on sms.messages.get.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

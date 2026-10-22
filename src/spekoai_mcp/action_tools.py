@@ -584,6 +584,8 @@ TOOL_SIMULATION_FIELD_DOC = (
 
 _E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 _PHONE_FORMATTING_RE = re.compile(r"[\s().\-\u00a0]")
+# A dialer string such as "+12015551234,,1": keys belong in telephony.dtmf.
+_DIAL_STRING_SUFFIX_RE = re.compile(r"^\+[1-9]\d{6,14}[,wWpP;]")
 
 
 def _strip_phone_formatting(value: Any) -> str | None:
@@ -2065,6 +2067,13 @@ def validate_create_phone_session_body(body: dict[str, Any]) -> None:
     to = _strip_phone_formatting(body.get("to"))
     if to is not None:
         body["to"] = to
+    if isinstance(to, str) and _DIAL_STRING_SUFFIX_RE.match(to):
+        raise ToolError(
+            "Invalid create_phone_session body: body.to carries keys after the "
+            "number. Send the bare E.164 number in body.to and the keys in "
+            "body.telephony.dtmf (e.g. 'ww1'); they are pressed after answer, "
+            f"before the agent speaks; next_step={CREATE_PHONE_SESSION_NEXT_STEP}"
+        )
     if not isinstance(to, str) or not _E164_RE.match(to):
         raise ToolError(
             "Invalid create_phone_session body: body.to must be an E.164 "
@@ -2383,7 +2392,11 @@ async def update_agent(
                 "an automated menu, or, with profile 'ivr', when AMD ends "
                 "without a human verdict; never with telephony.amd disabled. "
                 "Profile 'ivr' arms it from the first turn only on inbound and "
-                "web calls), webhooks "
+                "web calls), outboundDtmf (string|null: keys every outbound "
+                "call presses after answer, before the agent speaks, to "
+                "replay a menu path you already know, e.g. '8w2'; 0-9 * # and "
+                "w or , for a 0.5s pause, <=64 chars; a per-call "
+                "telephony.dtmf wins), webhooks "
                 "({preCall?|postCall?|status?|analysis?|recording?: {url: "
                 "string, headers?: object, timeoutMs?: 100-8000}|null}|null)."
             )
@@ -2849,7 +2862,8 @@ async def create_phone_session(
                 "providerOptions?: same shape}), telephony "
                 "({region?: string, amd?: {mode: "
                 "'agent'|'carrier'|'disabled' (default 'agent'), "
-                "timeoutSeconds?: int <=60}}), constraints "
+                "timeoutSeconds?: int <=60}, dtmf?: keys on answer "
+                "('ww1w8')}), constraints "
                 "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
                 "metadata (object), maxDurationSeconds (int, minimum 30; "
                 "maximum 3600 for s2s or 14400 for cascade). ChatGPT and "
