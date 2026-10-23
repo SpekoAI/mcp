@@ -2912,7 +2912,8 @@ async def create_phone_session(
     provider owns before dialing. An unrecognized or foreign voice id can
     produce a dead-air leg with no error. Omit `voice` unless it came from
     this agent's own configuration; there is no voice-lookup tool on this
-    profile.
+    profile. A Paxa voice speaks only on the models its GET /v1/voices entry
+    lists in `models`; any other Paxa voice is replaced by a default one.
     """
     validate_create_phone_session_body(body)
     apply_directory_disclosure(body)
