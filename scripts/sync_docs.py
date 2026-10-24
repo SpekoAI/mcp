@@ -228,7 +228,15 @@ def _extract_summary(body: str) -> str:
 
 
 def _default_repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    """In the monorepo this file sits at ``packages/mcp-server/scripts/``; in
+    the public mirror it sits at ``scripts/``. Anchor on the ``packages``
+    directory rather than on depth, so a mirror checked out at any path
+    resolves to its own root instead of an arbitrary ancestor."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if parent.name == "packages":
+            return parent.parent
+    return here.parents[1] if len(here.parents) > 1 else here.parent
 
 
 def _is_remote_source(source: str) -> bool:
