@@ -3141,13 +3141,19 @@ async def create_phone_number(
                 "('inbound'|'outbound'|'both', default 'outbound'), label "
                 "(string <=120), agentId (string; agent that answers "
                 "inbound calls on this number), dispatchMetadataTemplate "
-                "(object)."
+                "(object), confirmAdditionalNumber (true only after the owner "
+                "agreed to buy another number when the workspace already has one)."
             )
         ),
     ],
 ) -> ToolResult:
     """Buy (provision) a phone number. PAID — tell the owner the price and get
-    their OK first: the search result's upfrontCostUsd (setup) and
+    their OK first. Check phone_numbers.list before buying: when the workspace
+    already has a number, use it (link an agent with phone_numbers.update). A
+    purchase while the workspace has a number is refused with 409
+    PHONE_NUMBER_ADDITIONAL_PURCHASE_UNCONFIRMED and the owned numbers; send
+    confirmAdditionalNumber: true only after the owner agreed to another one.
+    Setup is never refunded. The search result's upfrontCostUsd (setup) and
     monthlyCostUsd (rental) are the exact prices, $1 setup plus $2/month for
     most numbers, debited from prepaid workspace credits (setup plus the first
     month now). A number with aboveStandardPrice cannot be bought from here:
