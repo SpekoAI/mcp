@@ -3186,7 +3186,12 @@ async def update_phone_number(
                 "JSON body for PATCH /v1/phone-numbers/{id}. All fields "
                 "optional: direction ('inbound'|'outbound'|'both'), label "
                 "(string <=120 | null), agentId (string to relink, null to "
-                "unlink), dispatchMetadataTemplate (object | null)."
+                "unlink), dispatchMetadataTemplate (object | null), callerName "
+                "(outbound caller name shown by carriers that display one: "
+                "letters, digits and spaces, <=15 chars; null removes it; "
+                "owner/admin only, US local numbers bought through Speko "
+                "only, see callerNameSupported; must be the user's business "
+                "name, so confirm it with them first)."
             )
         ),
     ],
