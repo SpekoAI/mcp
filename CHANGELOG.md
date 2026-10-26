@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.52
 
-- `voice_clones.create`, `voice_clones.list`, `voice_clones.provision` and `voice_clones.delete` (customer profile): clone a voice from a public recording link and get the provider voice id to pass to `audio.synthesize`, the same as the dashboard's Voices page. Not served on Muse or the directory hosts.
+- `voice_clones.create`, `voice_clones.list`, `voice_clones.provision` and `voice_clones.delete` (customer profile): clone a voice from a public recording link and get the provider voice id to pass to `audio.synthesize`, the same as the dashboard's Voices page. Not served on Muse or the directory hosts (#3491).
 - Tool arguments with an unambiguous wrong shape are repaired before validation instead of rejected: body fields sent at the top level of a `body` tool (`audio.synthesize`, `sessions.phone.create`, `agents.update`) are wrapped into `body`; a flat tool given a `body`/`path`/`params` wrapper (including a JSON string) is unwrapped; camelCase/snake_case twins (`agentId` -> `agent_id`, `sessionId` -> `session_id`) and a bare `id` for the one required `*_id` argument are renamed. Only an undeclared key is moved onto a declared argument the caller did not send, so conflicts still fail validation.
 - Required-idempotency actions get a fresh idempotency key per invocation. The key hashed the JSON-RPC request id, which restarts on every stateless connection, so a repeated `billing.portal.create` / `billing.checkout.create` / `integrations.connect` replayed an earlier execution and answered 409 `ONE_TIME_SECRET_NOT_REPLAYABLE`.
 - `capabilities.describe` on a tool this server already lists returns that tool's input schema instead of 404 `ACTION_NOT_FOUND`.
@@ -448,7 +448,7 @@ number. Tag and package version are aligned again from here.
 
 - Builder tool profile: ?profile=builder serves a 12-tool preset for AI app builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) incl. new voices.list, models.list, and code_snippets.get; default profile byte-identical
 
-## Unreleased
+## 0.2.52
 
 - Builder tool profile: `/mcp?profile=builder` serves a curated 12-tool
   preset for app builders (v0, Lovable, Bolt, Replit, Base44, Figma Make) —
