@@ -62,6 +62,9 @@ names:
   `phone_numbers.sip_connections.create` connects a customer SIP trunk and
   `phone_numbers.import` attaches a number that rides it, with no SIP gateway
   or support ticket;
+- custom voices: `voice_clones.create` clones a voice from a recording link
+  onto ElevenLabs, Cartesia, MiniMax or CSM, and its provider voice id works
+  with `audio.synthesize`; `voice_clones.list`, `.provision` and `.delete`;
 - knowledge bases, evals, migration helpers, audio helpers, and `docs.search`.
 
 ### Builder profile
