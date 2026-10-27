@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -22,7 +23,7 @@ from starlette.types import Message as ASGIMessage
 from starlette.types import Receive, Scope, Send
 
 from spekoai_mcp.action_tools import register_action_tools
-from spekoai_mcp.apps import register_apps, register_public_apps
+from spekoai_mcp.apps import deployment_origin, register_apps, register_public_apps
 from spekoai_mcp.argument_shape import ArgumentShapeMiddleware
 from spekoai_mcp.attribution import (
     InvocationAttributionMiddleware,
@@ -46,7 +47,13 @@ from spekoai_mcp.http_client import (
 from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
-from spekoai_mcp.setup_tools import register_setup_tools
+from spekoai_mcp.setup_tools import (
+    AUTH_NOTE,
+    INSTALLER,
+    SETUP_DOCS_URL,
+    client_steps,
+    register_setup_tools,
+)
 from spekoai_mcp.support_handoff import SupportHandoffMiddleware
 from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
 
@@ -54,7 +61,6 @@ MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
 MCP_PROTOCOL_VERSION = "2026-07-28"
 
-DOCS_URL = "https://docs.speko.dev/quickstart/mcp"
 
 # `serverInfo` identity, advertised during the handshake. Directories and
 # catalogs (Manufact's among them) read the title, description, website and
@@ -73,23 +79,60 @@ SERVER_DESCRIPTION = (
     "phone numbers."
 )
 
-# `GET /` answers 200 and forwards browsers to the docs with a meta refresh
-# rather than a 307. Each host's origin is the audio player's
-# `openai/widgetDomain` (`apps.py`), and Manufact's `view-domain-responds`
-# check failed on the redirect on 2026-10-15 even though it ended at a 200.
-ROOT_PAGE = f"""<!doctype html>
+# `GET /` answers 200 with the setup steps for this host. It must stay a 2xx
+# page, never a redirect: each host's origin is the audio player's
+# `openai/widgetDomain` (`apps.py`), and Manufact's `view-domain-responds` check
+# failed a 307 on 2026-10-15 even though it ended at a 200. The page used to be
+# a 0-second refresh to the docs, which Manufact's "Setup instructions at MCP
+# URL" check read as no instructions (2026-10-24). The pages that pass that
+# check print the reviewed URL itself, as plain server-rendered text, so this
+# page prints the bare origin (the public docs endpoint, served by `POST /`) as
+# well as `/mcp`.
+FALLBACK_ORIGIN = "https://mcp.speko.ai"
+_ROOT_PAGE_STYLE = (
+    "body{font-family:system-ui,sans-serif;max-width:46rem;margin:2rem auto;"
+    "padding:0 1rem;line-height:1.5}"
+    "pre{background:#f4f4f5;padding:.75rem;overflow-x:auto}"
+    "code{font-family:ui-monospace,monospace}"
+)
+
+
+def root_page(origin: str | None = None) -> str:
+    """The setup page `GET /` serves, for the host at ``origin``."""
+    origin = (origin or deployment_origin() or FALLBACK_ORIGIN).rstrip("/")
+    endpoint = f"{origin}{MCP_PATH}"
+    esc = html.escape
+    clients = "\n".join(
+        f"<h3>{esc(client['name'])}</h3>\n<p>{esc(client['instructions'])}</p>\n"
+        f"<pre><code>{esc(client['snippet'])}</code></pre>"
+        for client in client_steps(endpoint)
+    )
+    return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Speko MCP server</title>
-<meta http-equiv="refresh" content="0; url={DOCS_URL}">
-<link rel="canonical" href="{DOCS_URL}">
+<style>{_ROOT_PAGE_STYLE}</style>
 </head>
 <body>
-<p>Speko MCP server. Setup guide: <a href="{DOCS_URL}">{DOCS_URL}</a></p>
+<main>
+<h1>Speko MCP server</h1>
+<p>{esc(SERVER_DESCRIPTION)}</p>
+<h2>Connect</h2>
+<p>MCP endpoint (Streamable HTTP): <code>{esc(endpoint)}</code></p>
+<p>Sign-in: {esc(AUTH_NOTE)}</p>
+<p>Public documentation MCP, no sign-in: <code>{esc(origin)}</code></p>
+<p>Guided installer: <code>{esc(INSTALLER)}</code></p>
+<h2>Set up your client</h2>
+{clients}
+<p>Full setup guide: <a href="{esc(SETUP_DOCS_URL)}">{esc(SETUP_DOCS_URL)}</a></p>
+</main>
 </body>
 </html>
 """
+
+
 # Response headers a browser MCP client must read: the OAuth challenge and the
 # protocol-version header. The server is sessionless, so no Mcp-Session-Id.
 CORS_EXPOSE_HEADERS = ["WWW-Authenticate", "Mcp-Protocol-Version"]
@@ -286,8 +329,10 @@ def create_app(auth: AuthProvider | None = None) -> Starlette:
     async def health_check(_: Request) -> PlainTextResponse:
         return PlainTextResponse("OK")
 
+    landing_page = root_page()
+
     async def docs_landing(_: Request) -> HTMLResponse:
-        return HTMLResponse(ROOT_PAGE)
+        return HTMLResponse(landing_page)
 
     async def glama_manifest(_: Request) -> Response:
         return Response(_glama_manifest(), media_type="application/json")

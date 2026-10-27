@@ -139,13 +139,13 @@ async def test_describe_of_a_tool_the_profile_hides_goes_to_platform(
 # --- next steps ---------------------------------------------------------------
 
 
-async def test_card_required_destination_says_add_a_card_not_retry(api: Any) -> None:
+async def test_card_required_destination_says_top_up_once_not_retry(api: Any) -> None:
     api.reply = (
         402,
         {
-            "error": "Add a card to call this country.",
+            "error": "Top up once to call this country.",
             "code": "DESTINATION_REQUIRES_CARD",
-            "hint": "Calls to this country are not covered by free credit.",
+            "hint": "Free credit does not cover calls to this country.",
             "billingUrl": "/settings/billing",
         },
     )
@@ -154,9 +154,13 @@ async def test_card_required_destination_says_add_a_card_not_retry(api: Any) -> 
             "sessions.phone.create", {"body": {"to": "+4915112345678", "agentId": "agent_1"}}
         )
     text = str(raised.value)
-    assert "add a payment card" in text
+    # The fixture runs the customer profile, which can create a checkout link.
+    assert "One top-up of any amount" in text
+    assert "billing.checkout.create" in text
     assert http_client.BILLING_URL in text
     assert "Retry the Speko MCP request" not in text
+    # Any paid top-up clears this block; the old text said the opposite.
+    assert "Adding credit alone" not in text
 
 
 @pytest.mark.parametrize(

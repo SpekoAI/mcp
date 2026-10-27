@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Billing blocks offer a checkout link. On the customer and muse hosts with an OAuth sign-in, the next step for 402 `INSUFFICIENT_CREDITS`, `DESTINATION_REQUIRES_CARD` and `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED`, and the `credits.balance.get` text at $0 or below, tell the agent to ask the user for an amount ($5 to $10,000), call `billing.checkout.create`, and give the user the url, with the billing page as the fallback. After the user pays, the agent checks `credits.balance.get` before it runs the tool again. Other hosts and API-key sessions keep the billing page; the out-of-credit message there is unchanged.
+- 402 `DESTINATION_REQUIRES_CARD` no longer says that adding credit does not clear it. One top-up of any amount, or a card saved for auto top-up, unlocks the country.
+- 402 `SPENDING_CAP_REACHED` says that adding credit does not clear it and names `billing.spending_cap.update`, instead of the generic retry step.
+- `GET /` is a setup page instead of a redirect to the docs: the host's MCP endpoint, how sign-in works, the public docs endpoint (the bare origin), the installer and a snippet per client. It stays a 200 page.
+
 ## 0.2.52
 
 - `voice_clones.create`, `voice_clones.list`, `voice_clones.provision` and `voice_clones.delete` (customer profile): clone a voice from a public recording link and get the provider voice id to pass to `audio.synthesize`, the same as the dashboard's Voices page. Not served on Muse or the directory hosts (#3491).

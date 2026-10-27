@@ -61,6 +61,35 @@ INSUFFICIENT_CREDITS_CODE = "INSUFFICIENT_CREDITS"
 # step to hand the user instead of "inspect the response details".
 BILLING_URL = "https://platform.speko.ai/settings/billing"
 
+# A Stripe Checkout link the model can put in the chat. When an agent gave one,
+# 84% of workspaces paid within a day (prod 2026-10-12..25), but only 18% of
+# workspaces blocked by a 402 were ever given one: no message named the tool.
+# Offered only where `checkout_available()` says this session can call it, and
+# with no suggested amount: the user picks it.
+CHECKOUT_ACTION_ID = "billing.checkout.create"
+CHECKOUT_STEP = (
+    "Ask the user how much credit to add (a whole amount from $5 to $10,000), call "
+    f"{CHECKOUT_ACTION_ID} with that amount_usd, and give them the url it returns. If that "
+    f"fails, give them {BILLING_URL} instead."
+)
+# Stripe credits the workspace from a webhook, a moment after the payment page
+# says paid, so a retry straight after "I paid" can still answer 402.
+AFTER_PAYMENT_STEP = (
+    "After they say they paid, call credits.balance.get before you run the tool again. If "
+    "the balance has not gone up yet, wait a minute: the credit can take a moment to land."
+)
+
+
+def checkout_available() -> bool:
+    """Whether this session can call `billing.checkout.create`.
+
+    Imported at call time, like `_platform_headers`: profiles imports the
+    action manifest, which must not load when this module does.
+    """
+    from spekoai_mcp.profiles import session_can_call
+
+    return session_can_call(CHECKOUT_ACTION_ID)
+
 
 class SpekoApiError(RuntimeError):
     """Clean exception for upstream API failures."""
@@ -828,16 +857,25 @@ def credit_exhausted_message(exc: SpekoApiError) -> str:
     """The one out-of-credit message every tool surface renders.
 
     Written for the model to relay: it names the cause, the concrete remedy
-    (the billing page, who can act on it), and says plainly that retrying
-    without a top-up fails the same way, so the model does not loop.
+    (a checkout link where this session can create one, else the billing page
+    and who can act on it), and says plainly that retrying without a top-up
+    fails the same way, so the model does not loop.
     """
     balance = ""
     if exc.balance_usd is not None:
         balance = f" (balance ${exc.balance_usd:.2f})"
     trace_id = exc.trace_id or "unavailable"
-    return (
+    cause = (
         f"This Speko workspace is out of credit{balance}, so the Speko API refused the request "
-        f"with 402 {INSUFFICIENT_CREDITS_CODE}. Tell the user to add credit at {BILLING_URL} "
+        f"with 402 {INSUFFICIENT_CREDITS_CODE}."
+    )
+    if checkout_available():
+        return (
+            f"{cause} {CHECKOUT_STEP} {AFTER_PAYMENT_STEP} Retrying before credit is added "
+            f"fails the same way; trace_id={trace_id}"
+        )
+    return (
+        f"{cause} Tell the user to add credit at {BILLING_URL} "
         "(a workspace owner or admin can top up or turn on auto top-up), then run this tool "
         f"again. Retrying before credit is added fails the same way; trace_id={trace_id}"
     )

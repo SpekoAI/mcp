@@ -35,6 +35,7 @@ from spekoai_mcp.profiles import (
     DIRECTORY_PROFILES,
     current_profile,
     profile_serves_tool,
+    session_can_call,
 )
 from spekoai_mcp.tool_text import payload_text
 
@@ -341,13 +342,46 @@ TEXT_TOO_LONG_NEXT_STEP = (
 # A grant-only workspace dialled a destination free credit does not cover. The
 # 402 names its own code, so it is not the out-of-credit path, and it fell to
 # the generic "Retry the Speko MCP request" step: prod 2026-10-19..21 has 22 of
-# these, several retried within minutes of each other. Topping up credit does
-# not clear it; a card on file does.
+# these, several retried within minutes of each other. Any paid top-up clears
+# it for good, and so does a card saved for auto top-up
+# (`organizationIsPaying` in apps/server/src/services/grant-only-destination.ts).
+# A card added only in the Stripe billing portal does not.
 DESTINATION_REQUIRES_CARD_CODE = "DESTINATION_REQUIRES_CARD"
+_DESTINATION_REQUIRES_CARD_CAUSE = (
+    "Free credit does not cover calls to this country. One top-up of any amount, or a card "
+    "saved for auto top-up, unlocks it from then on."
+)
 DESTINATION_REQUIRES_CARD_NEXT_STEP = (
-    "Free credit does not cover calls to this country. Tell the user to add a payment "
-    f"card at {http_client.BILLING_URL}, then place the call again. Adding credit alone "
-    "does not clear this, and retrying before a card is on file fails the same way."
+    f"{_DESTINATION_REQUIRES_CARD_CAUSE} Tell the user to top up once at "
+    f"{http_client.BILLING_URL}, then place the call again. Do not retry before they "
+    "confirm they paid."
+)
+
+# The workspace has no number of its own yet and its balance does not cover the
+# number's setup plus first month. Prod 2026-10-12..26 saw one of these; it fell
+# to the generic "Retry" step, which fails the same way until credit is added.
+PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE = "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED"
+_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE = (
+    "The workspace needs more credit to buy the dedicated phone number for this call."
+)
+PHONE_NUMBER_PROVISIONING_CREDITS_NEXT_STEP = (
+    f"{_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE} Tell the user to add credit at "
+    f"{http_client.BILLING_URL}. Do not retry before credit is added."
+)
+
+# The monthly spending cap counts spend, not balance, so adding credit does
+# not clear it. The dashboard has no spending-cap screen: only the
+# `billing.spending_cap.update` action changes it, so never send the user to
+# the billing page for this one.
+SPENDING_CAP_REACHED_CODE = "SPENDING_CAP_REACHED"
+SPENDING_CAP_UPDATE_ACTION_ID = "billing.spending_cap.update"
+_SPENDING_CAP_CAUSE = (
+    "The workspace reached its monthly spending cap. Adding credit does not clear it."
+)
+SPENDING_CAP_REACHED_NEXT_STEP = (
+    f"{_SPENDING_CAP_CAUSE} A workspace owner can raise or remove the cap with "
+    f"{SPENDING_CAP_UPDATE_ACTION_ID} on https://mcp.speko.ai/mcp. Do not retry before "
+    "the cap changes."
 )
 
 # The synthesis provider does not know the voice id. Prod 2026-10-19..21: 20
@@ -1908,6 +1942,27 @@ async def call_list(
     return result({"result": payload}, text=text)
 
 
+def _checkout_or(fallback: str, *, cause: str = "") -> str:
+    """The checkout-link step where this session can create one, else ``fallback``.
+
+    ``cause`` leads the checkout version, so both versions name the block.
+    """
+    if not http_client.checkout_available():
+        return fallback
+    steps = f"{http_client.CHECKOUT_STEP} {http_client.AFTER_PAYMENT_STEP}"
+    return f"{cause} {steps}" if cause else steps
+
+
+def _spending_cap_next_step() -> str:
+    if not session_can_call(SPENDING_CAP_UPDATE_ACTION_ID):
+        return SPENDING_CAP_REACHED_NEXT_STEP
+    return (
+        f"{_SPENDING_CAP_CAUSE} Ask the user whether to raise or remove the cap, call "
+        f"{SPENDING_CAP_UPDATE_ACTION_ID} with their answer, then run the tool again. Do not "
+        "retry before the cap changes."
+    )
+
+
 def next_step_for_error(exc: Exception, *, path: str) -> str:
     if isinstance(exc, http_client.SpekoAuthError):
         return "Check authentication and retry the Speko MCP request."
@@ -1949,7 +2004,7 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
             return TEXT_TOO_LONG_NEXT_STEP
         return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
-        return CREDIT_EXHAUSTED_NEXT_STEP
+        return _checkout_or(CREDIT_EXHAUSTED_NEXT_STEP)
     if (
         isinstance(exc, http_client.SpekoApiError)
         and exc.code == PROVIDER_TIMEOUT_CODE
@@ -1957,7 +2012,19 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
     ):
         return SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.code == DESTINATION_REQUIRES_CARD_CODE:
-        return DESTINATION_REQUIRES_CARD_NEXT_STEP
+        return _checkout_or(
+            DESTINATION_REQUIRES_CARD_NEXT_STEP, cause=_DESTINATION_REQUIRES_CARD_CAUSE
+        )
+    if (
+        isinstance(exc, http_client.SpekoApiError)
+        and exc.code == PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE
+    ):
+        return _checkout_or(
+            PHONE_NUMBER_PROVISIONING_CREDITS_NEXT_STEP,
+            cause=_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE,
+        )
+    if isinstance(exc, http_client.SpekoApiError) and exc.code == SPENDING_CAP_REACHED_CODE:
+        return _spending_cap_next_step()
     if isinstance(exc, http_client.SpekoApiError):
         if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/transcribe":
             return TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP

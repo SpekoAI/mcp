@@ -778,6 +778,19 @@ def profile_serves_tool(name: str, profile: str | None) -> bool:
     return visible
 
 
+def session_can_call(name: str) -> bool:
+    """Whether the current request's session can call ``name``.
+
+    The deployment's profile must serve it, and an action the server refuses
+    to API keys must not be offered to an API-key session. Mirrors the two
+    checks in ``ToolProfileMiddleware``, so an error message never points the
+    model at a tool this session cannot call.
+    """
+    if not profile_serves_tool(name, current_profile()):
+        return False
+    return not (session_is_api_key() and name in _OAUTH_ONLY_MANIFEST_TOOL_NAMES)
+
+
 def profile_serves_phone_calls(profile: str | None) -> bool:
     """Whether this deployment's surface can actually place a call.
 

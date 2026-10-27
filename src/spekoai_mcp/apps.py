@@ -114,8 +114,11 @@ CONNECT_WIDGET_DESCRIPTION = (
 )
 
 
-def _widget_domain() -> str | None:
-    """The deployment's origin, or None when no public URL is configured."""
+def deployment_origin() -> str | None:
+    """The deployment's origin, or None when no public URL is configured.
+
+    Also the address the root setup page (`server.py`) prints for this host.
+    """
     parts = urlsplit((os.environ.get(BASE_URL_ENV_VAR) or "").strip())
     if parts.scheme != "https" or not parts.netloc:
         return None
@@ -126,7 +129,7 @@ def _view_resource_meta(widget_description: str) -> dict[str, str]:
     """Resource-side `_meta` for a view: its description and, when the
     deployment has a public origin, its ChatGPT widget domain."""
     meta = {OPENAI_WIDGET_DESCRIPTION_META_KEY: widget_description}
-    if domain := _widget_domain():
+    if domain := deployment_origin():
         meta[OPENAI_WIDGET_DOMAIN_META_KEY] = domain
     return meta
 

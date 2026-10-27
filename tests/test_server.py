@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import re
 from types import SimpleNamespace
@@ -23,7 +24,6 @@ from spekoai_mcp.profiles import (
     DEFAULT_PROFILE_ENV_VAR,
 )
 from spekoai_mcp.server import (
-    DOCS_URL,
     MCP_PATH,
     MCP_PROTOCOL_VERSION,
     PUBLIC_MCP_PATH,
@@ -32,7 +32,7 @@ from spekoai_mcp.server import (
     create_public_server,
     create_server,
 )
-from spekoai_mcp.setup_tools import SETUP_TOOL_NAMES
+from spekoai_mcp.setup_tools import INSTALLER, SETUP_DOCS_URL, SETUP_TOOL_NAMES
 
 LEGACY_MCP_PROTOCOL_VERSION = "2025-11-25"
 
@@ -421,17 +421,53 @@ def test_public_mcp_root_post_alias_lists_docs_without_authentication() -> None:
     assert resources.status_code == 200
     assert resources.json()["result"]["resources"][0]["uri"] == "spekoai://docs/index"
 
-    # GET / stays human-facing: a 200 page that forwards browsers to the docs.
-    # Not a redirect, because the origin is the audio player's widget domain
-    # and Manufact's `view-domain-responds` check fails a 3xx.
+    # GET / stays human-facing: a 200 setup page, not a redirect, because the
+    # origin is the audio player's widget domain and Manufact's
+    # `view-domain-responds` check fails a 3xx.
     with TestClient(create_app(auth=StubVerifier()), follow_redirects=False) as client:
         landing = client.get("/")
         head = client.head("/")
     assert landing.status_code == 200
     assert landing.headers["content-type"].startswith("text/html")
-    assert f'http-equiv="refresh" content="0; url={DOCS_URL}"' in landing.text
-    assert f'href="{DOCS_URL}"' in landing.text
+    assert 'http-equiv="refresh"' not in landing.text
+    assert f'href="{SETUP_DOCS_URL}"' in landing.text
     assert head.status_code == 200
+
+
+def _page_text(page: str) -> str:
+    """The page as a crawler that strips tags reads it."""
+    return html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", page)))
+
+
+@pytest.mark.parametrize(
+    ("base_url", "origin"),
+    [
+        (None, "https://mcp.speko.ai"),
+        ("https://mcp.speko.ai", "https://mcp.speko.ai"),
+        ("https://chatgpt.speko.ai/", "https://chatgpt.speko.ai"),
+    ],
+)
+def test_root_page_publishes_connection_steps_for_its_own_host(
+    monkeypatch: pytest.MonkeyPatch, base_url: str | None, origin: str
+) -> None:
+    if base_url is None:
+        monkeypatch.delenv("SPEKOAI_MCP_BASE_URL", raising=False)
+    else:
+        monkeypatch.setenv("SPEKOAI_MCP_BASE_URL", base_url)
+    with TestClient(create_app(auth=StubVerifier()), follow_redirects=False) as client:
+        page = client.get("/").text
+    text = _page_text(page)
+
+    # Manufact's "Setup instructions at MCP URL" check passes pages that print
+    # the reviewed URL itself as its own token; a page that showed only
+    # `<origin>/mcp` failed it (mcp.resend.com, 2026-10-24).
+    assert re.search(re.escape(origin) + r"(?![\w/.-])", text)
+    assert f"{origin}/mcp" in text
+    assert f"claude mcp add --transport http speko {origin}/mcp" in text
+    assert f'url = "{origin}/mcp"' in text
+    assert INSTALLER in text
+    assert "Bearer <key>" in text  # escaped in the HTML, readable as text
+    assert "Bearer <key>" not in page
 
 
 def test_asgi_mcp_auth_path_is_not_mounted() -> None:

@@ -29,65 +29,76 @@ AUTH_NOTE = (
     "the Authorization header as Bearer <key> instead."
 )
 
-CLIENTS: list[dict[str, str]] = [
-    {
-        "id": "claude-code",
-        "name": "Claude Code",
-        "instructions": "Run in a terminal:",
-        "snippet": f"claude mcp add --transport http speko {MCP_ENDPOINT}",
-        "snippetLanguage": "bash",
-    },
-    {
-        "id": "codex",
-        "name": "Codex",
-        "instructions": "Add to ~/.codex/config.toml:",
-        "snippet": f'[mcp_servers.speko]\nurl = "{MCP_ENDPOINT}"',
-        "snippetLanguage": "toml",
-    },
-    {
-        "id": "opencode",
-        "name": "OpenCode",
-        "instructions": "Add to opencode.json:",
-        "snippet": (
-            "{\n"
-            '  "$schema": "https://opencode.ai/config.json",\n'
-            '  "mcp": {\n'
-            '    "speko": {\n'
-            '      "type": "remote",\n'
-            f'      "url": "{MCP_ENDPOINT}",\n'
-            '      "enabled": true\n'
-            "    }\n"
-            "  }\n"
-            "}"
-        ),
-        "snippetLanguage": "json",
-    },
-    {
-        "id": "cursor",
-        "name": "Cursor",
-        "instructions": ("Open Cursor Settings > MCP > Add new global MCP server, then add:"),
-        "snippet": (
-            "{\n"
-            '  "mcpServers": {\n'
-            '    "speko": {\n'
-            f'      "url": "{MCP_ENDPOINT}"\n'
-            "    }\n"
-            "  }\n"
-            "}"
-        ),
-        "snippetLanguage": "json",
-    },
-    {
-        "id": "other",
-        "name": "Other clients",
-        "instructions": (
-            "Configure a remote HTTP MCP server named speko at this URL, with "
-            "OAuth browser sign-in:"
-        ),
-        "snippet": MCP_ENDPOINT,
-        "snippetLanguage": "text",
-    },
-]
+
+def client_steps(endpoint: str) -> list[dict[str, str]]:
+    """Setup for every supported client, pointed at ``endpoint``.
+
+    `setup.connect` uses the hosted endpoint; the root setup page
+    (`server.py`) uses the address of the host that serves it.
+    """
+    return [
+        {
+            "id": "claude-code",
+            "name": "Claude Code",
+            "instructions": "Run in a terminal:",
+            "snippet": f"claude mcp add --transport http speko {endpoint}",
+            "snippetLanguage": "bash",
+        },
+        {
+            "id": "codex",
+            "name": "Codex",
+            "instructions": "Add to ~/.codex/config.toml:",
+            "snippet": f'[mcp_servers.speko]\nurl = "{endpoint}"',
+            "snippetLanguage": "toml",
+        },
+        {
+            "id": "opencode",
+            "name": "OpenCode",
+            "instructions": "Add to opencode.json:",
+            "snippet": (
+                "{\n"
+                '  "$schema": "https://opencode.ai/config.json",\n'
+                '  "mcp": {\n'
+                '    "speko": {\n'
+                '      "type": "remote",\n'
+                f'      "url": "{endpoint}",\n'
+                '      "enabled": true\n'
+                "    }\n"
+                "  }\n"
+                "}"
+            ),
+            "snippetLanguage": "json",
+        },
+        {
+            "id": "cursor",
+            "name": "Cursor",
+            "instructions": ("Open Cursor Settings > MCP > Add new global MCP server, then add:"),
+            "snippet": (
+                "{\n"
+                '  "mcpServers": {\n'
+                '    "speko": {\n'
+                f'      "url": "{endpoint}"\n'
+                "    }\n"
+                "  }\n"
+                "}"
+            ),
+            "snippetLanguage": "json",
+        },
+        {
+            "id": "other",
+            "name": "Other clients",
+            "instructions": (
+                "Configure a remote HTTP MCP server named speko at this URL, with "
+                "OAuth browser sign-in:"
+            ),
+            "snippet": endpoint,
+            "snippetLanguage": "text",
+        },
+    ]
+
+
+CLIENTS: list[dict[str, str]] = client_steps(MCP_ENDPOINT)
+
 
 _CLIENT_SCHEMA = {
     "type": "object",

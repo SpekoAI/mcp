@@ -20,7 +20,13 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from mcp import types as mt
 
-from spekoai_mcp.http_client import BILLING_URL, SpekoApiError, credit_exhausted_message
+from spekoai_mcp.http_client import (
+    BILLING_URL,
+    CHECKOUT_STEP,
+    SpekoApiError,
+    checkout_available,
+    credit_exhausted_message,
+)
 
 BALANCE_ACTION_ID = "credits.balance.get"
 
@@ -63,11 +69,18 @@ def balance_result_text(payload: dict[str, Any], default: str) -> str:
 
     A balance at or below zero is not just a number: Platform is refusing new
     sessions, calls and audio requests. Say so where the model reads it, with
-    the billing page, so a "check my balance" question ends in a remedy.
+    a checkout link where this session can create one or else the billing
+    page, so a "check my balance" question ends in a remedy.
     """
     balance = _balance_usd(payload)
     if balance is None or balance > 0:
         return default
+    if checkout_available():
+        return (
+            f"Credit balance is ${balance:.2f}. This workspace is out of credit, so new sessions, "
+            f"calls and audio requests are refused until credit is added. {CHECKOUT_STEP}\n"
+            f"{default}"
+        )
     return (
         f"Credit balance is ${balance:.2f}. This workspace is out of credit, so new sessions, "
         "calls and audio requests are refused until a workspace owner or admin adds credit at "
