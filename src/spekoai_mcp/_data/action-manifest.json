@@ -7089,6 +7089,18 @@
                     }
                   ]
                 },
+                "maxDurationSeconds": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "outboundDtmf": {
                   "type": [
                     "string",
@@ -7211,6 +7223,11 @@
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
                         },
+                        "initialDelayMs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
                         "maxPrompts": {
                           "type": "integer",
                           "minimum": -9007199254740991,
@@ -7221,6 +7238,9 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "hangupOnExhausted": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
@@ -7367,6 +7387,15 @@
                             "timing"
                           ]
                         },
+                        "keypad": {
+                          "type": "boolean"
+                        },
+                        "keypadAllowedKeys": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
                         "textGate": {
                           "type": "boolean"
                         },
@@ -7389,7 +7418,24 @@
                         "waitForCallee": {
                           "type": "boolean"
                         },
+                        "onMachine": {
+                          "type": "string",
+                          "enum": [
+                            "hangup",
+                            "leave_message",
+                            "agent_decides",
+                            "continue"
+                          ]
+                        },
+                        "voicemailMessage": {
+                          "type": "string"
+                        },
                         "holdTimeoutSeconds": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "machineBudgetSeconds": {
                           "type": "integer",
                           "minimum": -9007199254740991,
                           "maximum": 9007199254740991
@@ -7701,7 +7747,7 @@
     {
       "id": "agents.get",
       "version": 1,
-      "description": "Get one agent and its complete editable configuration, including voice, turnHandling (profile, dtmfToolDescription, amdPrompt) and system prompt. Read this before diagnosing a silent call or a missing keypad response. Voice is not validated against what the TTS provider owns. The keypad tool only arms when turnHandling.profile is \"ivr\" or AMD detects a machine mid-call.",
+      "description": "Get one agent and its complete editable configuration, including voice, turnHandling (profile, keypad, onMachine, dtmfToolDescription, amdPrompt) and system prompt. Read this before diagnosing a silent call or a missing keypad response. Voice is not validated against what the TTS provider owns. The keypad tool is built for every phone agent unless turnHandling.keypad is false; it arms when turnHandling.profile is \"ivr\" or the call meets an automated menu, and presses only turnHandling.keypadAllowedKeys when set.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -7972,6 +8018,18 @@
                   }
                 ]
               },
+              "maxDurationSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "outboundDtmf": {
                 "type": [
                   "string",
@@ -8094,6 +8152,11 @@
                         "minimum": -9007199254740991,
                         "maximum": 9007199254740991
                       },
+                      "initialDelayMs": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
                       "maxPrompts": {
                         "type": "integer",
                         "minimum": -9007199254740991,
@@ -8104,6 +8167,9 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "hangupOnExhausted": {
+                        "type": "boolean"
                       }
                     },
                     "required": [
@@ -8250,6 +8316,15 @@
                           "timing"
                         ]
                       },
+                      "keypad": {
+                        "type": "boolean"
+                      },
+                      "keypadAllowedKeys": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
                       "textGate": {
                         "type": "boolean"
                       },
@@ -8272,7 +8347,24 @@
                       "waitForCallee": {
                         "type": "boolean"
                       },
+                      "onMachine": {
+                        "type": "string",
+                        "enum": [
+                          "hangup",
+                          "leave_message",
+                          "agent_decides",
+                          "continue"
+                        ]
+                      },
+                      "voicemailMessage": {
+                        "type": "string"
+                      },
                       "holdTimeoutSeconds": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "machineBudgetSeconds": {
                         "type": "integer",
                         "minimum": -9007199254740991,
                         "maximum": 9007199254740991
@@ -8457,6 +8549,14 @@
                         "minimum": -9007199254740991,
                         "maximum": 9007199254740991
                       },
+                      "continuous": {
+                        "type": "boolean"
+                      },
+                      "switchTurns": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
                       "languages": {
                         "type": "array",
                         "items": {
@@ -8493,6 +8593,18 @@
                               "type": "string"
                             },
                             "systemPrompt": {
+                              "type": "string"
+                            },
+                            "firstMessage": {
+                              "type": "string"
+                            },
+                            "inboundFirstMessage": {
+                              "type": "string"
+                            },
+                            "outboundFirstMessage": {
+                              "type": "string"
+                            },
+                            "voicemailMessage": {
                               "type": "string"
                             }
                           },
@@ -9025,6 +9137,18 @@
                       }
                     ]
                   },
+                  "maxDurationSeconds": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "outboundDtmf": {
                     "type": [
                       "string",
@@ -9147,6 +9271,11 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           },
+                          "initialDelayMs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
                           "maxPrompts": {
                             "type": "integer",
                             "minimum": -9007199254740991,
@@ -9157,6 +9286,9 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "hangupOnExhausted": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -9303,6 +9435,15 @@
                               "timing"
                             ]
                           },
+                          "keypad": {
+                            "type": "boolean"
+                          },
+                          "keypadAllowedKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "textGate": {
                             "type": "boolean"
                           },
@@ -9325,7 +9466,24 @@
                           "waitForCallee": {
                             "type": "boolean"
                           },
+                          "onMachine": {
+                            "type": "string",
+                            "enum": [
+                              "hangup",
+                              "leave_message",
+                              "agent_decides",
+                              "continue"
+                            ]
+                          },
+                          "voicemailMessage": {
+                            "type": "string"
+                          },
                           "holdTimeoutSeconds": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "machineBudgetSeconds": {
                             "type": "integer",
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
@@ -9510,6 +9668,14 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           },
+                          "continuous": {
+                            "type": "boolean"
+                          },
+                          "switchTurns": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
                           "languages": {
                             "type": "array",
                             "items": {
@@ -9546,6 +9712,18 @@
                                   "type": "string"
                                 },
                                 "systemPrompt": {
+                                  "type": "string"
+                                },
+                                "firstMessage": {
+                                  "type": "string"
+                                },
+                                "inboundFirstMessage": {
+                                  "type": "string"
+                                },
+                                "outboundFirstMessage": {
+                                  "type": "string"
+                                },
+                                "voicemailMessage": {
                                   "type": "string"
                                 }
                               },
