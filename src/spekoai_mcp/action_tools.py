@@ -2448,6 +2448,8 @@ async def update_agent(
                 "turnDetection?: boolean|'stt', turnDetector?: "
                 "'smart_turn'|'speko_turn_v1', contextThreshold?: boolean, "
                 "heardBy?: 'content'|'timing', keypad?: boolean, textGate?: boolean, "
+                "recordCallerKeypad?: boolean (record keys the caller presses; "
+                "default off), "
                 "dtmfToolDescription?: "
                 "string, amdPrompt?: string, waitForCallee?: boolean, "
                 "onMachine?: 'hangup'|'leave_message'|'agent_decides', "

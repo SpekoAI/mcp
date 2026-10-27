@@ -7370,6 +7370,9 @@
                         "textGate": {
                           "type": "boolean"
                         },
+                        "recordCallerKeypad": {
+                          "type": "boolean"
+                        },
                         "turnDetector": {
                           "type": "string",
                           "enum": [
@@ -8248,6 +8251,9 @@
                         ]
                       },
                       "textGate": {
+                        "type": "boolean"
+                      },
+                      "recordCallerKeypad": {
                         "type": "boolean"
                       },
                       "turnDetector": {
@@ -9298,6 +9304,9 @@
                             ]
                           },
                           "textGate": {
+                            "type": "boolean"
+                          },
+                          "recordCallerKeypad": {
                             "type": "boolean"
                           },
                           "turnDetector": {
