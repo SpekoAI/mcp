@@ -2458,6 +2458,8 @@ async def update_agent(
                 "string, amdPrompt?: string, waitForCallee?: boolean, "
                 "onMachine?: 'hangup'|'leave_message'|'agent_decides'|'continue' "
                 "('continue' ignores a voicemail verdict), "
+                "onHuman?: 'hangup'|'continue' ('hangup': Realtime outbound "
+                "calls hang up without a word when a live person answers), "
                 "voicemailMessage?: string, holdTimeoutSeconds?: int 60-7200 "
                 "(seconds a phone menu/hold queue may hold the line before the "
                 "call ends; default 600; never past maxDurationSeconds), "
