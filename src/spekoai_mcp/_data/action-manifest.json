@@ -1811,6 +1811,10 @@
               "recordingEnabled": {
                 "type": "boolean"
               },
+              "postCallAnalysisEnabled": {
+                "default": true,
+                "type": "boolean"
+              },
               "retrievalProvider": {
                 "type": [
                   "string",
@@ -1987,6 +1991,7 @@
               "metadata",
               "workDomain",
               "recordingEnabled",
+              "postCallAnalysisEnabled",
               "retrievalProvider",
               "imessageProvider",
               "sipGateway",
