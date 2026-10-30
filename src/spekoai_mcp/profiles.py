@@ -443,6 +443,7 @@ DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFI
 BUILDER_PROFILE_TOOL_NAMES: list[str] = [
     "docs.search",
     "voices.list",
+    "voices.search",
     "models.list",
     "agents.list",
     "agents.get",
@@ -511,6 +512,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     # Build time: what an agent needs while it is writing the app.
     "code_snippets.get",
     "voices.list",
+    "voices.search",
     "models.list",
     "docs.search",
     "agents.preview_stacks",
@@ -558,6 +560,7 @@ _REPLIT_PROFILE_TOOL_SET = frozenset(REPLIT_PROFILE_TOOL_NAMES) | _REPLIT_MANIFE
 BUILDER_ONLY_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "voices.list",
+        "voices.search",
         "models.list",
         "code_snippets.get",
     }

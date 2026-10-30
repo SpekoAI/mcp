@@ -17,7 +17,7 @@ surface.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
@@ -30,6 +30,7 @@ from spekoai_mcp.code_snippets import SNIPPET_FRAMEWORKS, SnippetFramework, get_
 
 BUILDER_TOOL_NAME_BY_FUNCTION = {
     "list_voices": "voices.list",
+    "search_voices": "voices.search",
     "list_models": "models.list",
     "get_code_snippet": "code_snippets.get",
 }
@@ -76,6 +77,7 @@ def register_builder_tools(mcp: FastMCP) -> None:
     profile middleware filters these out of the default view)."""
     for tool in [
         list_voices,
+        search_voices,
         list_models,
         get_code_snippet,
     ]:
@@ -114,11 +116,52 @@ async def list_voices(
 ) -> ToolResult:
     """List the Speko TTS voice catalog: voices (vendor, id, name) plus TTS
     providers with their models. Use a returned voice id as the `voice`
-    field on agents.create or POST /v1/sessions bodies."""
+    field on agents.create or POST /v1/sessions bodies. ElevenLabs voices
+    are not in this list (its provider entry has voicesFetchedLive: true);
+    they are in the voice index, GET /v1/tts/voices?vendor=elevenlabs."""
     return await call(
         "GET",
         http_client.with_query("/v1/voices", {"provider": provider}),
         text="Retrieved voice catalog.",
+    )
+
+
+async def search_voices(
+    vendor: Annotated[
+        str | None,
+        Field(description="TTS vendor, e.g. 'elevenlabs', 'cartesia', 'minimax'."),
+    ] = None,
+    language: Annotated[
+        str | None,
+        Field(description="Language code the voice is native to, e.g. 'es' or 'en-GB'."),
+    ] = None,
+    gender: Annotated[
+        Literal["male", "female", "neutral"] | None,
+        Field(description="Voice gender."),
+    ] = None,
+    accent: Annotated[str | None, Field(description="Accent, e.g. 'mexican'.")] = None,
+    limit: Annotated[int, Field(ge=1, le=100, description="Page size.")] = 25,
+    cursor: Annotated[str | None, Field(description="next_cursor from the previous page.")] = None,
+) -> ToolResult:
+    """Search every vendor's TTS voices that Speko can route, including
+    ElevenLabs on a Speko-managed key. Each result carries `use_with`
+    ({provider, model, voice}): pass `voice` as audio.synthesize's `voice`
+    and pin the provider in constraints.allowedProviders.tts. Results are
+    paginated; follow `next_cursor`."""
+    return await call(
+        "GET",
+        http_client.with_query(
+            "/v1/tts/voices",
+            {
+                "vendor": vendor,
+                "language": language,
+                "gender": gender,
+                "accent": accent,
+                "limit": limit,
+                "cursor": cursor,
+            },
+        ),
+        text="Retrieved matching voices.",
     )
 
 

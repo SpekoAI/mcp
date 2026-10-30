@@ -282,6 +282,22 @@ def _capture_speko_api(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     return captured
 
 
+async def test_search_voices_relays_to_voice_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # tkt_944682ed4eb14c70: voices.list leaves ElevenLabs out, and a managed-key
+    # customer had no other way to find an ElevenLabs voice id.
+    _force_deployment_profile(monkeypatch, "builder")
+    captured = _capture_speko_api(monkeypatch)
+    await create_server().call_tool(
+        "voices.search", {"vendor": "elevenlabs", "language": "es", "gender": "male"}
+    )
+    assert captured["method"] == "GET"
+    assert captured["url"] == (
+        "https://api.speko.dev/v1/tts/voices?vendor=elevenlabs&language=es&gender=male&limit=25"
+    )
+
+
 async def test_list_voices_relays_to_voices_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
