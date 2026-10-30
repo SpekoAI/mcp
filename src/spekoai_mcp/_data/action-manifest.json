@@ -1964,6 +1964,12 @@
                       "enabled": false
                     },
                     "$ref": "#/$defs/__schema0"
+                  },
+                  "sharedOutboundCallerId": {
+                    "default": {
+                      "enabled": false
+                    },
+                    "$ref": "#/$defs/__schema0"
                   }
                 },
                 "required": [
@@ -1977,7 +1983,8 @@
                   "agentDuplication",
                   "telnyxCallControlHandoff",
                   "multiOrgCreation",
-                  "agentsByok"
+                  "agentsByok",
+                  "sharedOutboundCallerId"
                 ],
                 "additionalProperties": false
               }
