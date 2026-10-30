@@ -10078,9 +10078,8 @@
             "$ref": "#/$defs/__schema1"
           },
           "voice": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
+            "description": "A voice id or name from voices.list. Leave it out for the default voice. A style description is not a voice and is ignored.",
+            "$ref": "#/$defs/__schema2"
           }
         },
         "required": [
@@ -10102,6 +10101,11 @@
           "__schema1": {
             "type": "string",
             "pattern": "^\\+[1-9]\\d{6,14}$"
+          },
+          "__schema2": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
           }
         }
       },
