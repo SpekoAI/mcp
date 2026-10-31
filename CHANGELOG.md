@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.53
 
+- `voices.search` (builder, Replit and builder-only profiles): search the voice index across every TTS vendor by `vendor`, `language`, `gender` and `accent`, the same list as `GET /v1/tts/voices`. `voices.list` now points ElevenLabs voice discovery at it (#3607).
 - Billing blocks offer a checkout link. On the customer and muse hosts with an OAuth sign-in, the next step for 402 `INSUFFICIENT_CREDITS`, `DESTINATION_REQUIRES_CARD` and `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED`, and the `credits.balance.get` text at $0 or below, tell the agent to ask the user for an amount ($5 to $10,000), call `billing.checkout.create`, and give the user the url, with the billing page as the fallback. After the user pays, the agent checks `credits.balance.get` before it runs the tool again. Other hosts and API-key sessions keep the billing page; the out-of-credit message there is unchanged.
 - 402 `DESTINATION_REQUIRES_CARD` no longer says that adding credit does not clear it. One top-up of any amount, or a card saved for auto top-up, unlocks the country.
 - 402 `SPENDING_CAP_REACHED` says that adding credit does not clear it and names `billing.spending_cap.update`, instead of the generic retry step.
