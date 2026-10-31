@@ -18231,7 +18231,7 @@
     {
       "id": "phone_numbers.list",
       "version": 1,
-      "description": "List phone and SIP numbers owned by the current workspace. For OAuth connectors, the first outbound call automatically provisions a dedicated number from workspace credits when none exists. Manual dashboard/API users keep the explicit declaration and purchase flow.",
+      "description": "List phone and SIP numbers owned by the current workspace. A workspace with none still places outbound calls, from a shared Speko number (US and Canada, limited calls per day). Receiving calls needs a number the workspace buys or imports.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
