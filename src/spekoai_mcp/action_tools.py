@@ -32,7 +32,10 @@ from pydantic import Field
 from spekoai_mcp import http_client
 from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META
 from spekoai_mcp.profiles import (
+    CONNECTOR_PROFILE,
+    CUSTOMER_PROFILE,
     DIRECTORY_PROFILES,
+    MUSE_PROFILE,
     current_profile,
     profile_serves_tool,
     session_can_call,
@@ -355,6 +358,24 @@ DESTINATION_REQUIRES_CARD_NEXT_STEP = (
     f"{_DESTINATION_REQUIRES_CARD_CAUSE} Tell the user to top up once at "
     f"{http_client.BILLING_URL}, then place the call again. Do not retry before they "
     "confirm they paid."
+)
+# Not chatgpt: OpenAI bans checkout initiation in a plugin.
+_TOP_UP_LINK_PROFILES = frozenset({CONNECTOR_PROFILE, CUSTOMER_PROFILE, MUSE_PROFILE})
+
+
+def _top_up_link_step(url: str) -> str:
+    return (
+        "Free credit covers calls in the US and Canada. This call needs one top-up of any "
+        "amount, from $5, and after that every country stays unlocked. Give the user this "
+        f"link: {url} It opens a secure payment page where they choose the amount (Apple Pay "
+        "and Link work). Do not buy a phone number: it does not unlock this call. "
+        f"{http_client.AFTER_PAYMENT_STEP}"
+    )
+
+
+FREE_CALL_NOTE = (
+    "This is the workspace's one free call abroad and it ends after 2 minutes. Later calls "
+    "abroad need one top-up."
 )
 
 # The workspace has no number of its own yet and its balance does not cover the
@@ -2012,6 +2033,8 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
     ):
         return SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.code == DESTINATION_REQUIRES_CARD_CODE:
+        if exc.top_up_url and current_profile() in _TOP_UP_LINK_PROFILES:
+            return _top_up_link_step(exc.top_up_url)
         return _checkout_or(
             DESTINATION_REQUIRES_CARD_NEXT_STEP, cause=_DESTINATION_REQUIRES_CARD_CAUSE
         )
@@ -3002,7 +3025,12 @@ async def create_phone_session(
     apply_directory_phone_s2s_pin(body)
     if current_profile() in DIRECTORY_PROFILES:
         body.setdefault("maxDurationSeconds", 300)
-    return await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
+    created = await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
+    payload = created.structured_content
+    if isinstance(payload, dict) and payload.get("freeCall"):
+        # First, so a text-only host's truncated render still shows it.
+        return result({"note": FREE_CALL_NOTE, **payload}, text="Created phone session.")
+    return created
 
 
 async def list_sessions(

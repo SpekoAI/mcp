@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, replace
 from typing import Any, NoReturn
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -60,6 +61,13 @@ INSUFFICIENT_CREDITS_CODE = "INSUFFICIENT_CREDITS"
 # every out-of-credit message points here so the model has one concrete next
 # step to hand the user instead of "inspect the response details".
 BILLING_URL = "https://platform.speko.ai/settings/billing"
+# Allow-list so an error body can never put an arbitrary link in front of the user.
+_TOP_UP_URL_HOSTS = frozenset({urlsplit(BILLING_URL).hostname, "platform-staging.speko.dev"})
+# A whole-string match, not urlsplit: urlsplit reads `https://evil\@host/...`
+# as `host` while browsers open `evil`.
+_TOP_UP_URL = re.compile(
+    r"https://([A-Za-z0-9.-]+)/v1/public/top-up/[A-Za-z0-9._-]+(?:\?amount=[0-9]+)?"
+)
 
 # A Stripe Checkout link the model can put in the chat. When an agent gave one,
 # 84% of workspaces paid within a day (prod 2026-10-12..25), but only 18% of
@@ -104,6 +112,7 @@ class SpekoApiError(RuntimeError):
         balance_usd: float | None = None,
         resource_status: str | None = None,
         retryable: bool | None = None,
+        top_up_url: str | None = None,
     ) -> None:
         super().__init__(f"Speko API returned {status_code}: {message}")
         self.status_code = status_code
@@ -127,6 +136,7 @@ class SpekoApiError(RuntimeError):
         # in the `packages/core` registry. Dropping it was how a `retryable:
         # false` answer still reached the model as "Retry the request".
         self.retryable = retryable
+        self.top_up_url = top_up_url
 
     @property
     def credit_exhausted(self) -> bool:
@@ -325,6 +335,7 @@ class _ApiErrorDetails:
     balance_usd: float | None = None
     resource_status: str | None = None
     retryable: bool | None = None
+    top_up_url: str | None = None
 
 
 def _error_details(resp: httpx.Response) -> tuple[str, str | None]:
@@ -380,6 +391,14 @@ def _retryable(payload: dict[str, Any]) -> bool | None:
     return None
 
 
+def _top_up_url(payload: dict[str, Any]) -> str | None:
+    url = payload.get("topUpUrl")
+    if not isinstance(url, str):
+        return None
+    match = _TOP_UP_URL.fullmatch(url)
+    return url if match and match.group(1).lower() in _TOP_UP_URL_HOSTS else None
+
+
 def _raise_api_error(resp: httpx.Response) -> NoReturn:
     """Raise the ``SpekoApiError`` for a Platform ``>= 400`` response."""
     details = _parse_api_error(resp)
@@ -391,6 +410,7 @@ def _raise_api_error(resp: httpx.Response) -> NoReturn:
         balance_usd=details.balance_usd,
         resource_status=details.resource_status,
         retryable=details.retryable,
+        top_up_url=details.top_up_url,
     )
 
 
@@ -425,11 +445,16 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
     except ValueError:
         return _ApiErrorDetails((resp.text.strip() or resp.reason_phrase)[:500], trace_id)
     if isinstance(payload, dict):
-        code = _error_code(payload)
-        balance_usd = _balance_usd(payload)
+        fields = _ApiErrorDetails(
+            "",
+            None,
+            code=_error_code(payload),
+            balance_usd=_balance_usd(payload),
+            resource_status=_resource_status(payload),
+            retryable=_retryable(payload),
+            top_up_url=_top_up_url(payload),
+        )
         hint = _error_hint(payload)
-        resource_status = _resource_status(payload)
-        retryable = _retryable(payload)
         trace = payload.get("trace_id") or payload.get("traceId")
         if isinstance(trace, str) and trace:
             trace_id = trace
@@ -445,37 +470,16 @@ def _parse_api_error(resp: httpx.Response) -> _ApiErrorDetails:
                 nested = f"{prefix}{nested_message}"[:500]
                 nested = _with_field_issues(nested, detail)
                 nested = _appended(nested, _next_action(detail))
-                return _with_hint(
-                    _ApiErrorDetails(
-                        nested, trace_id, code, balance_usd, resource_status, retryable
-                    ),
-                    hint,
-                )
+                return _with_hint(replace(fields, message=nested, trace_id=trace_id), hint)
         issues = _validation_issue_summary(payload.get("issues"))
         if isinstance(detail, str) and detail:
-            if issues:
-                return _with_hint(
-                    _ApiErrorDetails(
-                        f"{detail}: {issues}"[:500],
-                        trace_id,
-                        code,
-                        balance_usd,
-                        resource_status,
-                        retryable,
-                    ),
-                    hint,
-                )
-            return _with_hint(
-                _ApiErrorDetails(
-                    detail[:500], trace_id, code, balance_usd, resource_status, retryable
-                ),
-                hint,
-            )
+            message = f"{detail}: {issues}" if issues else detail
+            return _with_hint(replace(fields, message=message[:500], trace_id=trace_id), hint)
+        # The link reaches the user only through `top_up_url`, which drops a
+        # rejected or suppressed one; the raw body must not carry it back in.
+        unlinked = {key: value for key, value in payload.items() if key != "topUpUrl"}
         return _with_hint(
-            _ApiErrorDetails(
-                json.dumps(payload)[:500], trace_id, code, balance_usd, resource_status, retryable
-            ),
-            hint,
+            replace(fields, message=json.dumps(unlinked)[:500], trace_id=trace_id), hint
         )
     return _ApiErrorDetails(json.dumps(payload)[:500], trace_id)
 
