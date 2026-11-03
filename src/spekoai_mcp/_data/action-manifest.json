@@ -1815,6 +1815,13 @@
                 "default": true,
                 "type": "boolean"
               },
+              "voicemailGreeting": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "retrievalProvider": {
                 "type": [
                   "string",
@@ -1999,6 +2006,7 @@
               "workDomain",
               "recordingEnabled",
               "postCallAnalysisEnabled",
+              "voicemailGreeting",
               "retrievalProvider",
               "imessageProvider",
               "sipGateway",
@@ -18339,6 +18347,13 @@
                     "null"
                   ]
                 },
+                "voicemailGreeting": {
+                  "default": null,
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "sms10dlcProfileId": {
                   "type": [
                     "string",
@@ -18514,6 +18529,7 @@
                 "agentId",
                 "routeToBrokerId",
                 "label",
+                "voicemailGreeting",
                 "sms10dlcProfileId",
                 "smsCampaignId",
                 "smsAssignmentStatus",
@@ -18731,6 +18747,13 @@
                   "null"
                 ]
               },
+              "voicemailGreeting": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "sms10dlcProfileId": {
                 "type": [
                   "string",
@@ -18906,6 +18929,7 @@
               "agentId",
               "routeToBrokerId",
               "label",
+              "voicemailGreeting",
               "sms10dlcProfileId",
               "smsCampaignId",
               "smsAssignmentStatus",
@@ -22121,6 +22145,13 @@
                   "null"
                 ]
               },
+              "voicemailGreeting": {
+                "default": null,
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "sms10dlcProfileId": {
                 "type": [
                   "string",
@@ -22296,6 +22327,7 @@
               "agentId",
               "routeToBrokerId",
               "label",
+              "voicemailGreeting",
               "sms10dlcProfileId",
               "smsCampaignId",
               "smsAssignmentStatus",

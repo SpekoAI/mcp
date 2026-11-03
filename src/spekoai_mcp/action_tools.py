@@ -3301,7 +3301,11 @@ async def update_phone_number(
                 "letters, digits and spaces, <=15 chars; null removes it; "
                 "owner/admin only, US local numbers bought through Speko "
                 "only, see callerNameSupported; must be the user's business "
-                "name, so confirm it with them first)."
+                "name, so confirm it with them first), voicemailGreeting "
+                "(string | null: what a caller hears when this number takes a "
+                "voicemail, up to 500 characters; null falls back to the "
+                "workspace's greeting; callers hear \"This call may be "
+                'recorded." before it, unless it already says that).'
             )
         ),
     ],
