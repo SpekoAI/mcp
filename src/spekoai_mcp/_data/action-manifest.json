@@ -7457,6 +7457,9 @@
                         "voicemailMessage": {
                           "type": "string"
                         },
+                        "voicemailSoundId": {
+                          "type": "string"
+                        },
                         "holdTimeoutSeconds": {
                           "type": "integer",
                           "minimum": -9007199254740991,
@@ -8391,6 +8394,9 @@
                         ]
                       },
                       "voicemailMessage": {
+                        "type": "string"
+                      },
+                      "voicemailSoundId": {
                         "type": "string"
                       },
                       "holdTimeoutSeconds": {
@@ -9517,6 +9523,9 @@
                             ]
                           },
                           "voicemailMessage": {
+                            "type": "string"
+                          },
+                          "voicemailSoundId": {
                             "type": "string"
                           },
                           "holdTimeoutSeconds": {
