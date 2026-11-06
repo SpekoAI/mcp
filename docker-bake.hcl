@@ -23,11 +23,5 @@ target "mcp" {
   ]
   platforms = ["linux/amd64"]
   output = ["type=registry"]
-  cache-from = [
-    notequal("", REGISTRY) ? "type=registry,ref=${REGISTRY}/${IMAGE_NAME}:buildcache" : "",
-  ]
-  cache-to = [
-    notequal("", REGISTRY) ? "type=registry,ref=${REGISTRY}/${IMAGE_NAME}:buildcache,mode=max" : "",
-  ]
 }
 
