@@ -4,6 +4,7 @@
 
 - 402 `DESTINATION_REQUIRES_CARD` with a one-tap `topUpUrl`: on the connector, customer and muse hosts the next step gives the user that link (a payment page where they choose any amount from $5), says not to buy a phone number because it does not unlock the call, and checks `credits.balance.get` after they pay. The link is kept only when it is https on the dashboard host. ChatGPT, other hosts, and refusals without the field keep the previous step.
 - `sessions.phone.create` says when a call was the workspace's one free call abroad (the response's `freeCall`): it ends after 2 minutes, and later calls abroad need one top-up.
+- Read-aloud call offer experiment, off by default (`SPEKO_MCP_READ_ALOUD_OFFER`). When on, an `audio.synthesize` result for a claude.ai client gets one line saying Speko can read it on a call to the user's own number or call a business for them, for half of organizations (stable hash of the organization id); the other half is a holdout. Each eligible call logs an `mcp_experiment_exposure` record with the organization, arm and client.
 
 ## 0.2.53
 

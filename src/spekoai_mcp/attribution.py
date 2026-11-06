@@ -111,6 +111,23 @@ def invocation_headers() -> dict[str, str]:
     return headers
 
 
+def current_invocation_id() -> str | None:
+    """The active tool invocation's ID, for joining a side event to its completion."""
+    invocation = _CURRENT_INVOCATION.get()
+    return invocation.invocation_id if invocation is not None and invocation.active else None
+
+
+def submit_event(event: dict) -> None:
+    """Queue one bounded side event on the attribution log transport.
+
+    Never raises: a full queue or a failed write must not change a tool result.
+    """
+    try:
+        _EXPORTER.submit(event)
+    except Exception:
+        pass
+
+
 def mark_receiver(receiver: Receiver) -> None:
     """Record an attempted outbound request, including failures and fan-out."""
     invocation = _CURRENT_INVOCATION.get()

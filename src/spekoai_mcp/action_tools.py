@@ -40,6 +40,7 @@ from spekoai_mcp.profiles import (
     profile_serves_tool,
     session_can_call,
 )
+from spekoai_mcp.read_aloud_offer import with_read_aloud_offer
 from spekoai_mcp.tool_text import payload_text
 
 logger = logging.getLogger(__name__)
@@ -833,6 +834,10 @@ async def synthesize_speech(
     `speed`, `instructions`, `spokenForm`, a bare `model` or more than one
     allowed provider keeps the knob it asked for rather than losing it.
     """
+    return with_read_aloud_offer(await _synthesize_speech(body))
+
+
+async def _synthesize_speech(body: dict[str, Any]) -> ToolResult:
     router_token = http_client.router_bearer_token()
     router_payload = _router_speech_payload(body) if router_token else None
     if router_token and router_payload is not None and _router_audio_fits_inline(router_payload):
