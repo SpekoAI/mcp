@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.54
 
 - 402 `DESTINATION_REQUIRES_CARD` with a one-tap `topUpUrl`: on the connector, customer and muse hosts the next step gives the user that link (a payment page where they choose any amount from $5), says not to buy a phone number because it does not unlock the call, and checks `credits.balance.get` after they pay. The link is kept only when it is https on the dashboard host. ChatGPT, other hosts, and refusals without the field keep the previous step.
 - `sessions.phone.create` says when a call was the workspace's one free call abroad (the response's `freeCall`): it ends after 2 minutes, and later calls abroad need one top-up.
