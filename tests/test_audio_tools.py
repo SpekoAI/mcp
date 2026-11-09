@@ -528,6 +528,68 @@ async def test_linked_synthesis_puts_the_url_in_the_text_and_keeps_small_audio(
     }
 
 
+async def test_linked_synthesis_names_its_id_and_the_way_back_to_the_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 15-minute link expires; the id is how a later turn gets the audio back."""
+    synthesis_id = "0b6f3c1e-9a52-4c1d-8e2f-3a4b5c6d7e8f"
+    _platform_returning(monkeypatch, _link_response(id=synthesis_id, sizeBytes=10**9))
+
+    out = await action_tools.synthesize_speech({"text": "hi", "intent": {"language": "en"}})
+
+    assert out.structured_content["synthesis_id"] == synthesis_id
+    assert f"audio.synthesis.get with synthesis_id '{synthesis_id}'" in out.content[0].text
+
+
+async def test_synthesis_get_re_signs_without_synthesizing_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    synthesis_id = "0b6f3c1e-9a52-4c1d-8e2f-3a4b5c6d7e8f"
+    seen: list[tuple[str, str]] = []
+
+    async def fake_api(method: str, path: str, body: Any = None) -> dict[str, Any]:
+        seen.append((method, path))
+        return {
+            "id": synthesis_id,
+            "url": SIGNED_URL,
+            "expiresAt": "2026-11-09T12:15:00.000Z",
+            "contentType": "audio/wav",
+            "sizeBytes": 48_044,
+        }
+
+    monkeypatch.setattr(http_client, "call_speko_api", fake_api)
+
+    out = await action_tools.get_synthesis_link(synthesis_id)
+
+    assert seen == [("GET", f"/v1/synthesize/{synthesis_id}/link")]
+    assert out.structured_content == {
+        "synthesis_id": synthesis_id,
+        "url": SIGNED_URL,
+        "expires_at": "2026-11-09T12:15:00.000Z",
+        "content_type": "audio/wav",
+        "size_bytes": 48_044,
+    }
+    assert SIGNED_URL in out.content[0].text
+
+
+async def test_synthesis_get_says_synthesize_again_once_the_audio_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_api(method: str, path: str, body: Any = None) -> dict[str, Any]:
+        raise http_client.SpekoApiError(
+            404, "No stored audio for this id", code="SYNTHESIS_AUDIO_NOT_FOUND"
+        )
+
+    monkeypatch.setattr(http_client, "call_speko_api", fake_api)
+
+    with pytest.raises(ToolError, match="Synthesize the text again with audio.synthesize"):
+        await action_tools.get_synthesis_link("0b6f3c1e-9a52-4c1d-8e2f-3a4b5c6d7e8f")
+
+
+async def test_synthesis_get_follows_synthesize_off_the_directory_surface() -> None:
+    assert "audio.synthesis.get" in CONNECTOR_EXCLUDED_TOOL_NAMES
+
+
 async def test_linked_synthesis_omits_base64_above_the_inline_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

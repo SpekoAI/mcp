@@ -160,8 +160,9 @@ CONNECTOR_EXCLUDED_PREFIXES: tuple[str, ...] = (
 # something that will.
 CONNECTOR_EXCLUDED_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        # generation
+        # generation, and re-fetching what it generated
         "audio.synthesize",
+        "audio.synthesis.get",
         # live session / call creation. `sessions.phone.create` is NOT here:
         # see DIRECTORY_CALLING_TOOL_NAMES.
         "sessions.create",
@@ -299,6 +300,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
     "audio.transcribe",
     "audio.synthesize",
+    "audio.synthesis.get",
     "agents.create",
     "agents.test_call",
     "sessions.phone.create",
@@ -536,6 +538,7 @@ REPLIT_PROFILE_TOOL_NAMES: list[str] = [
     # One-shot audio. Replit bans neither generated speech nor transcription.
     "audio.transcribe",
     "audio.synthesize",
+    "audio.synthesis.get",
     "support.ticket.list",
     "support.ticket.get",
     # Writes last.

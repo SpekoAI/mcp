@@ -672,6 +672,7 @@ ACTION_TOOL_NAME_BY_FUNCTION = {
     "render_briefing": "migration.briefing.render",
     "create_share_card": "share_cards.create",
     "synthesize_speech": "audio.synthesize",
+    "get_synthesis_link": "audio.synthesis.get",
     "transcribe_audio": "audio.transcribe",
 }
 
@@ -721,6 +722,7 @@ READ_ONLY_ACTION_TOOL_NAMES = {
     "build_session_config",
     "parse_external_config",
     "render_briefing",
+    "get_synthesis_link",
 }
 
 # Tools whose result is rendered by a bundled MCP App. A host without the
@@ -993,6 +995,9 @@ async def _linked_synthesis_result(content: bytes) -> ToolResult:
         "size_bytes": size,
         "sample_rate": link.get("sampleRate"),
     }
+    synthesis_id = link.get("id")
+    if isinstance(synthesis_id, str) and synthesis_id:
+        payload["synthesis_id"] = synthesis_id
     duration = link.get("durationSeconds")
     if isinstance(duration, int | float):
         payload["duration_seconds"] = duration
@@ -1027,12 +1032,64 @@ async def _linked_synthesis_result(content: bytes) -> ToolResult:
         if isinstance(size, int) and size > _MAX_AUDIO_BYTES
         else "Pass this URL as audio_url to audio.transcribe to transcribe it."
     )
+    # A user lost a clip when this link expired (tkt_02551956, 2026-10-30);
+    # the stored audio outlives the link, so name the way back to it.
+    relink_step = (
+        f"\nIf the link has expired, call audio.synthesis.get with synthesis_id "
+        f"'{synthesis_id}' for a fresh one (the audio is kept about 24 hours)."
+        if "synthesis_id" in payload
+        else ""
+    )
     text = (
         f"Synthesized {length} of {content_type}{f' ({route})' if route else ''}.\n"
         f"Download link (valid{expires}): {url}\n"
-        f"{transcribe_step}"
+        f"{transcribe_step}{relink_step}"
     )
     return result(payload, text=text, summary_only=True)
+
+
+async def get_synthesis_link(
+    synthesis_id: Annotated[
+        str,
+        Field(
+            description=(
+                "The synthesis_id an earlier audio.synthesize result returned "
+                "alongside its download link."
+            )
+        ),
+    ],
+) -> ToolResult:
+    """Get a fresh download link for audio an earlier audio.synthesize made.
+
+    Use it when that result's 15-minute link has expired. Nothing is
+    synthesized or billed again. The audio is kept about 24 hours; after that
+    this answers SYNTHESIS_AUDIO_NOT_FOUND and the text has to be synthesized
+    again.
+    """
+    try:
+        link = await http_client.call_speko_api(
+            "GET", f"/v1/synthesize/{http_client.path_segment(synthesis_id)}/link"
+        )
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        raise tool_error(
+            exc,
+            next_step=(
+                "Synthesize the text again with audio.synthesize."
+                if getattr(exc, "code", None) == "SYNTHESIS_AUDIO_NOT_FOUND"
+                else next_step_for_error(exc, path="/v1/synthesize")
+            ),
+        ) from exc
+    if not isinstance(link, dict) or not isinstance(link.get("url"), str):
+        raise ToolError("Speko returned no audio link.")
+    payload = {
+        "synthesis_id": synthesis_id,
+        "url": link["url"],
+        "expires_at": link.get("expiresAt"),
+        "content_type": link.get("contentType"),
+        "size_bytes": link.get("sizeBytes"),
+    }
+    expires = f" until {payload['expires_at']}" if payload["expires_at"] else ""
+    return result(payload, text=f"Download link (valid{expires}): {payload['url']}")
 
 
 async def _download_synthesized_audio(url: str) -> bytes | None:
@@ -1813,6 +1870,7 @@ def register_action_tools(mcp: FastMCP) -> None:
         render_briefing,
         create_share_card,
         synthesize_speech,
+        get_synthesis_link,
         transcribe_audio,
     ]:
         name = tool.__name__
