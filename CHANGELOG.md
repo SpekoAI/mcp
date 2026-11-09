@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `sessions.phone.quote` (default, customer, connector and muse profiles): checks a call before it is placed, without dialing or spending credit. Returns whether the workspace can call the number now (`ready`, `free_call`, `top_up_required`, `insufficient_credits`, `spending_cap_reached`, `not_allowed`), the estimated price per minute, the smallest top-up that unlocks the call, how long the balance lasts and, when money is needed, the one-tap `topUpUrl`. Not on ChatGPT.
+- `sessions.phone.create` refused for payment (`DESTINATION_REQUIRES_CARD`, `INSUFFICIENT_CREDITS`, `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED`, `PHONE_NUMBER_CARD_REQUIRED`) says the call was not placed and nothing was charged, and hands back the call's arguments so it is retried unchanged after checkout, without asking the user again.
+
 ## 0.2.55
 
 - `billing.top_up_link.create` (customer, connector, muse and the default profile): returns a one-tap payment link for the workspace, where the user picks the amount from $5. Creating it moves no money. On hosts that render MCP Apps the result is an Add credit card (`ui://speko/top-up.html`) whose button opens the link through `ui/open-link`. Not on ChatGPT, Replit or builder.

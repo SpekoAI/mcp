@@ -345,6 +345,29 @@ FREE_CALL_NOTE = (
     "abroad need one top-up."
 )
 
+# Refusals the user clears by paying (payment.PAYMENT_CODES). Prod
+# 2026-10-08..11-07: 586 dials hit the destination-payment gate across 393
+# connector workspaces. The call is not placed and nothing is held for it, so
+# the details live only in the conversation; the step below hands them back so
+# the retry after checkout needs no re-asking. sessions.phone.quote answers the
+# same gates up front.
+PAYMENT_GATE_CODES = payment.PAYMENT_CODES
+# Past this the arguments are not repeated; the model still has them.
+_RETRY_ARGUMENTS_MAX_CHARS = 4000
+
+
+def _retry_same_call_step(body: dict[str, Any]) -> str:
+    """Keep the refused call, and retry it unchanged once the user has paid."""
+    step = (
+        "The call was not placed and nothing was charged. Keep this call: once the user "
+        "has paid, call sessions.phone.create again with the same body, without asking "
+        "them for the details again."
+    )
+    arguments = json.dumps({"body": body}, separators=(",", ":"), ensure_ascii=False)
+    if len(arguments) > _RETRY_ARGUMENTS_MAX_CHARS:
+        return step
+    return f"{step} Retry arguments: {arguments}"
+
 # The monthly spending cap counts spend, not balance, so adding credit does
 # not clear it. The dashboard has no spending-cap screen: only the
 # `billing.spending_cap.update` action changes it, so never send the user to
@@ -3050,11 +3073,21 @@ async def create_phone_session(
     lists in `models`; any other Paxa voice is replaced by a default one.
     """
     validate_create_phone_session_body(body)
+    # Before the rewrites below, so a retry goes through them once, not twice.
+    requested = copy.deepcopy(body)
     apply_directory_disclosure(body)
     apply_directory_phone_s2s_pin(body)
     if current_profile() in DIRECTORY_PROFILES:
         body.setdefault("maxDurationSeconds", 300)
-    created = await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
+    try:
+        created = await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
+    except ToolError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, http_client.SpekoApiError) and cause.code in PAYMENT_GATE_CODES:
+            # On the error too: the out-of-credit middleware re-renders it.
+            cause.retry_step = _retry_same_call_step(requested)
+            raise ToolError(f"{exc} {cause.retry_step}") from cause
+        raise
     payload = created.structured_content
     if isinstance(payload, dict) and payload.get("freeCall"):
         # First, so a text-only host's truncated render still shows it.

@@ -127,6 +127,9 @@ class SpekoApiError(RuntimeError):
         # false` answer still reached the model as "Retry the request".
         self.retryable = retryable
         self.top_up_url = top_up_url
+        # Set by the tool that made the refused request: how to repeat it
+        # unchanged once the user has paid. Appended to every rendering.
+        self.retry_step: str | None = None
 
     @property
     def credit_exhausted(self) -> bool:
@@ -852,6 +855,11 @@ async def post_router_speech(
 
 
 def credit_exhausted_message(exc: SpekoApiError) -> str:
+    message = _credit_exhausted_message(exc)
+    return f"{message} {exc.retry_step}" if exc.retry_step else message
+
+
+def _credit_exhausted_message(exc: SpekoApiError) -> str:
     """The one out-of-credit message every tool surface renders.
 
     Written for the model to relay: it names the cause, the concrete remedy

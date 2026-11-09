@@ -322,6 +322,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
 DEFAULT_MANIFEST_ONLY_TOOL_NAMES: list[str] = [
     "phone_numbers.kyb.get",
     "sessions.end",
+    "sessions.phone.quote",
     "support.ticket.create",
     "support.ticket.list",
     "support.ticket.get",

@@ -23614,6 +23614,217 @@
       "secretOutputPaths": []
     },
     {
+      "id": "sessions.phone.quote",
+      "version": 1,
+      "description": "Check a phone call before placing it, without dialing or spending credit. Returns whether this workspace can call `to` now (status ready, free_call, top_up_required, insufficient_credits, spending_cap_reached or not_allowed), the estimated price per minute, the smallest top-up that unlocks the call (requiredTopUpUsd), how long the balance lasts (maxCallSeconds), and, when a top-up is needed, a one-tap topUpUrl. Free credit covers the US and Canada; other countries need one top-up of any amount.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$",
+            "description": "The number to call, in E.164."
+          },
+          "from": {
+            "description": "The caller ID the call will use, when known.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "to"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$"
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "type": "string"
+              },
+              "country": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ready",
+                  "free_call",
+                  "top_up_required",
+                  "insufficient_credits",
+                  "spending_cap_reached",
+                  "not_allowed"
+                ]
+              },
+              "canCall": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": "string"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pricePerMinuteUsd": {
+                "type": "number"
+              },
+              "requiredTopUpUsd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "maxCallSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "freeCallMaxSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "balanceUsd": {
+                "type": "number"
+              },
+              "topUpUrl": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string",
+                "const": "USD"
+              }
+            },
+            "required": [
+              "to",
+              "country",
+              "status",
+              "canCall",
+              "message",
+              "reason",
+              "pricePerMinuteUsd",
+              "requiredTopUpUsd",
+              "maxCallSeconds",
+              "freeCallMaxSeconds",
+              "currency"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "default",
+        "customer",
+        "connector",
+        "muse"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
       "id": "support.ticket.create",
       "version": 1,
       "description": "Open a support ticket with the Speko team on behalf of the signed-in user. Only for problems with Speko itself (calls, agents, phone numbers, billing, the dashboard or API); never for problems with the assistant, its app or any other product, which Speko cannot see or fix. Not for turning on the SIP gateway to bring the user's own carrier or number: that needs no enablement (dashboard Phone Numbers → Import number, or phone_numbers.sip_connections.create then phone_numbers.import where available). Before calling, show the user the exact summary and details you will send and get their explicit yes; never file a ticket the user did not confirm. Each ticket is emailed to the user and read by the Speko team, so leave out personal, legal, medical or financial details that the Speko problem does not need. One problem, one ticket: add new information to an open ticket with support.ticket.reply instead of opening another. summary is one line (3-200 characters); details is the full description (up to 4,000 characters). category is billing, calls, setup or other (default other). related optionally carries ids the team should look at: sessionId, callId, agentId, phoneNumber. Ids only: recordings and transcripts are never attached. Returns ticketId, expectedResponse and ticketUrl, the dashboard page where the user can follow the conversation; share that link with the user. The user also receives a confirmation email. The team replies on the ticket: read replies with support.ticket.get and answer with support.ticket.reply. Returns 429 SUPPORT_TICKET_RATE_LIMITED after too many tickets in a short time; the error says when to retry, or names the tickets the organization just opened: reply on one of those instead. A ticket is stored even when the team notification is delayed, so a success never needs a resend.",

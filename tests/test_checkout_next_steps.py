@@ -10,6 +10,7 @@ The text states facts and names tools, and never suggests an amount.
 
 from __future__ import annotations
 
+import json
 import re
 from types import SimpleNamespace
 
@@ -459,3 +460,61 @@ def test_add_credit_card_follows_the_mcp_apps_handshake() -> None:
     assert 'request("ui/open-link", { url: url })' in html
     # The button only opens Speko's own one-tap links.
     assert "platform\\.speko\\.ai|platform-staging\\.speko\\.dev" in html
+
+
+async def test_payment_refusal_hands_back_the_call_to_retry(
+    monkeypatch: pytest.MonkeyPatch, platform: SimpleNamespace
+) -> None:
+    """After checkout the same call goes again, with the details the user gave."""
+    _use(monkeypatch, "connector", "oauth")
+    platform.reply = _card_required(TOP_UP_URL)
+    body = {"to": "+8613800138000", "agentId": "agent_1", "firstMessage": "Ni hao"}
+    with pytest.raises(ToolError) as raised:
+        await create_server().call_tool("sessions.phone.create", {"body": dict(body)})
+    text = str(raised.value)
+    assert TOP_UP_URL in text
+    assert "nothing was charged" in text
+    retry = json.loads(text.split("Retry arguments: ", 1)[1])
+    # The body as the model sent it: no disclosure or duration added twice on retry.
+    assert retry == {"body": body}
+
+
+async def test_insufficient_credit_refusal_hands_back_the_call(
+    monkeypatch: pytest.MonkeyPatch, platform: SimpleNamespace
+) -> None:
+    _use(monkeypatch, "customer", "oauth")
+    platform.reply = (
+        402,
+        {"error": "Insufficient credit balance for this call.", "code": "INSUFFICIENT_CREDITS"},
+    )
+    with pytest.raises(ToolError) as raised:
+        await create_server().call_tool(
+            "sessions.phone.create", {"body": {"to": "+12015551234", "agentId": "agent_1"}}
+        )
+    assert 'Retry arguments: {"body":{"to":"+12015551234","agentId":"agent_1"}}' in str(
+        raised.value
+    )
+
+
+async def test_other_refusals_do_not_offer_a_retry_after_payment(
+    monkeypatch: pytest.MonkeyPatch, platform: SimpleNamespace
+) -> None:
+    _use(monkeypatch, "connector", "oauth")
+    platform.reply = (404, {"error": "Agent not found.", "code": "AGENT_NOT_FOUND"})
+    with pytest.raises(ToolError) as raised:
+        await create_server().call_tool(
+            "sessions.phone.create", {"body": {"to": "+12015551234", "agentId": "agent_1"}}
+        )
+    assert "Retry arguments" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    ("profile", "served"),
+    [("connector", True), ("customer", True), ("muse", True), ("chatgpt", False)],
+)
+async def test_quote_tool_is_served_where_top_up_links_are(
+    monkeypatch: pytest.MonkeyPatch, profile: str, served: bool
+) -> None:
+    _use(monkeypatch, profile, "oauth")
+    names = {tool.name for tool in await create_server().list_tools()}
+    assert ("sessions.phone.quote" in names) is served
