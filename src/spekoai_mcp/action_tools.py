@@ -39,6 +39,7 @@ from spekoai_mcp.profiles import (
 )
 from spekoai_mcp.read_aloud_offer import with_read_aloud_offer
 from spekoai_mcp.tool_text import payload_text
+from spekoai_mcp.voicemail_notice import with_voicemail_notice
 
 logger = logging.getLogger(__name__)
 
@@ -3091,8 +3092,8 @@ async def create_phone_session(
     payload = created.structured_content
     if isinstance(payload, dict) and payload.get("freeCall"):
         # First, so a text-only host's truncated render still shows it.
-        return result({"note": FREE_CALL_NOTE, **payload}, text="Created phone session.")
-    return created
+        created = result({"note": FREE_CALL_NOTE, **payload}, text="Created phone session.")
+    return with_voicemail_notice(created, body)
 
 
 async def list_sessions(
