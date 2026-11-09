@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.55
 
 - `billing.top_up_link.create` (customer, connector, muse and the default profile): returns a one-tap payment link for the workspace, where the user picks the amount from $5. Creating it moves no money. On hosts that render MCP Apps the result is an Add credit card (`ui://speko/top-up.html`) whose button opens the link through `ui/open-link`. Not on ChatGPT, Replit or builder.
 - Every payment refusal reads the same on every tool, handwritten or manifest-generated: `INSUFFICIENT_CREDITS`, `DESTINATION_REQUIRES_CARD`, `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED` and `PHONE_NUMBER_CARD_REQUIRED` state the cause, then the one-tap `topUpUrl` where the host allows it. Without a link they name `billing.top_up_link.create`, `billing.checkout.create` or the billing page, whichever the session can use. On ChatGPT no payment link or billing URL is given.
