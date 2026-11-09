@@ -370,6 +370,7 @@ MUSE_PROFILE_TOOL_NAMES: list[str] = [
     "knowledge_bases.documents.list",
     "knowledge_bases.documents.get",
     "credits.balance.get",
+    "billing.top_up_link.create",
     *CHATGPT_PROFILE_TOOL_NAMES[CHATGPT_PROFILE_TOOL_NAMES.index("audio.transcribe") :],
     "agents.update",
     "agents.deploy",

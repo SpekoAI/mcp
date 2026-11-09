@@ -1,6 +1,8 @@
 """MCP Apps UI resources — HTML a host renders in a sandboxed iframe.
 
-One app today: `ui://speko/audio-player.html`, bound to `audio.synthesize`.
+Two apps on the authenticated endpoint: `ui://speko/audio-player.html`, bound to
+`audio.synthesize`, and `ui://speko/top-up.html`, bound to
+`billing.top_up_link.create`.
 
 Without it the tool is mute in a chat host. Its payload is base64 audio on
 `structuredContent` plus a one-line acknowledgment (see
@@ -79,6 +81,16 @@ AUDIO_PLAYER_META = _tool_view_meta(
     AUDIO_PLAYER_URI, invoking="Synthesizing speech…", invoked="Synthesized speech"
 )
 
+# The Add credit card, bound to `billing.top_up_link.create`. Its button asks
+# the host to open the one-tap link with `ui/open-link`. The link is on
+# platform.speko.ai and redirects to Stripe. Static HTML: no CSP grant,
+# permission or account data beyond the link itself.
+TOP_UP_URI = "ui://speko/top-up.html"
+TOP_UP_APP = AppConfig(resource_uri=TOP_UP_URI)
+TOP_UP_META = _tool_view_meta(
+    TOP_UP_URI, invoking="Preparing a payment link…", invoked="Payment link ready"
+)
+
 # The public docs endpoint's one view: setup steps for connecting a client to
 # Speko, bound to `setup.connect` (`setup_tools.py`). Static content, so it
 # needs no CSP grant, permission or account data.
@@ -105,6 +117,11 @@ AUDIO_PLAYER_WIDGET_DESCRIPTION = (
     "button and the provider and model. A clip too long to embed appears as "
     "a link that opens the audio. The player presents the audio, so do not "
     "describe or repeat it."
+)
+
+TOP_UP_WIDGET_DESCRIPTION = (
+    "Shows the user an Add credit button that opens Speko's secure payment page, where "
+    "they pick the amount from $5. The card shows the link, so it does not need repeating."
 )
 
 CONNECT_WIDGET_DESCRIPTION = (
@@ -154,6 +171,19 @@ def register_apps(mcp: FastMCP) -> None:
     )
     def audio_player() -> str:
         return _read_app("audio_player.html")
+
+    @mcp.resource(
+        TOP_UP_URI,
+        name="app_top_up",
+        title="Add credit",
+        description=(
+            "Payment card for `billing.top_up_link.create`. Shows an Add credit button "
+            "that opens the one-tap Speko top-up link, where the user picks the amount."
+        ),
+        meta=_view_resource_meta(TOP_UP_WIDGET_DESCRIPTION),
+    )
+    def top_up_card() -> str:
+        return _read_app("top_up.html")
 
 
 def register_public_apps(mcp: FastMCP) -> None:

@@ -154,10 +154,9 @@ async def test_card_required_destination_says_top_up_once_not_retry(api: Any) ->
             "sessions.phone.create", {"body": {"to": "+4915112345678", "agentId": "agent_1"}}
         )
     text = str(raised.value)
-    # The fixture runs the customer profile, which can create a checkout link.
-    assert "One top-up of any amount" in text
-    assert "billing.checkout.create" in text
-    assert http_client.BILLING_URL in text
+    # The fixture runs the customer profile, which serves the top-up link tool.
+    assert "one top-up of any amount, from $5" in text
+    assert "billing.top_up_link.create" in text
     assert "Retry the Speko MCP request" not in text
     # Any paid top-up clears this block; the old text said the opposite.
     assert "Adding credit alone" not in text

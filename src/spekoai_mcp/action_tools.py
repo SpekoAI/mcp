@@ -29,13 +29,10 @@ from fastmcp.tools import ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
-from spekoai_mcp import http_client
-from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META
+from spekoai_mcp import http_client, payment
+from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META, TOP_UP_APP, TOP_UP_META
 from spekoai_mcp.profiles import (
-    CONNECTOR_PROFILE,
-    CUSTOMER_PROFILE,
     DIRECTORY_PROFILES,
-    MUSE_PROFILE,
     current_profile,
     profile_serves_tool,
     session_can_call,
@@ -272,11 +269,6 @@ UPDATE_AGENT_NEXT_STEP = (
     "{'systemPrompt':'...'} or {'intent':{'language':'es'}}."
 )
 
-CREDIT_EXHAUSTED_NEXT_STEP = (
-    f"Ask the user to add credit at {http_client.BILLING_URL}, then run the tool again. "
-    "Do not retry before credit is added."
-)
-
 # These two 403s used to share one code and one generic "check auth and retry" message,
 # which sent an agent into a blind retry loop with no way to actually resolve either
 # failure. They need different remediation: a scope-missing token can only be repaired
@@ -343,52 +335,14 @@ TEXT_TOO_LONG_NEXT_STEP = (
     "at most maxChars characters (see the message above), call synthesize_speech once "
     "per part, and give the user every audio link in order. Do not retry the same text."
 )
-# A grant-only workspace dialled a destination free credit does not cover. The
-# 402 names its own code, so it is not the out-of-credit path, and it fell to
-# the generic "Retry the Speko MCP request" step: prod 2026-10-19..21 has 22 of
-# these, several retried within minutes of each other. Any paid top-up clears
-# it for good, and so does a card saved for auto top-up
-# (`organizationIsPaying` in apps/server/src/services/grant-only-destination.ts).
-# A card added only in the Stripe billing portal does not.
-DESTINATION_REQUIRES_CARD_CODE = "DESTINATION_REQUIRES_CARD"
-_DESTINATION_REQUIRES_CARD_CAUSE = (
-    "Free credit does not cover calls to this country. One top-up of any amount, or a card "
-    "saved for auto top-up, unlocks it from then on."
-)
-DESTINATION_REQUIRES_CARD_NEXT_STEP = (
-    f"{_DESTINATION_REQUIRES_CARD_CAUSE} Tell the user to top up once at "
-    f"{http_client.BILLING_URL}, then place the call again. Do not retry before they "
-    "confirm they paid."
-)
-# Not chatgpt: OpenAI bans checkout initiation in a plugin.
-_TOP_UP_LINK_PROFILES = frozenset({CONNECTOR_PROFILE, CUSTOMER_PROFILE, MUSE_PROFILE})
-
-
-def _top_up_link_step(url: str) -> str:
-    return (
-        "Free credit covers calls in the US and Canada. This call needs one top-up of any "
-        "amount, from $5, and after that every country stays unlocked. Give the user this "
-        f"link: {url} It opens a secure payment page where they choose the amount (Apple Pay "
-        "and Link work). Do not buy a phone number: it does not unlock this call. "
-        f"{http_client.AFTER_PAYMENT_STEP}"
-    )
-
+# Payment refusals (out of credit, a destination free credit does not cover, a
+# number to buy or replace) all render through `payment.payment_step`. Before
+# that, the card-required 402 fell to the generic "Retry the Speko MCP request"
+# step: prod 2026-10-19..21 has 22 of these, several retried within minutes.
 
 FREE_CALL_NOTE = (
     "This is the workspace's one free call abroad and it ends after 2 minutes. Later calls "
     "abroad need one top-up."
-)
-
-# The workspace has no number of its own yet and its balance does not cover the
-# number's setup plus first month. Prod 2026-10-12..26 saw one of these; it fell
-# to the generic "Retry" step, which fails the same way until credit is added.
-PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE = "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED"
-_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE = (
-    "The workspace needs more credit to buy the dedicated phone number for this call."
-)
-PHONE_NUMBER_PROVISIONING_CREDITS_NEXT_STEP = (
-    f"{_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE} Tell the user to add credit at "
-    f"{http_client.BILLING_URL}. Do not retry before credit is added."
 )
 
 # The monthly spending cap counts spend, not balance, so adding credit does
@@ -659,6 +613,7 @@ def _strip_phone_formatting(value: Any) -> str | None:
 ACTION_TOOL_NAME_BY_FUNCTION = {
     "get_organization": "organization.get",
     "get_credit_balance": "credits.balance.get",
+    "create_top_up_link": "billing.top_up_link.create",
     "list_credit_ledger": "credits.ledger.list",
     "get_usage_summary": "usage.summary.get",
     "list_agents": "agents.list",
@@ -773,12 +728,14 @@ READ_ONLY_ACTION_TOOL_NAMES = {
 # the tool's text block, so binding one is additive.
 APP_CONFIG_BY_FUNCTION: dict[str, AppConfig] = {
     "synthesize_speech": AUDIO_PLAYER_APP,
+    "create_top_up_link": TOP_UP_APP,
 }
 
 # Extra `_meta` merged alongside the app binding, for hosts that read their own
 # key rather than the standard one.
 APP_META_BY_FUNCTION: dict[str, dict[str, Any]] = {
     "synthesize_speech": AUDIO_PLAYER_META,
+    "create_top_up_link": TOP_UP_META,
 }
 
 DESTRUCTIVE_ACTION_TOOL_NAMES = {
@@ -1797,6 +1754,7 @@ def register_action_tools(mcp: FastMCP) -> None:
     for tool in [
         get_organization,
         get_credit_balance,
+        create_top_up_link,
         list_credit_ledger,
         get_usage_summary,
         list_agents,
@@ -1968,24 +1926,13 @@ async def call_list(
     return result({"result": payload}, text=text)
 
 
-def _checkout_or(fallback: str, *, cause: str = "") -> str:
-    """The checkout-link step where this session can create one, else ``fallback``.
-
-    ``cause`` leads the checkout version, so both versions name the block.
-    """
-    if not http_client.checkout_available():
-        return fallback
-    steps = f"{http_client.CHECKOUT_STEP} {http_client.AFTER_PAYMENT_STEP}"
-    return f"{cause} {steps}" if cause else steps
-
-
 def _spending_cap_next_step() -> str:
     if not session_can_call(SPENDING_CAP_UPDATE_ACTION_ID):
         return SPENDING_CAP_REACHED_NEXT_STEP
     return (
-        f"{_SPENDING_CAP_CAUSE} Ask the user whether to raise or remove the cap, call "
-        f"{SPENDING_CAP_UPDATE_ACTION_ID} with their answer, then run the tool again. Do not "
-        "retry before the cap changes."
+        f"{_SPENDING_CAP_CAUSE} {SPENDING_CAP_UPDATE_ACTION_ID} raises or removes the cap to "
+        "the amount the user chooses. Until the cap changes, this request returns the same "
+        "refusal."
     )
 
 
@@ -2030,27 +1977,15 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
             return TEXT_TOO_LONG_NEXT_STEP
         return UNPROCESSABLE_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.credit_exhausted:
-        return _checkout_or(CREDIT_EXHAUSTED_NEXT_STEP)
+        return payment.payment_step(exc)
     if (
         isinstance(exc, http_client.SpekoApiError)
         and exc.code == PROVIDER_TIMEOUT_CODE
         and path == "/v1/synthesize"
     ):
         return SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP
-    if isinstance(exc, http_client.SpekoApiError) and exc.code == DESTINATION_REQUIRES_CARD_CODE:
-        if exc.top_up_url and current_profile() in _TOP_UP_LINK_PROFILES:
-            return _top_up_link_step(exc.top_up_url)
-        return _checkout_or(
-            DESTINATION_REQUIRES_CARD_NEXT_STEP, cause=_DESTINATION_REQUIRES_CARD_CAUSE
-        )
-    if (
-        isinstance(exc, http_client.SpekoApiError)
-        and exc.code == PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE
-    ):
-        return _checkout_or(
-            PHONE_NUMBER_PROVISIONING_CREDITS_NEXT_STEP,
-            cause=_PHONE_NUMBER_PROVISIONING_CREDITS_CAUSE,
-        )
+    if isinstance(exc, http_client.SpekoApiError) and exc.code in payment.PAYMENT_CODES:
+        return payment.payment_step(exc)
     if isinstance(exc, http_client.SpekoApiError) and exc.code == SPENDING_CAP_REACHED_CODE:
         return _spending_cap_next_step()
     if isinstance(exc, http_client.SpekoApiError):
@@ -2267,6 +2202,31 @@ async def get_organization() -> ToolResult:
 async def get_credit_balance() -> ToolResult:
     """Get the authenticated organization's prepaid credit balance."""
     return await call("GET", "/v1/credits/balance", text="Retrieved credit balance.")
+
+
+TOP_UP_LINK_PATH = "/v1/billing/top-up-link"
+
+
+async def create_top_up_link() -> ToolResult:
+    """Get a one-tap payment link that adds credit to this workspace.
+
+    The link opens a secure Stripe payment page where the user picks the amount,
+    from $5 to $10,000, and pays into this workspace only. Creating the link
+    moves no money and nothing renews. The link works for 7 days. On hosts that
+    show apps, the result is an Add credit button.
+    """
+    try:
+        payload = await http_client.call_speko_api("POST", TOP_UP_LINK_PATH, {"purpose": "generic"})
+    except (http_client.SpekoApiError, http_client.SpekoAuthError) as exc:
+        raise tool_error(exc, next_step=next_step_for_error(exc, path=TOP_UP_LINK_PATH)) from exc
+    # The same allow-list as a link inside a refusal: never put an arbitrary
+    # URL in front of the user, whatever the response says.
+    if http_client.safe_top_up_url(payload.get("url")) is None:
+        raise ToolError(
+            "Speko did not return a usable payment link. "
+            f"A workspace owner or admin can add credit at {http_client.BILLING_URL}."
+        )
+    return result(payload, text="Created a top-up link.")
 
 
 async def list_credit_ledger(
@@ -2985,9 +2945,8 @@ async def create_phone_session(
                 "rings before it ends as no-answer; overrides the agent's "
                 "ringTimeoutSeconds. "
                 "Per-call fields win over agent defaults. "
-                "For OAuth connector users without a number, this first call "
-                "automatically buys a dedicated US number from workspace credits "
-                "and binds it when agentId is present. Do not collect KYB fields. "
+                "Without an own number the call usually goes out from a shared "
+                "Speko caller ID. Do not collect KYB fields. "
                 "Leave `voice` unset unless it is a value already configured on "
                 "the target agent. An unowned or misspelled voice id is accepted "
                 "here but can fail silently downstream. " + END_CALL_NOTE
@@ -3003,15 +2962,19 @@ async def create_phone_session(
     when the call is stuck or the user wants to stop; sessions.get confirms
     that it ended.
 
-    This tool has the highest error rate on this surface. Read the failure
-    modes below before retrying. A rejected call returns one of these codes
-    in the error body: AGENT_NOT_FOUND (agentId not in this workspace),
+    Free credit covers US and Canada calls and one free 2-minute call to the
+    user's own mobile abroad; other countries need one top-up from $5, then stay
+    unlocked. Calls cost $0.09/min plus telephony.
+
+    A rejected call returns one of these codes in the error body:
+    AGENT_NOT_FOUND (agentId not in this workspace),
     PHONE_NUMBER_CONSENT_REQUIRED (the connector's phone-use authorization
     needs reacceptance), PHONE_NUMBER_KYB_ACCESS_SUSPENDED (compliance
     review pending, retrying will not help; check phone_numbers.kyb.get for
     status), PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED, _PENDING, and
     _FAILED (auto-provisioning a number failed or needs credit; see the
-    returned balance and price fields), and INSUFFICIENT_CREDITS. A 2xx
+    returned balance and price fields), PHONE_NUMBER_CARD_REQUIRED,
+    DESTINATION_REQUIRES_CARD and INSUFFICIENT_CREDITS. A 2xx
     response does not mean the call was answered. No-answer, voicemail, and
     carrier rejection all settle normally and appear afterward in get_call
     or sessions.transcript.get, not as a tool error here.

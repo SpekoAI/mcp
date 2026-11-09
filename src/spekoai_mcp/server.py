@@ -175,8 +175,9 @@ INSTRUCTIONS = "\n\n".join(
         """
         When the user is blocked by something only the Speko team can fix (an
         error says to contact support, a feature is not enabled for the
-        workspace, a billing problem, or a platform bug), offer to open a
-        ticket with support.ticket.create instead of sending them to email.
+        workspace, a billing issue beyond credit, or a platform bug), offer
+        to open a ticket with support.ticket.create instead of sending them to
+        email.
         Put the trace_id and any agent, session or call ids in the ticket, and
         give the user the ticketUrl it returns. The team replies on the ticket:
         a result warning SUPPORT_REPLY_UNREAD means a reply is waiting, read it

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `billing.top_up_link.create` (customer, connector, muse and the default profile): returns a one-tap payment link for the workspace, where the user picks the amount from $5. Creating it moves no money. On hosts that render MCP Apps the result is an Add credit card (`ui://speko/top-up.html`) whose button opens the link through `ui/open-link`. Not on ChatGPT, Replit or builder.
+- Every payment refusal reads the same on every tool, handwritten or manifest-generated: `INSUFFICIENT_CREDITS`, `DESTINATION_REQUIRES_CARD`, `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED` and `PHONE_NUMBER_CARD_REQUIRED` state the cause, then the one-tap `topUpUrl` where the host allows it. Without a link they name `billing.top_up_link.create`, `billing.checkout.create` or the billing page, whichever the session can use. On ChatGPT no payment link or billing URL is given.
+- Billing text states facts and names tools instead of telling the assistant what to say, in line with the Anthropic directory review rules. This covers the out-of-credit message, the `credits.balance.get` text at $0 or below, and the spending-cap step. No amount is suggested.
+- Add credit button experiment: on the customer, connector and muse hosts, half of organizations (stable hash of the organization id, the same hash the server logs as `paywall_arm`) also read that `billing.top_up_link.create` shows the refusal's link as a button.
+- `sessions.phone.create` no longer says a first call buys a dedicated US number (calls usually go out from a shared Speko caller ID), no longer calls itself the highest-error tool, and states the US and Canada free-credit rule, the one free call abroad, the $5 unlock and the per-minute price.
+- Server instructions: the support-ticket line names "a billing issue beyond credit" instead of any billing problem, so a refusal for credit is not sent to support.
+
 ## 0.2.54
 
 - 402 `DESTINATION_REQUIRES_CARD` with a one-tap `topUpUrl`: on the connector, customer and muse hosts the next step gives the user that link (a payment page where they choose any amount from $5), says not to buy a phone number because it does not unlock the call, and checks `credits.balance.get` after they pay. The link is kept only when it is https on the dashboard host. ChatGPT, other hosts, and refusals without the field keep the previous step.

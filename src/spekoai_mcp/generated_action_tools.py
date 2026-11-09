@@ -8,12 +8,13 @@ from typing import Any
 from uuid import uuid4
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_context
 from fastmcp.tools import Tool, ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
-from spekoai_mcp import http_client
+from spekoai_mcp import http_client, payment
 from spekoai_mcp.action_manifest import action_entries
 from spekoai_mcp.credit_exhaustion import BALANCE_ACTION_ID, balance_result_text
 from spekoai_mcp.profiles import current_profile, profile_serves_tool
@@ -34,11 +35,20 @@ class ManifestActionTool(Tool):
         idempotency_key = None
         if self.idempotency == "required":
             idempotency_key = _idempotency_key(self.action_id, arguments)
-        payload = await http_client.call_action(
-            self.action_id,
-            arguments,
-            idempotency_key=idempotency_key,
-        )
+        try:
+            payload = await http_client.call_action(
+                self.action_id,
+                arguments,
+                idempotency_key=idempotency_key,
+            )
+        except http_client.SpekoApiError as exc:
+            # A payment refusal reads the same here as on a handwritten tool.
+            # Every other error keeps escaping as before.
+            if not payment.is_payment_refusal(exc):
+                raise
+            raise ToolError(
+                http_client.tool_error_message(exc, next_step=payment.payment_step(exc))
+            ) from exc
         text = payload_text(payload, action=self.action_id)
         if self.action_id == BALANCE_ACTION_ID:
             text = balance_result_text(payload, text)

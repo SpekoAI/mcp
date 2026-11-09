@@ -2,8 +2,8 @@
 
 Platform answers ``402 {error, code: INSUFFICIENT_CREDITS, balanceUsd}`` from
 its pre-flight credit gates. Whatever tool tripped it, the model must read one
-message that names the cause, the billing page and "do not retry", never
-``next_step=Retry the Speko MCP request``.
+message that names the cause, how this session pays and that the request fails
+the same way until then, never ``next_step=Retry the Speko MCP request``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 import spekoai_mcp.http_client as http_client
-from spekoai_mcp.action_tools import CREDIT_EXHAUSTED_NEXT_STEP, next_step_for_error
+from spekoai_mcp.action_tools import next_step_for_error
 from spekoai_mcp.server import create_server
 
 OUT_OF_CREDIT = {
@@ -56,7 +56,9 @@ def _assert_out_of_credit_message(text: str) -> None:
     assert "out of credit" in text
     assert "(balance $-0.12)" in text
     assert "402 INSUFFICIENT_CREDITS" in text
-    assert http_client.BILLING_URL in text
+    # The default profile serves the top-up link tool, so the message names it.
+    assert "billing.top_up_link.create" in text
+    assert "returns the same refusal" in text
     assert "trace_id=req_402" in text
     assert "Retry the Speko MCP request" not in text
     assert "Error calling tool" not in text
@@ -101,9 +103,10 @@ def test_next_step_for_402_says_top_up_not_retry() -> None:
     exc = http_client.SpekoApiError(
         402, "Insufficient credit balance.", code="INSUFFICIENT_CREDITS"
     )
-    assert next_step_for_error(exc, path="/v1/sessions") == CREDIT_EXHAUSTED_NEXT_STEP
-    assert http_client.BILLING_URL in CREDIT_EXHAUSTED_NEXT_STEP
-    assert "Do not retry" in CREDIT_EXHAUSTED_NEXT_STEP
+    step = next_step_for_error(exc, path="/v1/sessions")
+    assert step.startswith("The workspace is out of credit.")
+    assert "returns the same refusal" in step
+    assert "Retry the Speko MCP request" not in step
 
 
 def test_tool_error_message_short_circuits_for_credit_exhaustion() -> None:
@@ -144,7 +147,7 @@ async def test_every_tool_surface_renders_the_same_out_of_credit_message(
     assert out_of_credit_api, "the tool must have reached Platform"
 
 
-async def test_balance_read_names_the_billing_page_when_exhausted(
+async def test_balance_read_names_how_to_pay_when_exhausted(
     out_of_credit_api: list[str],
 ) -> None:
     mcp = create_server()
@@ -152,7 +155,7 @@ async def test_balance_read_names_the_billing_page_when_exhausted(
     text = result.content[0].text  # type: ignore[union-attr]
     assert "$-0.12" in text
     assert "out of credit" in text
-    assert http_client.BILLING_URL in text
+    assert "billing.top_up_link.create" in text
     structured = json.loads(json.dumps(result.structured_content))
     assert structured["data"]["balanceUsd"] == -0.12
     assert "/v1/actions/credits.balance.get" in out_of_credit_api
