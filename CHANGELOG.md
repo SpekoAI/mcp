@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.56
 
+- `audio.synthesis.get` (default, customer, ChatGPT, muse and Replit profiles; not the Anthropic directory connector): returns a fresh 15-minute link for an earlier `audio.synthesize` result by its `synthesis_id`, without synthesizing or billing again. Audio is kept about 24 hours. `audio.synthesize` results now carry `synthesis_id` and say to use this tool when the link has expired.
 - `sessions.phone.quote` (default, customer, connector and muse profiles): checks a call before it is placed, without dialing or spending credit. Returns whether the workspace can call the number now (`ready`, `free_call`, `top_up_required`, `insufficient_credits`, `spending_cap_reached`, `not_allowed`), the estimated price per minute, the smallest top-up that unlocks the call, how long the balance lasts and, when money is needed, the one-tap `topUpUrl`. Not on ChatGPT.
 - `sessions.phone.create` refused for payment (`DESTINATION_REQUIRES_CARD`, `INSUFFICIENT_CREDITS`, `PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED`, `PHONE_NUMBER_CARD_REQUIRED`) says the call was not placed and nothing was charged, and hands back the call's arguments so it is retried unchanged after checkout, without asking the user again.
 - Voicemail notice, off by default (`SPEKO_MCP_VOICEMAIL_NOTICE`). When on, a `sessions.phone.create` result for a call placed without an `agentId` gets one line saying that if someone calls the Speko number back and no agent answers it, they can leave a voicemail, and Speko emails the recording and transcript to the workspace's owners and admins. Where the session can call `phone_numbers.update` (customer and muse hosts) the line adds that `voicemailGreeting` changes the greeting. Shown at most once per organization per server process every 7 days; failed calls and calls with an `agentId` get nothing. Each shown notice logs an `mcp_notice_exposure` record.
