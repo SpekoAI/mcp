@@ -16,7 +16,12 @@ import spekoai_mcp.http_client as http_client
 import spekoai_mcp.profiles as profiles
 import spekoai_mcp.read_aloud_offer as read_aloud_offer
 from spekoai_mcp import attribution
-from spekoai_mcp.audio_block import _MAX_AUDIO_BLOCK_BYTES, with_audio_block
+from spekoai_mcp.audio_block import (
+    _MAX_TWO_COPY_BYTES,
+    AUDIO_BLOCK_TOO_LARGE_TEXT,
+    MAX_AUDIO_BLOCK_BYTES,
+    with_audio_block,
+)
 from spekoai_mcp.http_client import SpekoRawResponse
 from spekoai_mcp.profiles import DEFAULT_PROFILE_ENV_VAR
 from spekoai_mcp.read_aloud_offer import READ_ALOUD_OFFER_ENV_VAR, READ_ALOUD_OFFER_TEXT
@@ -143,46 +148,106 @@ async def test_other_clients_get_the_result_unchanged(
     assert out.to_mcp_result() == baseline.to_mcp_result()
 
 
-async def test_a_clip_above_the_inline_cap_gets_no_block(
+async def test_a_clip_above_the_inline_cap_gets_no_block_and_a_line_that_says_so(
     monkeypatch: pytest.MonkeyPatch, identify: Identify
 ) -> None:
     _platform_returning(
         monkeypatch, _link_response(sizeBytes=action_tools._INLINE_AUDIO_MAX_BYTES + 1)
     )
-    identify(anthropic_client="Cowork")
-
-    out = await action_tools.synthesize_speech(BODY)
-
-    assert [block.type for block in out.content] == ["text"]
-    assert "audio_base64" not in out.structured_content
-
-
-@pytest.mark.parametrize("streamed", [False, True])
-async def test_a_clip_above_the_block_cap_keeps_the_result_it_had(
-    monkeypatch: pytest.MonkeyPatch, identify: Identify, streamed: bool
-) -> None:
-    """Two base64 copies of a larger clip pass the 16 MB a Claude Code client reads."""
-    clip = b"\x00" * (_MAX_AUDIO_BLOCK_BYTES + 1)
-    response = (
-        SpekoRawResponse(content=clip, content_type="audio/wav")
-        if streamed
-        else _link_response(sizeBytes=len(clip))
-    )
-    _platform_returning(monkeypatch, response, audio=clip)
     baseline = await action_tools.synthesize_speech(BODY)
     identify(anthropic_client="Cowork")
 
     out = await action_tools.synthesize_speech(BODY)
 
     assert [block.type for block in out.content] == ["text"]
+    assert out.content[0].text == f"{baseline.content[0].text}\n{AUDIO_BLOCK_TOO_LARGE_TEXT}"
+    assert out.structured_content == baseline.structured_content
+    assert "audio_base64" not in out.structured_content
+    assert AUDIO_BLOCK_TOO_LARGE_TEXT not in baseline.content[0].text
+
+
+async def test_a_streamed_clip_above_the_inline_cap_keeps_the_result_it_had(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify
+) -> None:
+    """The streamed path has no cap and no link; nothing is added or removed."""
+    clip = b"\x00" * (MAX_AUDIO_BLOCK_BYTES + 1)
+    _platform_returning(monkeypatch, SpekoRawResponse(content=clip, content_type="audio/wav"))
+    baseline = await action_tools.synthesize_speech(BODY)
+    identify(anthropic_client="Cowork")
+
+    out = await action_tools.synthesize_speech(BODY)
+
+    assert out.to_mcp_result() == baseline.to_mcp_result()
+
+
+@pytest.mark.parametrize("size", [_MAX_TWO_COPY_BYTES + 1, MAX_AUDIO_BLOCK_BYTES])
+async def test_a_linked_clip_too_large_to_send_twice_gets_the_block_alone(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify, size: int
+) -> None:
+    """Two base64 copies of this clip pass the 16 MB a Claude Code client reads."""
+    clip = b"\x01" * size
+    _platform_returning(monkeypatch, _link_response(sizeBytes=size), audio=clip)
+    baseline = await action_tools.synthesize_speech(BODY)
+    identify(anthropic_client="Cowork")
+
+    out = await action_tools.synthesize_speech(BODY)
+
+    assert [block.type for block in out.content] == ["text", "audio"]
+    assert base64.b64decode(out.content[1].data) == clip
+    assert out.content[0].text == baseline.content[0].text
+    # Everything but the second copy of the clip is still there, the link
+    # included: it is what the bundled player offers without `audio_base64`.
+    assert "audio_base64" not in out.structured_content
+    assert out.structured_content == {
+        key: value for key, value in baseline.structured_content.items() if key != "audio_base64"
+    }
+    assert out.structured_content["url"] == SIGNED_URL
+    assert out.structured_content["size_bytes"] == size
+    assert len(out.content[1].data) < 12_000_000
+    # Other clients still get the base64 for the same clip.
+    assert base64.b64decode(baseline.structured_content["audio_base64"]) == clip
+
+
+@pytest.mark.parametrize("size", [_MAX_TWO_COPY_BYTES + 1, MAX_AUDIO_BLOCK_BYTES])
+async def test_a_clip_with_no_link_too_large_to_send_twice_keeps_the_result_it_had(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify, size: int
+) -> None:
+    """The player has only `audio_base64` to play here, so it is not removed."""
+    clip = b"\x01" * size
+    _platform_returning(monkeypatch, SpekoRawResponse(content=clip, content_type="audio/wav"))
+    baseline = await action_tools.synthesize_speech(BODY)
+    identify(anthropic_client="Cowork")
+
+    out = await action_tools.synthesize_speech(BODY)
+
+    assert "url" not in out.structured_content
     assert out.to_mcp_result() == baseline.to_mcp_result()
     assert base64.b64decode(out.structured_content["audio_base64"]) == clip
 
 
-async def test_a_clip_at_the_block_cap_gets_the_block_in_a_readable_response(
+async def test_a_router_clip_too_large_to_send_twice_keeps_the_result_it_had(
     monkeypatch: pytest.MonkeyPatch, identify: Identify
 ) -> None:
-    clip = b"\x00" * _MAX_AUDIO_BLOCK_BYTES
+    pcm = b"\x01\x00" * (_MAX_TWO_COPY_BYTES // 2 + 1000)
+
+    async def fake_router(payload: dict[str, Any], *, token: str) -> Any:
+        return SimpleNamespace(content=pcm, provider="cartesia", model="sonic-3")
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: "sk_test")
+    monkeypatch.setattr(http_client, "post_router_speech", fake_router)
+    baseline = await action_tools.synthesize_speech(BODY)
+    identify(client_info_name="claude-code")
+
+    out = await action_tools.synthesize_speech(BODY)
+
+    assert out.to_mcp_result() == baseline.to_mcp_result()
+    assert "audio_base64" in out.structured_content
+
+
+async def test_a_clip_at_the_two_copy_cap_keeps_audio_base64(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify
+) -> None:
+    clip = b"\x00" * _MAX_TWO_COPY_BYTES
     _platform_returning(monkeypatch, SpekoRawResponse(content=clip, content_type="audio/mpeg"))
     identify(anthropic_client="Cowork")
 
@@ -190,8 +255,13 @@ async def test_a_clip_at_the_block_cap_gets_the_block_in_a_readable_response(
 
     assert [block.type for block in out.content] == ["text", "audio"]
     assert out.content[1].mime_type == "audio/mpeg"
+    assert out.structured_content["audio_base64"] == out.content[1].data
     wire = len(out.content[1].data) + len(out.structured_content["audio_base64"])
     assert wire < 15_000_000
+
+
+def test_the_block_cap_is_the_inline_cap() -> None:
+    assert MAX_AUDIO_BLOCK_BYTES == action_tools._INLINE_AUDIO_MAX_BYTES
 
 
 async def test_the_router_path_gets_the_block(
@@ -285,3 +355,138 @@ def test_a_failure_building_the_block_returns_the_original_result(
     )
 
     assert with_audio_block(original) is original
+
+
+# --- audio.synthesis.get ---------------------------------------------------
+
+SYNTHESIS_ID = "0b6f3c1e-9a52-4c1d-8e2f-3a4b5c6d7e8f"
+
+
+def _stored_link(
+    monkeypatch: pytest.MonkeyPatch, audio: bytes | None = WAV, **overrides: Any
+) -> list[str]:
+    """Stub the link endpoint and the clip read; return the URLs that were read."""
+    fetched: list[str] = []
+
+    async def fake_api(method: str, path: str, body: Any = None) -> dict[str, Any]:
+        return {
+            "id": SYNTHESIS_ID,
+            "url": SIGNED_URL,
+            "expiresAt": "2026-11-10T12:15:00.000Z",
+            "contentType": "audio/wav",
+            "sizeBytes": len(WAV),
+            **overrides,
+        }
+
+    async def fake_download(url: str) -> bytes | None:
+        fetched.append(url)
+        return audio
+
+    monkeypatch.setattr(http_client, "call_speko_api", fake_api)
+    monkeypatch.setattr(action_tools, "_download_synthesized_audio", fake_download)
+    return fetched
+
+
+@pytest.mark.parametrize(
+    ("anthropic_client", "client_info_name"),
+    [("Cowork", "claude-code"), ("ClaudeCode", None), ("", "claude-code")],
+)
+async def test_synthesis_get_gives_claude_code_hosts_the_stored_clip(
+    monkeypatch: pytest.MonkeyPatch,
+    identify: Identify,
+    anthropic_client: str,
+    client_info_name: str | None,
+) -> None:
+    fetched = _stored_link(monkeypatch)
+    baseline = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+    assert fetched == []
+    identify(anthropic_client=anthropic_client, client_info_name=client_info_name)
+
+    out = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+
+    assert fetched == [SIGNED_URL]
+    assert [block.type for block in out.content] == ["text", "audio"]
+    assert out.content[1].mime_type == "audio/wav"
+    assert base64.b64decode(out.content[1].data) == WAV
+    # The link result itself is the one every client gets.
+    assert out.content[0] == baseline.content[0]
+    assert out.structured_content == baseline.structured_content
+    assert "audio_base64" not in out.structured_content
+
+
+@pytest.mark.parametrize(
+    ("anthropic_client", "client_info_name"),
+    [("ClaudeAI", None), ("ClaudeAI", "claude-code"), ("", "openai-mcp"), ("", None)],
+)
+async def test_synthesis_get_is_unchanged_and_reads_nothing_for_other_clients(
+    monkeypatch: pytest.MonkeyPatch,
+    identify: Identify,
+    anthropic_client: str,
+    client_info_name: str | None,
+) -> None:
+    fetched = _stored_link(monkeypatch)
+    baseline = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+    identify(anthropic_client=anthropic_client, client_info_name=client_info_name)
+
+    out = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+
+    assert fetched == []
+    assert out.to_mcp_result() == baseline.to_mcp_result()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"sizeBytes": MAX_AUDIO_BLOCK_BYTES + 1},
+        {"sizeBytes": None},
+        {"sizeBytes": 0},
+        {"contentType": None},
+        {"contentType": "audio/pcm;rate=24000"},
+        {"contentType": "application/octet-stream"},
+        {"url": "http://storage.googleapis.com/speko-action-media/org_1/abc.wav"},
+    ],
+)
+async def test_synthesis_get_keeps_the_link_alone_when_the_clip_cannot_be_attached(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify, overrides: dict[str, Any]
+) -> None:
+    fetched = _stored_link(monkeypatch, **overrides)
+    baseline = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+    identify(anthropic_client="Cowork")
+
+    out = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+
+    assert fetched == []
+    assert out.to_mcp_result() == baseline.to_mcp_result()
+
+
+@pytest.mark.parametrize("audio", [None, b"", b"\x00" * (MAX_AUDIO_BLOCK_BYTES + 1)])
+async def test_synthesis_get_keeps_the_link_alone_when_the_read_fails_or_is_too_large(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify, audio: bytes | None
+) -> None:
+    fetched = _stored_link(monkeypatch, audio=audio)
+    baseline = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+    identify(anthropic_client="Cowork")
+
+    out = await action_tools.get_synthesis_link(SYNTHESIS_ID)
+
+    assert fetched == [SIGNED_URL]
+    assert out.to_mcp_result() == baseline.to_mcp_result()
+
+
+async def test_attaching_a_block_is_logged(
+    monkeypatch: pytest.MonkeyPatch, identify: Identify, caplog: pytest.LogCaptureFixture
+) -> None:
+    _platform_returning(monkeypatch, _link_response())
+    _ = _stored_link(monkeypatch)
+    identify(anthropic_client="Cowork", client_info_name="claude-code")
+
+    with caplog.at_level("INFO", logger="spekoai_mcp.audio_block"):
+        await action_tools.synthesize_speech(BODY)
+        await action_tools.get_synthesis_link(SYNTHESIS_ID)
+
+    records = [r for r in caplog.records if getattr(r, "event", None) == "audio_block_attached"]
+    assert [(r.tool, r.audio_bytes) for r in records] == [
+        ("audio.synthesize", len(WAV)),
+        ("audio.synthesis.get", len(WAV)),
+    ]
+    assert SIGNED_URL not in caplog.text

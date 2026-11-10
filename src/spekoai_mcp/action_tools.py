@@ -31,7 +31,13 @@ from pydantic import Field
 
 from spekoai_mcp import http_client, payment
 from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META, TOP_UP_APP, TOP_UP_META
-from spekoai_mcp.audio_block import with_audio_block
+from spekoai_mcp.audio_block import (
+    MAX_AUDIO_BLOCK_BYTES,
+    audio_block_mime_type,
+    client_takes_audio_block,
+    with_audio_block,
+    with_stored_audio_block,
+)
 from spekoai_mcp.profiles import (
     DIRECTORY_PROFILES,
     current_profile,
@@ -1114,7 +1120,21 @@ async def get_synthesis_link(
         "size_bytes": link.get("sizeBytes"),
     }
     expires = f" until {payload['expires_at']}" if payload["expires_at"] else ""
-    return result(payload, text=f"Download link (valid{expires}): {payload['url']}")
+    out = result(payload, text=f"Download link (valid{expires}): {payload['url']}")
+    # A Claude Code host whose sandbox cannot reach the link's host gets the
+    # stored clip as a file; no other client costs the read.
+    size = payload["size_bytes"]
+    if (
+        client_takes_audio_block()
+        and audio_block_mime_type(payload["content_type"]) is not None
+        and isinstance(size, int)
+        and 0 < size <= MAX_AUDIO_BLOCK_BYTES
+        and payload["url"].startswith("https://")
+    ):
+        audio = await _download_synthesized_audio(payload["url"])
+        if audio:
+            out = with_stored_audio_block(out, audio, payload["content_type"])
+    return out
 
 
 async def _download_synthesized_audio(url: str) -> bytes | None:
