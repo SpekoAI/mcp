@@ -31,6 +31,7 @@ from pydantic import Field
 
 from spekoai_mcp import http_client, payment
 from spekoai_mcp.apps import AUDIO_PLAYER_APP, AUDIO_PLAYER_META, TOP_UP_APP, TOP_UP_META
+from spekoai_mcp.audio_block import with_audio_block
 from spekoai_mcp.profiles import (
     DIRECTORY_PROFILES,
     current_profile,
@@ -817,7 +818,7 @@ async def synthesize_speech(
     `speed`, `instructions`, `spokenForm`, a bare `model` or more than one
     allowed provider keeps the knob it asked for rather than losing it.
     """
-    return with_read_aloud_offer(await _synthesize_speech(body))
+    return with_audio_block(with_read_aloud_offer(await _synthesize_speech(body)))
 
 
 async def _synthesize_speech(body: dict[str, Any]) -> ToolResult:

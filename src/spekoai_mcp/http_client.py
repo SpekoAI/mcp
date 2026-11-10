@@ -261,6 +261,10 @@ def reset_current_anthropic_client(token: Token[str | None]) -> None:
     _CURRENT_ANTHROPIC_CLIENT.reset(token)
 
 
+def current_anthropic_client() -> str | None:
+    return _CURRENT_ANTHROPIC_CLIENT.get()
+
+
 def set_current_client_info(client_info: object) -> Token[dict[str, str] | None]:
     """Bind an MCP `clientInfo` object for the duration of one tool call."""
     headers: dict[str, str] = {}
@@ -278,6 +282,10 @@ def set_current_client_info(client_info: object) -> Token[dict[str, str] | None]
 
 def reset_current_client_info(token: Token[dict[str, str] | None]) -> None:
     _CURRENT_CLIENT_INFO.reset(token)
+
+
+def current_client_info_name() -> str | None:
+    return (_CURRENT_CLIENT_INFO.get() or {}).get("X-Speko-Client-Info-Name")
 
 
 def _platform_headers(
