@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.57
 
 - `audio.synthesize` also returns the clip as an MCP `audio` content block to Cowork and Claude Code (`x-anthropic-client` is `Cowork` or `ClaudeCode`, or `clientInfo.name` is `claude-code` when the client sends no such header). Cowork gives its agent only the `content` blocks of a result, not `structuredContent`, so the agent no longer received `audio_base64`, and some Cowork sandboxes cannot reach the download link's host. Claude Code saves the block to a file and gives the agent the path. The block repeats `audio_base64`, so these clients get a response about twice as large. It is added for clips up to 5 MiB (about 109 s of 24 kHz WAV), because Claude Code does not read an MCP response above 16 MB; a larger clip keeps the result it had before. All other clients get the same result as before.
 
