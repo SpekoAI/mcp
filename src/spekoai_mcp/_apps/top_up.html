@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add credit</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --accent-fg: #ffffff;
+        --surface: #f7f8fa;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #17181b;
+        --fg: #f3f4f6;
+        --muted: #9ca3af;
+        --line: #2c2e33;
+        --accent: #7aa2ff;
+        --accent-fg: #0b1020;
+        --surface: #202126;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 14px;
+      }
+      .title {
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--accent-fg);
+        font: inherit;
+        font-weight: 600;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .link {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+        word-break: break-all;
+        user-select: all;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card" id="card">
+      <p class="muted" id="status">Preparing the payment link…</p>
+      <p class="muted" id="error" role="alert" hidden></p>
+      <div id="content" hidden>
+        <p class="title">Add credit to your Speko workspace</p>
+        <p class="muted">
+          Opens a secure Stripe payment page. You choose the amount, from $5. Nothing renews.
+        </p>
+        <div class="actions">
+          <button type="button" id="open">Add credit</button>
+        </div>
+        <p class="link" id="link"></p>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var PROTOCOL_VERSION = "2026-01-26";
+        var INITIALIZE_ID = 1;
+        var nextId = 2;
+        // Only Speko's own one-tap links. The server checks the same shape.
+        var LINK =
+          /^https:\/\/(platform\.speko\.ai|platform-staging\.speko\.dev)\/v1\/public\/top-up\/[A-Za-z0-9._-]+(\?amount=[0-9]+)?$/i;
+        var statusEl = document.getElementById("status");
+        var errorEl = document.getElementById("error");
+        var contentEl = document.getElementById("content");
+        var url = null;
+
+        function send(message) {
+          window.parent.postMessage(message, "*");
+        }
+
+        function request(method, params) {
+          send({ jsonrpc: "2.0", id: nextId++, method: method, params: params });
+        }
+
+        function notify(method, params) {
+          send({ jsonrpc: "2.0", method: method, params: params });
+        }
+
+        function reportSize() {
+          var card = document.getElementById("card");
+          notify("ui/notifications/size-changed", {
+            width: Math.ceil(document.documentElement.scrollWidth),
+            height: Math.ceil(card.getBoundingClientRect().height) + 28,
+          });
+        }
+
+        function fail(message) {
+          statusEl.hidden = true;
+          contentEl.hidden = true;
+          errorEl.hidden = false;
+          errorEl.textContent = message;
+          reportSize();
+        }
+
+        function render(data) {
+          var candidate = data && typeof data.url === "string" ? data.url : "";
+          if (!LINK.test(candidate)) {
+            fail("The payment link is not available. Ask again in a moment.");
+            return;
+          }
+          url = candidate;
+          document.getElementById("link").textContent = url;
+          statusEl.hidden = true;
+          contentEl.hidden = false;
+          reportSize();
+        }
+
+        // A sandboxed frame may not open windows itself; ask the host. The
+        // click is the user gesture the host requires to skip its prompt.
+        document.getElementById("open").addEventListener("click", function () {
+          if (url) request("ui/open-link", { url: url });
+        });
+
+        function applyTheme(hostContext) {
+          var theme = hostContext && hostContext.theme;
+          document.documentElement.setAttribute("data-theme", theme === "dark" ? "dark" : "light");
+        }
+
+        if (typeof ResizeObserver === "function") {
+          new ResizeObserver(reportSize).observe(document.getElementById("card"));
+        }
+
+        window.addEventListener("message", function (event) {
+          if (event.source !== window.parent) return;
+          var message = event.data;
+          if (!message || message.jsonrpc !== "2.0") return;
+
+          if (message.id === INITIALIZE_ID && message.result) {
+            applyTheme(message.result.hostContext);
+            notify("ui/notifications/initialized", {});
+            reportSize();
+            return;
+          }
+
+          if (message.method === "ui/notifications/tool-result") {
+            var params = message.params || {};
+            if (params.isError) {
+              fail("The payment link is not available. Ask again in a moment.");
+              return;
+            }
+            render(params.structuredContent);
+            return;
+          }
+
+          // The spec sends the changed context as `params` itself; older hosts
+          // nest it under `hostContext`.
+          if (message.method === "ui/notifications/host-context-changed") {
+            var changed = message.params || {};
+            applyTheme(changed.hostContext || changed);
+          }
+        });
+
+        // `appInfo` and `appCapabilities` are the MCP Apps spec fields. The
+        // other widgets send `clientInfo` and `capabilities`, which hosts have
+        // accepted so far; both pairs are sent, since the spec's schema drops
+        // keys it does not know rather than rejecting them.
+        var APP_INFO = { name: "speko-top-up", version: "1.0.0" };
+        send({
+          jsonrpc: "2.0",
+          id: INITIALIZE_ID,
+          method: "ui/initialize",
+          params: {
+            appInfo: APP_INFO,
+            appCapabilities: {},
+            clientInfo: APP_INFO,
+            capabilities: {},
+            protocolVersion: PROTOCOL_VERSION,
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>
