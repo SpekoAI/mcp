@@ -23173,7 +23173,7 @@
     {
       "id": "sessions.transcript.get",
       "version": 1,
-      "description": "Get the ordered transcript and per-turn latency for a workspace session, including any tool calls made mid-call (toolCalls, by name and args) and a latencyStatus per turn (\"partial\"|\"complete\"|\"interrupted\"|\"error\"). Use this to confirm whether a keypad press (send_dtmf) was invoked, or whether a turn with no agent text and an \"error\" latency status points to a synthesis failure rather than the callee hanging up.",
+      "description": "Get the ordered transcript and per-turn latency for a workspace session, including who spoke each caller turn on calls with speaker labels on (speaker: S1, S2, …; speakerSegments when one turn holds several voices), any tool calls made mid-call (toolCalls, by name and args) and a latencyStatus per turn (\"partial\"|\"complete\"|\"interrupted\"|\"error\"). Use this to confirm whether a keypad press (send_dtmf) was invoked, or whether a turn with no agent text and an \"error\" latency status points to a synthesis failure rather than the callee hanging up.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -23358,6 +23358,31 @@
                         "required": [
                           "name",
                           "args"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "speaker": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "speakerSegments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "speaker": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "speaker",
+                          "text"
                         ],
                         "additionalProperties": false
                       }
