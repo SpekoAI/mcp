@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.58
 
 - `audio.synthesis.get` also returns the stored clip as an MCP `audio` content block to Cowork and Claude Code, for clips up to 8 MB. An agent whose sandbox cannot reach the download link's host gets an earlier clip as a file, with no new synthesis and no new charge. All other clients get the same result as before, and the server does not read the clip for them.
 - `audio.synthesize` attaches the `audio` content block for clips up to 8 MB (was 5 MiB) for Cowork and Claude Code. For a clip from 5 MiB to 8 MB that has a download link, these clients get the block without `audio_base64` in `structuredContent`, because two copies exceed the 16 MB that Claude Code reads; the bundled player then offers the link. Clips up to 5 MiB keep both. A clip from 5 MiB to 8 MB with no link (Router and streamed results) keeps `audio_base64` and gets no block, as in 0.2.57. For a clip above 8 MB the result text for these clients says that the clip is not attached and that a clip of up to about 2.5 minutes of speech is.
