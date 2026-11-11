@@ -3094,8 +3094,9 @@ async def create_phone_session(
         ),
     ],
 ) -> ToolResult:
-    """Create an outbound phone session, dialing `body.to` from an owned or
-    auto-provisioned number.
+    """Create an outbound phone session, dialing `body.to` from the
+    workspace's own number. A workspace with no number usually calls from a
+    shared Speko caller ID (US and Canada only) instead of buying one.
 
     Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
     calls default to five minutes. Use sessions.end to hang up immediately
