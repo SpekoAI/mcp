@@ -127,7 +127,8 @@ def apply_directory_disclosure(body: dict[str, Any], *, partial: bool = False) -
 # again for directory traffic. This is an operator decision, not a measurement:
 # agents CREATED through a published directory host are made speech-native on
 # OpenAI GPT-Live instead of getting the tier's STT→LLM→TTS stack pinned in at
-# create time (`resolveDefaultStackAllowlists`, routes/agents.ts).
+# create time (`resolveDefaultStackAllowlists`, routes/agents.ts), unless the
+# create says `runMode: 'cascade'`.
 #
 # `openai:gpt-live-1` is the one S2S model a PHONE leg can host: every other
 # realtime model in the catalog is provider-direct (the client receives an
@@ -179,13 +180,18 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     """Force the GPT-Live run mode into an agent-create body on directory hosts.
 
     Mutates and returns ``body``, like :func:`apply_ai_disclosure`, and is
-    idempotent. A pin the caller supplied is REPLACED: this is the platform's
-    answer for directory traffic, not a default the caller opts out of.
+    idempotent. An s2s model the caller supplied is REPLACED: a directory
+    agent that runs speech-to-speech runs on GPT-Live.
 
-    One escape hatch, and it is a server contract rather than a preference:
-    `runtime: 'pipecat'` with `runMode: 's2s'` is rejected by POST /v1/agents
-    (`IncompatibleAgentRuntimeError`), so a pipecat body is left alone — a pin
-    must never turn a valid create into a 4xx.
+    Two bodies are left alone:
+
+    - `runMode: 'cascade'`, sent explicitly. The person asked for the
+      STT -> LLM -> TTS stack, and only a cascade agent can run simulated
+      test calls (`agents.test_call` returns 409 S2S_EVALUATION_UNSUPPORTED
+      for s2s). A body that omits `runMode` still gets the pin.
+    - `runtime: 'pipecat'`. POST /v1/agents rejects pipecat with
+      `runMode: 's2s'` (`IncompatibleAgentRuntimeError`), so a pin must never
+      turn a valid create into a 4xx.
 
     The pin applies in every language. 0.2.27 (#2693) kept the routed cascade
     for a language outside the catalog's `languages.s2s`; that guard was
@@ -193,7 +199,7 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     """
     if current_profile() not in DIRECTORY_PROFILES:
         return body
-    if body.get("runtime") == "pipecat":
+    if body.get("runtime") == "pipecat" or body.get("runMode") == "cascade":
         return body
 
     body["runMode"] = "s2s"
@@ -210,6 +216,24 @@ def apply_directory_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
     allowed["s2s"] = [DIRECTORY_S2S_PIN]
     prefs["allowedProviders"] = allowed
     body["stackPreferences"] = prefs
+    return body
+
+
+def apply_directory_s2s_update_pin(body: dict[str, Any]) -> dict[str, Any]:
+    """Keep the GPT-Live s2s model on an agent-update body on directory hosts.
+
+    The update half of :func:`apply_directory_s2s_pin`: a PATCH that names an
+    s2s model gets GPT-Live in that slot, so `agents.update` cannot put a
+    provider-direct realtime model the phone path cannot host on a directory
+    agent. The run mode is the caller's to change either way, and a PATCH
+    that names no s2s model is left alone. Mutates and returns ``body``.
+    """
+    if current_profile() not in DIRECTORY_PROFILES:
+        return body
+    prefs = body.get("stackPreferences")
+    allowed = prefs.get("allowedProviders") if isinstance(prefs, dict) else None
+    if isinstance(allowed, dict) and allowed.get("s2s"):
+        allowed["s2s"] = [DIRECTORY_S2S_PIN]
     return body
 
 
@@ -419,6 +443,15 @@ BUILTIN_CONFIG_INVALID_NEXT_STEP = (
 # fallback did not say whether retrying was safe or how to get around a stuck
 # provider.
 PROVIDER_TIMEOUT_CODE = "PROVIDER_TIMEOUT"
+
+S2S_EVALUATION_UNSUPPORTED_CODE = "S2S_EVALUATION_UNSUPPORTED"
+S2S_EVALUATION_UNSUPPORTED_NEXT_STEP = (
+    "This agent runs speech-to-speech, and simulated test calls only run cascade "
+    "(STT -> LLM -> TTS) agents. Ask the user whether to switch it, then call "
+    "agents.update with {'runMode': 'cascade'} (or use Models > Architecture > "
+    "Cascaded in the dashboard) and start the test call again. To keep it "
+    "speech-to-speech, test it with a real phone call instead."
+)
 SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP = (
     "The voice provider stalled before returning audio; the request itself is fine and "
     "no audio was delivered. Retry the same request once. If it stalls again, route "
@@ -2091,6 +2124,8 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         return payment.payment_step(exc)
     if isinstance(exc, http_client.SpekoApiError) and exc.code == SPENDING_CAP_REACHED_CODE:
         return _spending_cap_next_step()
+    if isinstance(exc, http_client.SpekoApiError) and exc.code == S2S_EVALUATION_UNSUPPORTED_CODE:
+        return S2S_EVALUATION_UNSUPPORTED_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError):
         if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/transcribe":
             return TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP
@@ -2586,6 +2621,7 @@ async def update_agent(
     systemPrompt."""
     validate_update_agent_body(body)
     apply_directory_disclosure(body, partial=True)
+    apply_directory_s2s_update_pin(body)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}",

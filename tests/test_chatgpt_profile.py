@@ -81,6 +81,7 @@ def test_chatgpt_preset_keeps_the_calling_wedge() -> None:
         "sessions.transcript.get",
         "sessions.recording.get",
         "agents.create",
+        "agents.update",
         "agents.test_call",
     ):
         assert kept in CHATGPT_PROFILE_TOOL_NAMES, f"{kept} missing"
@@ -155,7 +156,7 @@ def test_no_developer_only_tooling_is_exposed() -> None:
         n
         for n in CHATGPT_PROFILE_TOOL_NAMES
         if n.startswith(("migration.", "knowledge_bases.", "agents.tools."))
-        or n in {"agents.update", "agents.deploy", "agents.versions.list", "share_cards.create"}
+        or n in {"agents.deploy", "agents.versions.list", "share_cards.create"}
     ]
     assert leaked == [], f"developer-only tooling leaked: {leaked}"
 
@@ -235,7 +236,7 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
         "calls.recording.get",
     ):
         assert by_name[read_only].annotations.read_only_hint is True, read_only
-    for write in ("agents.create", "agents.test_call", "sessions.phone.create"):
+    for write in ("agents.create", "agents.update", "agents.test_call", "sessions.phone.create"):
         assert by_name[write].annotations.read_only_hint is False, write
     destructive = {name for name, tool in by_name.items() if tool.annotations.destructive_hint}
     assert destructive == {"sessions.end"}

@@ -7,6 +7,7 @@ names the rule it holds.
 
 from __future__ import annotations
 
+import copy
 import json
 from types import SimpleNamespace
 
@@ -19,8 +20,11 @@ import spekoai_mcp.http_client as http_client
 from spekoai_mcp.action_tools import (
     DIRECTORY_S2S_PIN,
     INCOMPATIBLE_RUNTIME_CODE,
+    S2S_EVALUATION_UNSUPPORTED_NEXT_STEP,
     apply_directory_phone_s2s_pin,
     apply_directory_s2s_pin,
+    apply_directory_s2s_update_pin,
+    next_step_for_error,
 )
 from spekoai_mcp.profiles import (
     CHATGPT_PROFILE,
@@ -235,15 +239,44 @@ def test_pin_is_the_one_phone_hostable_model() -> None:
     assert DIRECTORY_S2S_PIN == "openai:gpt-live-1"
 
 
+@pytest.mark.parametrize("profile", sorted(DIRECTORY_PROFILES))
+def test_explicit_cascade_run_mode_is_kept(monkeypatch: pytest.MonkeyPatch, profile: str) -> None:
+    """A person who asks for the cascade gets it: only a cascade agent can run
+    simulated test calls (tkt_bade5975e75340ad)."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: profile)
+    body = _base_body()
+    body["runMode"] = "cascade"
+    body["stackPreferences"] = {
+        "allowedProviders": {"stt": ["deepgram:nova-3"], "tts": ["cartesia:sonic-3.5"]}
+    }
+    expected = copy.deepcopy(body)
+    assert apply_directory_s2s_pin(body) == expected
+
+
+async def test_create_agent_sends_an_explicit_cascade_unchanged(
+    monkeypatch: pytest.MonkeyPatch, agents_api_mock: list[dict[str, object]]
+) -> None:
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, CHATGPT_PROFILE)
+    body = _base_body()
+    body["runMode"] = "cascade"
+    await create_server().call_tool("agents.create", {"body": body})
+
+    assert len(agents_api_mock) == 1
+    sent = agents_api_mock[0]["body"]
+    assert sent["runMode"] == "cascade"
+    assert "s2s" not in (sent.get("stackPreferences") or {}).get("allowedProviders", {})
+
+
 def test_pin_replaces_a_caller_supplied_s2s_model(monkeypatch: pytest.MonkeyPatch) -> None:
     """This is a pin, not a default: a provider-direct realtime model the phone
     path cannot host must not survive it."""
     monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
     body = _base_body()
+    body["runMode"] = "s2s"
     body["stackPreferences"] = {"allowedProviders": {"s2s": ["openai:gpt-realtime-2.1"]}}
-    assert apply_directory_s2s_pin(body)["stackPreferences"]["allowedProviders"]["s2s"] == [
-        DIRECTORY_S2S_PIN
-    ]
+    pinned = apply_directory_s2s_pin(body)
+    assert pinned["runMode"] == "s2s"
+    assert pinned["stackPreferences"]["allowedProviders"]["s2s"] == [DIRECTORY_S2S_PIN]
 
 
 def test_pin_keeps_cascade_pins_and_other_preferences(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -418,3 +451,56 @@ async def test_other_refusals_are_not_retried(
         await create_server().call_tool("agents.create", {"body": _base_body()})
 
     assert len(rejecting_api_mock) == 1, "a non-runtime refusal must reach the caller as-is"
+
+
+@pytest.mark.parametrize("profile", sorted(DIRECTORY_PROFILES))
+def test_update_keeps_gpt_live_in_the_s2s_slot(
+    monkeypatch: pytest.MonkeyPatch, profile: str
+) -> None:
+    """agents.update must not reopen what the create pin closes."""
+    monkeypatch.setattr(action_tools, "current_profile", lambda: profile)
+    body = {
+        "runMode": "s2s",
+        "stackPreferences": {
+            "allowedProviders": {"s2s": ["openai:gpt-realtime-2.1"], "stt": ["deepgram:nova-3"]}
+        },
+    }
+    allowed = apply_directory_s2s_update_pin(body)["stackPreferences"]["allowedProviders"]
+    assert allowed["s2s"] == [DIRECTORY_S2S_PIN]
+    assert allowed["stt"] == ["deepgram:nova-3"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"runMode": "cascade"},
+        {"runMode": "s2s"},
+        {"name": "Front Desk"},
+        {"stackPreferences": {"allowedProviders": {"llm": ["openai:gpt-5.4-mini"]}}},
+        {"stackPreferences": None},
+    ],
+)
+def test_update_without_an_s2s_model_is_left_alone(
+    monkeypatch: pytest.MonkeyPatch, body: dict[str, object]
+) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: CHATGPT_PROFILE)
+    expected = copy.deepcopy(body)
+    assert apply_directory_s2s_update_pin(body) == expected
+
+
+def test_update_pin_is_scoped_to_directory_profiles(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(action_tools, "current_profile", lambda: "builder")
+    body = {"stackPreferences": {"allowedProviders": {"s2s": ["openai:gpt-realtime-2.1"]}}}
+    expected = copy.deepcopy(body)
+    assert apply_directory_s2s_update_pin(body) == expected
+
+
+def test_s2s_test_call_refusal_points_at_the_cascade_switch() -> None:
+    exc = http_client.SpekoApiError(
+        status_code=409,
+        message="Simulated evals and test calls do not support speech-to-speech agents yet",
+        code="S2S_EVALUATION_UNSUPPORTED",
+    )
+    step = next_step_for_error(exc, path="/v1/agents/agent_1/test-call")
+    assert step == S2S_EVALUATION_UNSUPPORTED_NEXT_STEP
+    assert "agents.update" in step and "cascade" in step

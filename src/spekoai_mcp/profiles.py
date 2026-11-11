@@ -257,8 +257,10 @@ DIRECTORY_WITHHELD_TOOL_NAMES: frozenset[str] = (
 #     removes phone_numbers.create / .available.search / .update (provisioning
 #     a number is a paid purchase) and every credits.* and usage.* read.
 #
-# What is left is one consumer workflow — place a call, watch it, read what was
-# said — plus the two one-shot audio tools. Everything that is account
+# What is left is one consumer workflow — create an agent, edit it, place a
+# call, watch it, read what was said — plus the two one-shot audio tools.
+# `agents.update` is kept so an agent created here can be edited here,
+# including its run mode. Everything that is account
 # administration, agent dev-ops, document ingestion, vendor migration, or
 # destructive is out: not because OpenAI forbids it, but because a focused tool
 # set is what the review gate scores and what the model routes well over. The
@@ -302,6 +304,7 @@ CHATGPT_PROFILE_TOOL_NAMES: list[str] = [
     "audio.synthesize",
     "audio.synthesis.get",
     "agents.create",
+    "agents.update",
     "agents.test_call",
     "sessions.phone.create",
     "sessions.end",
@@ -375,7 +378,6 @@ MUSE_PROFILE_TOOL_NAMES: list[str] = [
     "credits.balance.get",
     "billing.top_up_link.create",
     *CHATGPT_PROFILE_TOOL_NAMES[CHATGPT_PROFILE_TOOL_NAMES.index("audio.transcribe") :],
-    "agents.update",
     "agents.deploy",
     "knowledge_bases.create",
     "knowledge_bases.documents.create",
