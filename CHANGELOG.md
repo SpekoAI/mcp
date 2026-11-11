@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `phone_numbers.verified_caller_ids.list`, `.start`, `.confirm` and `.release` (customer and muse profiles): verify a US or Canadian number the user already has, such as a mobile or office line, with a code sent to it by text or voice call. Once verified, `sessions.phone.create` accepts it as `from` for one year. Start, confirm and release need an OAuth sign-in as a workspace owner or admin; `.list` also works with an API key. A workspace that has never topped up gets `VERIFIED_CALLER_ID_PAYMENT_REQUIRED` with the one-tap `topUpUrl`.
+
 ## 0.2.60
 
 - `sessions.phone.create` says a workspace with no number usually calls from a shared Speko caller ID (US and Canada only) instead of buying one. The description used to say the call dials from an owned or auto-provisioned number.

@@ -62,6 +62,11 @@ names:
   `phone_numbers.sip_connections.create` connects a customer SIP trunk and
   `phone_numbers.import` attaches a number that rides it, with no SIP gateway
   or support ticket;
+- verified caller IDs: `phone_numbers.verified_caller_ids.start` sends a code
+  to a number the user already has and `.confirm` submits it, after which
+  `sessions.phone.create` accepts that number as `from`; `.list` and
+  `.release`. Start, confirm and release need an OAuth sign-in as a workspace
+  owner or admin;
 - custom voices: `voice_clones.create` clones a voice from a recording link
   onto ElevenLabs, Cartesia, MiniMax or CSM, and its provider voice id works
   with `audio.synthesize`; `voice_clones.list`, `.provision` and `.delete`;

@@ -21,6 +21,7 @@ INSUFFICIENT_CREDITS_CODE = http_client.INSUFFICIENT_CREDITS_CODE
 DESTINATION_REQUIRES_CARD_CODE = "DESTINATION_REQUIRES_CARD"
 PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE = "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED"
 PHONE_NUMBER_CARD_REQUIRED_CODE = "PHONE_NUMBER_CARD_REQUIRED"
+VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE = "VERIFIED_CALLER_ID_PAYMENT_REQUIRED"
 
 # Refusals a top-up clears. A spending cap is not one: adding credit does not
 # lift it, so it keeps its own step in `action_tools`.
@@ -30,6 +31,7 @@ PAYMENT_CODES = frozenset(
         DESTINATION_REQUIRES_CARD_CODE,
         PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE,
         PHONE_NUMBER_CARD_REQUIRED_CODE,
+        VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE,
     }
 )
 
@@ -59,6 +61,10 @@ _CAUSES = {
     PHONE_NUMBER_CARD_REQUIRED_CODE: (
         "The workspace's phone number was released because it was not paid for. One top-up "
         "gets a new number on the next call."
+    ),
+    VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE: (
+        "Calling from the workspace's own verified number needs one paid top-up of any "
+        "amount first. Free credit does not count."
     ),
     INSUFFICIENT_CREDITS_CODE: "The workspace is out of credit.",
 }
