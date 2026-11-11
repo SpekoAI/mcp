@@ -24032,7 +24032,7 @@
     {
       "id": "support.ticket.list",
       "version": 1,
-      "description": "List the organization's support tickets, most recent activity first. status filters to open (waiting on Speko), answered (Speko replied last), closed, or all (default). limit is 1-100 (default 50). stage is where the ticket stands for the user: sent, in_review (the team opened it), replied or resolved. Each ticket carries unreadReplies, the number of Speko replies the user has not read yet, and ticketUrl, the dashboard page for it. Read a conversation with support.ticket.get. An organization with no tickets returns an empty list.",
+      "description": "List the organization's support tickets, most recent activity first. status filters to open (waiting on Speko), answered (Speko replied last), closed, or all (default). limit is 1-100 (default 50). stage is where the ticket stands for the user: sent, in_review (the team opened it), replied or resolved. waitingOnLabel, when set, says who the ticket is waiting on: \"Waiting for your reply\" means the team needs the user's answer or test, so tell the user. Each ticket carries unreadReplies, the number of Speko replies the user has not read yet, and ticketUrl, the dashboard page for it. Read a conversation with support.ticket.get. An organization with no tickets returns an empty list.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -24121,6 +24121,27 @@
                     },
                     "ticketUrl": {
                       "type": "string"
+                    },
+                    "waitingOn": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "customer",
+                            "carrier",
+                            "fix"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "waitingOnLabel": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
                   },
                   "required": [
@@ -24132,7 +24153,9 @@
                     "createdAt",
                     "lastMessageAt",
                     "unreadReplies",
-                    "ticketUrl"
+                    "ticketUrl",
+                    "waitingOn",
+                    "waitingOnLabel"
                   ],
                   "additionalProperties": false
                 }
@@ -24304,6 +24327,27 @@
                   "ticketUrl": {
                     "type": "string"
                   },
+                  "waitingOn": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "customer",
+                          "carrier",
+                          "fix"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "waitingOnLabel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "details": {
                     "type": "string"
                   },
@@ -24401,6 +24445,8 @@
                   "lastMessageAt",
                   "unreadReplies",
                   "ticketUrl",
+                  "waitingOn",
+                  "waitingOnLabel",
                   "details",
                   "related",
                   "timeline",
