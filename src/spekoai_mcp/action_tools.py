@@ -3083,6 +3083,7 @@ async def create_phone_session(
                 "ringTimeoutSeconds (int 20-45, default 45): how long the call "
                 "rings before it ends as no-answer; overrides the agent's "
                 "ringTimeoutSeconds. "
+                "idleRePrompts (agent shape minus enabled). "
                 "Per-call fields win over agent defaults. "
                 "Without an own number the call usually goes out from a shared "
                 "Speko caller ID. Do not collect KYB fields. "
