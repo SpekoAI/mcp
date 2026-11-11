@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.2.59
 
 - `agents.create` on the directory profiles (ChatGPT, muse) keeps `runMode: "cascade"` when the caller sends it. Before, every directory create was switched to speech-to-speech on `openai:gpt-live-1`, and simulated test calls on that agent failed with 409 `S2S_EVALUATION_UNSUPPORTED`. A create that sends no `runMode`, or `runMode: "s2s"`, still gets GPT-Live.
 - `agents.update` is on the ChatGPT profile, so an agent created in ChatGPT can be changed there, including its run mode. On the directory profiles an update that names an s2s model gets `openai:gpt-live-1` in that slot, as a create does.
 - `agents.test_call` refused with 409 `S2S_EVALUATION_UNSUPPORTED` now says to switch the agent to cascade with `agents.update` (or in the dashboard) and retry, or to test a speech-to-speech agent with a real phone call.
+- `sessions.transcript.get` describes who spoke each caller turn on calls with speaker labels on (`speaker`: S1, S2, …; `speakerSegments` when one turn holds several voices).
 
 ## 0.2.58
 
