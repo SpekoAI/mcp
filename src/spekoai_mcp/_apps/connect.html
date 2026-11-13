@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect Speko</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --surface: #f7f8fa;
+        --code: #eef0f3;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #17181b;
+        --fg: #f3f4f6;
+        --muted: #9ca3af;
+        --line: #2c2e33;
+        --accent: #7aa2ff;
+        --surface: #202126;
+        --code: #2a2c31;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 14px;
+      }
+      .title {
+        font-weight: 600;
+        font-size: 14px;
+        margin: 0 0 4px;
+      }
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 12px 0 4px;
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .tab {
+        font: inherit;
+        font-size: 12px;
+        color: var(--fg);
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 3px 10px;
+        cursor: pointer;
+      }
+      .tab[aria-selected="true"] {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .snippet {
+        position: relative;
+        margin-top: 6px;
+      }
+      pre {
+        margin: 0;
+        padding: 10px 12px;
+        padding-right: 64px;
+        background: var(--code);
+        border-radius: 8px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .copy {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        font: inherit;
+        font-size: 11px;
+        color: var(--fg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 2px 8px;
+        cursor: pointer;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 10px 0 0;
+      }
+      .link {
+        font: inherit;
+        font-size: 12px;
+        color: var(--accent);
+        background: none;
+        border: 0;
+        padding: 0;
+        margin-top: 10px;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0;
+      }
+      .error {
+        color: #dc2626;
+        font-size: 13px;
+        margin: 0;
+      }
+      :root[data-theme="dark"] .error {
+        color: #f87171;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card" id="card">
+      <p class="title">Connect Speko</p>
+      <p class="status" id="status">Loading setup steps…</p>
+      <p class="error" id="error" hidden></p>
+      <div id="content" hidden>
+        <p class="label">Guided installer</p>
+        <div class="snippet">
+          <pre id="installer"></pre>
+          <button class="copy" type="button" data-copy="installer">Copy</button>
+        </div>
+        <div class="tabs" id="tabs" role="tablist" aria-label="MCP client"></div>
+        <p class="label" id="instructions"></p>
+        <div class="snippet">
+          <pre id="snippet"></pre>
+          <button class="copy" type="button" data-copy="snippet">Copy</button>
+        </div>
+        <p class="note" id="auth"></p>
+        <button class="link" type="button" id="docs">Full setup guide</button>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var PROTOCOL_VERSION = "2026-01-26";
+        var INITIALIZE_ID = 1;
+        var nextId = 2;
+        var statusEl = document.getElementById("status");
+        var errorEl = document.getElementById("error");
+        var contentEl = document.getElementById("content");
+        var tabsEl = document.getElementById("tabs");
+        var payload = null;
+
+        function send(message) {
+          window.parent.postMessage(message, "*");
+        }
+
+        function request(method, params) {
+          send({ jsonrpc: "2.0", id: nextId++, method: method, params: params });
+        }
+
+        function notify(method, params) {
+          send({ jsonrpc: "2.0", method: method, params: params });
+        }
+
+        // Tell the host the content height so it never sizes the frame to 0.
+        function reportSize() {
+          var card = document.getElementById("card");
+          var height = Math.ceil(card.getBoundingClientRect().height) + 28;
+          notify("ui/notifications/size-changed", {
+            width: Math.ceil(document.documentElement.scrollWidth),
+            height: height,
+          });
+        }
+
+        function fail(message) {
+          statusEl.hidden = true;
+          contentEl.hidden = true;
+          errorEl.hidden = false;
+          errorEl.textContent = message;
+          reportSize();
+        }
+
+        function selectClient(id) {
+          var clients = payload.clients;
+          var chosen = clients[0];
+          for (var i = 0; i < clients.length; i++) {
+            if (clients[i].id === id) chosen = clients[i];
+          }
+          Array.prototype.forEach.call(tabsEl.children, function (tab) {
+            tab.setAttribute("aria-selected", tab.dataset.id === chosen.id ? "true" : "false");
+          });
+          document.getElementById("instructions").textContent = chosen.instructions;
+          document.getElementById("snippet").textContent = chosen.snippet;
+          reportSize();
+        }
+
+        function render(data) {
+          if (!data || !Array.isArray(data.clients) || data.clients.length === 0) {
+            fail("The tool returned no setup steps.");
+            return;
+          }
+          payload = data;
+          document.getElementById("installer").textContent = data.installer || "";
+          document.getElementById("auth").textContent = "Sign-in: " + (data.auth || "");
+          tabsEl.innerHTML = "";
+          data.clients.forEach(function (client) {
+            var tab = document.createElement("button");
+            tab.type = "button";
+            tab.className = "tab";
+            tab.setAttribute("role", "tab");
+            tab.dataset.id = client.id;
+            tab.textContent = client.name;
+            tab.addEventListener("click", function () {
+              selectClient(client.id);
+            });
+            tabsEl.appendChild(tab);
+          });
+          statusEl.hidden = true;
+          contentEl.hidden = false;
+          selectClient(data.clients[0].id);
+        }
+
+        function copyText(button, text) {
+          function done(label) {
+            button.textContent = label;
+            setTimeout(function () {
+              button.textContent = "Copy";
+            }, 1500);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+              function () {
+                done("Copied");
+              },
+              function () {
+                selectFallback(button, done);
+              }
+            );
+          } else {
+            selectFallback(button, done);
+          }
+        }
+
+        // A sandboxed frame may refuse clipboard access; select the text so
+        // the user can copy it by hand.
+        function selectFallback(button, done) {
+          var pre = document.getElementById(button.dataset.copy);
+          var range = document.createRange();
+          range.selectNodeContents(pre);
+          var selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          done("Selected");
+        }
+
+        Array.prototype.forEach.call(document.querySelectorAll(".copy"), function (button) {
+          button.addEventListener("click", function () {
+            copyText(button, document.getElementById(button.dataset.copy).textContent);
+          });
+        });
+
+        // A sandboxed frame may not open windows itself; ask the host.
+        document.getElementById("docs").addEventListener("click", function () {
+          if (payload && typeof payload.docsUrl === "string") {
+            request("ui/open-link", { url: payload.docsUrl });
+          }
+        });
+
+        function applyTheme(hostContext) {
+          var theme = hostContext && hostContext.theme;
+          document.documentElement.setAttribute(
+            "data-theme",
+            theme === "dark" ? "dark" : "light"
+          );
+        }
+
+        if (typeof ResizeObserver === "function") {
+          new ResizeObserver(reportSize).observe(document.getElementById("card"));
+        }
+
+        // Listen before initializing: a host may push the tool result as soon
+        // as the frame loads.
+        window.addEventListener("message", function (event) {
+          if (event.source !== window.parent) return;
+          var message = event.data;
+          if (!message || message.jsonrpc !== "2.0") return;
+
+          if (message.id === INITIALIZE_ID && message.result) {
+            applyTheme(message.result.hostContext);
+            notify("ui/notifications/initialized", {});
+            reportSize();
+            return;
+          }
+
+          if (message.method === "ui/notifications/tool-result") {
+            var params = message.params || {};
+            if (params.isError) {
+              var text = (params.content || [])
+                .filter(function (block) {
+                  return block && block.type === "text";
+                })
+                .map(function (block) {
+                  return block.text;
+                })
+                .join(" ");
+              fail(text || "Could not load the setup steps.");
+              return;
+            }
+            render(params.structuredContent);
+            return;
+          }
+
+          if (message.method === "ui/notifications/host-context-changed") {
+            applyTheme((message.params || {}).hostContext);
+          }
+        });
+
+        send({
+          jsonrpc: "2.0",
+          id: INITIALIZE_ID,
+          method: "ui/initialize",
+          params: {
+            capabilities: {},
+            clientInfo: { name: "speko-connect", version: "1.0.0" },
+            protocolVersion: PROTOCOL_VERSION,
+          },
+        });
+      })();
+    </script>
+  </body>
+</html>
