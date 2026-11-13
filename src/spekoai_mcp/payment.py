@@ -22,6 +22,7 @@ DESTINATION_REQUIRES_CARD_CODE = "DESTINATION_REQUIRES_CARD"
 PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE = "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED"
 PHONE_NUMBER_CARD_REQUIRED_CODE = "PHONE_NUMBER_CARD_REQUIRED"
 VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE = "VERIFIED_CALLER_ID_PAYMENT_REQUIRED"
+PROVIDER_REQUIRES_TOP_UP_CODE = "PROVIDER_REQUIRES_TOP_UP"
 
 # Refusals a top-up clears. A spending cap is not one: adding credit does not
 # lift it, so it keeps its own step in `action_tools`.
@@ -32,6 +33,7 @@ PAYMENT_CODES = frozenset(
         PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE,
         PHONE_NUMBER_CARD_REQUIRED_CODE,
         VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE,
+        PROVIDER_REQUIRES_TOP_UP_CODE,
     }
 )
 
@@ -67,6 +69,11 @@ _CAUSES = {
         "amount first. Free credit does not count."
     ),
     INSUFFICIENT_CREDITS_CODE: "The workspace is out of credit.",
+    PROVIDER_REQUIRES_TOP_UP_CODE: (
+        "ElevenLabs runs on Speko's key after the workspace's first top-up of any amount, "
+        "from $5. Free credit covers every other provider: the same request without the "
+        "ElevenLabs provider pin, voice and model is served by another provider."
+    ),
 }
 
 _AFTER_PAYMENT = (

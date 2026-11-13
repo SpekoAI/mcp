@@ -166,7 +166,18 @@ async def test_synthesize_teaches_the_pin_form_the_server_parses() -> None:
     assert "provider/model" not in description
     assert "cartesia/sonic-3" not in description
     assert "'provider:model'" in description
-    assert "'cartesia:sonic-3'" in description
+    assert "'soniox:tts-rt-v2'" in description
+
+
+async def test_synthesize_examples_do_not_steer_to_a_top_up_gated_provider() -> None:
+    # Claude copies the examples. They named ElevenLabs, which a workspace on
+    # free credit cannot run on Speko's key (PROVIDER_REQUIRES_TOP_UP), so the
+    # examples are providers free credit covers, and the gate is stated.
+    tool = next(t for t in await create_server().list_tools() if t.name == "audio.synthesize")
+    description = json.dumps(tool.parameters)
+    assert "eleven_multilingual_v2" not in description
+    assert "'elevenlabs'" not in description
+    assert "PROVIDER_REQUIRES_TOP_UP" in description
 
 
 # --- synthesis -------------------------------------------------------------

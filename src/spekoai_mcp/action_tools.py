@@ -830,7 +830,7 @@ async def synthesize_speech(
                 "voices.list, or a custom voice's provider_voice_id from "
                 "voice_clones.list pinned to its provider; never typed from "
                 "memory; omit it to get the provider's default), model (upstream model such as "
-                "'eleven_multilingual_v2' or 'sonic-3.5'), speed (0.5-2), "
+                "'inworld-tts-2' or 'tts-rt-v2'), speed (0.5-2), "
                 "instructions (speaking-style text, applied only when the "
                 "resolved model is instruction-capable), spokenForm (bool; "
                 "normalizes markdown, URLs and numbers before synthesis), "
@@ -838,9 +838,12 @@ async def synthesize_speech(
                 "serves, and 16000, 44100 or 48000 usually leave no provider "
                 "and fail with 422), constraints ({allowedProviders?: {tts?: "
                 "string[]}}; each entry is a lowercase provider key such as "
-                "'cartesia' or 'elevenlabs', or a 'provider:model' id from "
-                "models.list such as 'cartesia:sonic-3'; on a Speko-managed "
-                "key, pin a model models.list marks priced: true)."
+                "'inworld' or 'soniox', or a 'provider:model' id from "
+                "models.list such as 'soniox:tts-rt-v2'; on a Speko-managed "
+                "key, pin a model models.list marks priced: true). On free "
+                "credit, ElevenLabs runs on Speko's key only after the "
+                "workspace's first top-up (402 PROVIDER_REQUIRES_TOP_UP); "
+                "every other provider runs on free credit."
             )
         ),
     ],
