@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.2.61
+
+- `audio.synthesize`: the examples name Inworld and Soniox instead of ElevenLabs, and the description says ElevenLabs runs on Speko's key only after the workspace's first top-up. A request for ElevenLabs only from a workspace on free credit gets `PROVIDER_REQUIRES_TOP_UP` with the one-tap `topUpUrl` and the fact that the same request without the ElevenLabs pin, voice and model is served by another provider.
 - `phone_numbers.verified_caller_ids.list`, `.start`, `.confirm` and `.release` (customer and muse profiles): verify a US or Canadian number the user already has, such as a mobile or office line, with a code sent to it by text or voice call. Once verified, `sessions.phone.create` accepts it as `from` for one year. Start, confirm and release need an OAuth sign-in as a workspace owner or admin; `.list` also works with an API key. A workspace that has never topped up gets `VERIFIED_CALLER_ID_PAYMENT_REQUIRED` with the one-tap `topUpUrl`.
 
 ## 0.2.60
