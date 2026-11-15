@@ -50,6 +50,7 @@ CONNECTOR_PROFILE = "connector"
 CHATGPT_PROFILE = "chatgpt"
 REPLIT_PROFILE = "replit"
 MUSE_PROFILE = "muse"
+GEMINI_PROFILE = "gemini"
 CUSTOMER_PROFILE = "customer"
 
 # Every value SPEKOAI_MCP_DEFAULT_PROFILE will honour. Unknown non-empty values
@@ -61,6 +62,7 @@ KNOWN_PROFILES: frozenset[str] = frozenset(
         CHATGPT_PROFILE,
         REPLIT_PROFILE,
         MUSE_PROFILE,
+        GEMINI_PROFILE,
         CUSTOMER_PROFILE,
     }
 )
@@ -73,6 +75,7 @@ _CONNECTOR_MANIFEST_TOOL_NAMES = manifest_tool_names(CONNECTOR_PROFILE)
 _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 _REPLIT_MANIFEST_TOOL_NAMES = manifest_tool_names(REPLIT_PROFILE)
 _MUSE_MANIFEST_TOOL_NAMES = manifest_tool_names(MUSE_PROFILE)
+_GEMINI_MANIFEST_TOOL_NAMES = manifest_tool_names(GEMINI_PROFILE)
 # Actions the server refuses to an API-key principal (credentials, billing,
 # agent access). Advertising them to an API-key session only produced 403
 # ACTION_PRINCIPAL_FORBIDDEN on every call.
@@ -422,11 +425,70 @@ MUSE_PROFILE_TOOL_NAMES: list[str] = [
 
 _MUSE_PROFILE_TOOL_SET = frozenset(MUSE_PROFILE_TOOL_NAMES) | _MUSE_MANIFEST_TOOL_NAMES
 
+# The Google Gemini preset, published to Google's Connected Apps Platform as
+# `https://gemini.speko.ai/mcp`.
+#
+# Google's Connected Apps policy ("Integration integrity") says a connected
+# app "must not act as a proxy for, connect to, or facilitate communication
+# with other AI agents that can perform actions autonomously. All
+# agent-to-agent interactions are strictly prohibited." So this surface
+# builds and tests no agents: agents.create, agents.update, agents.deploy and
+# agents.test_call stay out, and with them agents.test_call.get and
+# agents.preview_stacks, which only agents.create names.
+#
+# What is left are the three consumer journeys the listing promises:
+#
+#   - place one phone call per request, after the user has seen the price
+#     (sessions.phone.quote), from a number the account already owns. The AI
+#     disclosure opener is injected server side because this profile is in
+#     DIRECTORY_PROFILES.
+#   - read back what was said on a past call.
+#   - narrate text to an audio file link, and transcribe an audio link.
+#
+# No purchase, billing, credentials, deletes, knowledge bases or SMS: account
+# administration is review surface the three journeys do not need.
+# agents.list / agents.get stay because sessions.phone.create takes an
+# agentId, phone_numbers.kyb.get because a call needs the business
+# declaration, calls.get / calls.recording.get because sessions.phone.create
+# and audio.transcribe name them, and the support-ticket follow-ups because
+# support.ticket.create names them.
+#
+# Reads first, writes last, in the order clients see them.
+GEMINI_PROFILE_TOOL_NAMES: list[str] = [
+    "voices.list",
+    "models.list",
+    "agents.list",
+    "agents.get",
+    "phone_numbers.list",
+    "phone_numbers.kyb.get",
+    "sessions.list",
+    "sessions.get",
+    "sessions.transcript.get",
+    "sessions.recording.get",
+    "calls.get",
+    "calls.recording.get",
+    "sessions.phone.quote",
+    "audio.synthesis.get",
+    "support.ticket.list",
+    "support.ticket.get",
+    "audio.transcribe",
+    "audio.synthesize",
+    "sessions.phone.create",
+    "sessions.end",
+    "support.ticket.create",
+    "support.ticket.reply",
+    "support.ticket.rate",
+]
+
+_GEMINI_PROFILE_TOOL_SET = frozenset(GEMINI_PROFILE_TOOL_NAMES) | _GEMINI_MANIFEST_TOOL_NAMES
+
 # Profiles published in a third-party assistant directory. Every outbound call
 # created through one of these MUST disclose that the caller is an AI (see
 # `apply_directory_disclosure` in action_tools) — direct MCP clients on the
 # default path are not rewritten.
-DIRECTORY_PROFILES: frozenset[str] = frozenset({CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE})
+DIRECTORY_PROFILES: frozenset[str] = frozenset(
+    {CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE, GEMINI_PROFILE}
+)
 
 # The curated builder preset, in the order clients see it. Reads first,
 # the sanctioned writes last (builder platforms default writes to
@@ -677,6 +739,9 @@ class ToolProfileMiddleware(Middleware):
         elif profile == MUSE_PROFILE:
             if name not in _MUSE_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == GEMINI_PROFILE:
+            if name not in _GEMINI_PROFILE_TOOL_SET:
+                raise NotFoundError(f"Unknown tool: {name!r}")
         elif name in BUILDER_ONLY_TOOL_NAMES or (
             name in _MANIFEST_TOOL_NAMES and name not in _DEFAULT_MANIFEST_TOOL_NAMES
         ):
@@ -734,6 +799,16 @@ def _for_profile(tools: Sequence[Tool], profile: str | None) -> Sequence[Tool]:
             )
         )
         return filtered
+    if profile == GEMINI_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _GEMINI_PROFILE_TOOL_SET]
+        filtered.sort(
+            key=lambda tool: (
+                (0, GEMINI_PROFILE_TOOL_NAMES.index(tool.name))
+                if tool.name in GEMINI_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
     if profile == REPLIT_PROFILE:
         filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
         # Build-time tools first; the order is the whole point of this
@@ -778,6 +853,8 @@ def profile_serves_tool(name: str, profile: str | None) -> bool:
         return name in _CHATGPT_PROFILE_TOOL_SET
     if profile == MUSE_PROFILE:
         return name in _MUSE_PROFILE_TOOL_SET
+    if profile == GEMINI_PROFILE:
+        return name in _GEMINI_PROFILE_TOOL_SET
     if profile == REPLIT_PROFILE:
         return name in _REPLIT_PROFILE_TOOL_SET
     visible = name not in BUILDER_ONLY_TOOL_NAMES and (

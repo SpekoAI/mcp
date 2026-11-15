@@ -116,7 +116,7 @@ async def list_voices(
 ) -> ToolResult:
     """List the Speko TTS voice catalog: voices (vendor, id, name) plus TTS
     providers with their models. Use a returned voice id as the `voice`
-    field on agents.create or POST /v1/sessions bodies. ElevenLabs voices
+    field on an agent, session or synthesis body. ElevenLabs voices
     are not in this list (its provider entry has voicesFetchedLive: true);
     they are in the voice index, GET /v1/tts/voices?vendor=elevenlabs."""
     return await call(

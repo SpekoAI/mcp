@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.62
+
+- New `gemini` profile for `https://gemini.speko.ai/mcp`, the host for Google's Connected Apps Platform (Gemini app). It serves phone calls with a price quote first, past-call transcripts and recordings, narration and transcription, and support tickets. It serves no tool that creates, changes, deploys or tests a voice agent, because Google's policy bans agent-to-agent interactions, and no purchase, billing, delete, knowledge-base or SMS tool. Outbound calls get the server-side AI disclosure, as on the other directory hosts.
+- `voices.list` no longer names `agents.create` in its description, so hosts that do not serve agent tools never point the model at one.
+
 ## 0.2.61
 
 - `audio.synthesize`: the examples name Inworld and Soniox instead of ElevenLabs, and the description says ElevenLabs runs on Speko's key only after the workspace's first top-up. A request for ElevenLabs only from a workspace on free credit gets `PROVIDER_REQUIRES_TOP_UP` with the one-tap `topUpUrl` and the fact that the same request without the ElevenLabs pin, voice and model is served by another provider.
