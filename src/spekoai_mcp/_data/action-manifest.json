@@ -29029,7 +29029,7 @@
           "audio_url": {
             "type": "string",
             "format": "uri",
-            "description": "Public http(s) link to a clean recording of one speaker: wav, mp3, m4a, ogg, webm or flac, at most 25 MB. Speko downloads it once and stores it as the reference clip."
+            "description": "Public https link to a clean recording of one speaker: wav, mp3, m4a, ogg, webm or flac, at most 25 MB. Speko downloads it once and stores it as the reference clip."
           },
           "transcription": {
             "description": "Exact words spoken in the recording. Required for csm, optional otherwise.",
