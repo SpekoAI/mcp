@@ -21548,7 +21548,7 @@
     {
       "id": "phone_numbers.sip_connections.create",
       "version": 1,
-      "description": "Connect the customer's own carrier or SIP trunk (Telnyx, Twilio, Odorik or any VoIP provider) as a carrier connection. This is how a customer brings their own number: create the connection here, then attach the number with phone_numbers.import. Self-serve: no static-IP SIP gateway (a separate, gated feature) and no support ticket; same as Phone Numbers → Import number → Add carrier connection in the dashboard. host is the carrier SIP domain or IP without sip:// or a port; port defaults to 5060 and transport to udp. At least one of allow_inbound and allow_outbound must be true, and a number imported later can only use the directions enabled here. auth_username and auth_password are the SIP digest login the carrier issued; auth_password is a secret, stored encrypted and never returned by any tool (has_auth_password says whether one is set); do not repeat it in replies. Outbound calls send the number in E.164 as the SIP From user and the destination in E.164; a carrier that identifies the account by the From user (voip.ms) needs from_user set to that account, usually with caller_id_header \"p-asserted-identity\" so the number still reaches it, and dial_format \"e164_without_plus\" when it wants digits without the plus; caller_display_name is the name callees see instead of from_user. Inbound calls are challenged for auth_username/auth_password by default, so allow_inbound on a generic carrier needs both unless inbound_auth is \"ip_allowlist\"; a carrier that cannot answer a digest challenge (voip.ms SIP URI routing) needs inbound_auth \"ip_allowlist\" with its signaling IPs in inbound_allowed_addresses. The carrier decides which destinations and caller IDs it accepts. Calls over a connection like this carry no Speko telephony fee and the number no monthly fee; only the per-minute agent rate applies. Creating a connection places no call and charges nothing. Existing connections are sip_connection installations in integrations.list. Errors: ACTION_INPUT_INVALID with the failing field.",
+      "description": "Connect the customer's own carrier or SIP trunk (Telnyx, Twilio, Odorik or any VoIP provider) as a carrier connection. This is how a customer brings their own number: create the connection here, then attach the number with phone_numbers.import. Self-serve: no static-IP SIP gateway (a separate, gated feature) and no support ticket; same as Phone Numbers → Import number → Add carrier connection in the dashboard. host is the carrier SIP domain or IP without sip:// or a port; port defaults to 5060 (5061 for tls) and transport to udp; for encrypted calls use transport \"tls\" with media_encryption \"require\" (or \"allow\"), which the carrier must support. transport covers the calls Speko places; for calls the carrier sends in, TLS and SRTP must be set at the carrier (Speko still refuses an inbound call without SRTP under \"require\"). At least one of allow_inbound and allow_outbound must be true, and a number imported later can only use the directions enabled here. auth_username and auth_password are the SIP digest login the carrier issued; auth_password is a secret, stored encrypted and never returned by any tool (has_auth_password says whether one is set); do not repeat it in replies. Outbound calls send the number in E.164 as the SIP From user and the destination in E.164; a carrier that identifies the account by the From user (voip.ms) needs from_user set to that account, usually with caller_id_header \"p-asserted-identity\" so the number still reaches it, and dial_format \"e164_without_plus\" when it wants digits without the plus; caller_display_name is the name callees see instead of from_user. Inbound calls are challenged for auth_username/auth_password by default, so allow_inbound on a generic carrier needs both unless inbound_auth is \"ip_allowlist\"; a carrier that cannot answer a digest challenge (voip.ms SIP URI routing) needs inbound_auth \"ip_allowlist\" with its signaling IPs in inbound_allowed_addresses. The carrier decides which destinations and caller IDs it accepts. Calls over a connection like this carry no Speko telephony fee and the number no monthly fee; only the per-minute agent rate applies. Creating a connection places no call and charges nothing. Existing connections are sip_connection installations in integrations.list. Errors: ACTION_INPUT_INVALID with the failing field.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -21563,49 +21563,51 @@
             "$ref": "#/$defs/__schema3"
           },
           "transport": {
-            "$ref": "#/$defs/__schema4"
-          },
-          "allow_inbound": {
             "$ref": "#/$defs/__schema5"
           },
-          "allow_outbound": {
+          "media_encryption": {
             "$ref": "#/$defs/__schema7"
           },
-          "auth_username": {
+          "allow_inbound": {
             "$ref": "#/$defs/__schema9"
           },
-          "auth_password": {
+          "allow_outbound": {
             "$ref": "#/$defs/__schema11"
           },
-          "provider_label": {
+          "auth_username": {
             "$ref": "#/$defs/__schema13"
           },
-          "display_name": {
+          "auth_password": {
             "$ref": "#/$defs/__schema15"
           },
-          "from_user": {
+          "provider_label": {
             "$ref": "#/$defs/__schema17"
           },
-          "caller_display_name": {
+          "display_name": {
             "$ref": "#/$defs/__schema19"
           },
-          "caller_id_header": {
+          "from_user": {
             "$ref": "#/$defs/__schema21"
           },
-          "dial_format": {
+          "caller_display_name": {
             "$ref": "#/$defs/__schema23"
           },
-          "inbound_auth": {
+          "caller_id_header": {
             "$ref": "#/$defs/__schema25"
           },
-          "inbound_allowed_addresses": {
+          "dial_format": {
             "$ref": "#/$defs/__schema27"
+          },
+          "inbound_auth": {
+            "$ref": "#/$defs/__schema29"
+          },
+          "inbound_allowed_addresses": {
+            "$ref": "#/$defs/__schema31"
           }
         },
         "required": [
           "provider",
           "host",
-          "port",
           "transport",
           "allow_inbound",
           "allow_outbound",
@@ -21636,93 +21638,113 @@
             "description": "Carrier SIP domain or IP, without sip:// or a port, e.g. \"sip.odorik.cz\"."
           },
           "__schema3": {
-            "default": 5060,
+            "description": "Carrier SIP port. Defaults to 5060, or 5061 with transport \"tls\".",
+            "$ref": "#/$defs/__schema4"
+          },
+          "__schema4": {
             "type": "integer",
             "minimum": 1,
             "maximum": 65535
           },
-          "__schema4": {
-            "default": "udp",
-            "type": "string",
-            "enum": [
-              "udp",
-              "tcp"
-            ]
-          },
           "__schema5": {
-            "default": false,
-            "description": "Accept calls the carrier sends to Speko.",
+            "default": "udp",
+            "description": "SIP signaling transport Speko uses for the calls it places through the carrier. \"tls\" is SIP over TLS. Calls the carrier sends in use the transport set at the carrier; Speko cannot enforce TLS on them.",
             "$ref": "#/$defs/__schema6"
           },
           "__schema6": {
-            "type": "boolean"
+            "type": "string",
+            "enum": [
+              "udp",
+              "tcp",
+              "tls"
+            ]
           },
           "__schema7": {
-            "default": false,
-            "description": "Place calls out through the carrier.",
+            "description": "SRTP for call audio. \"disable\" (default) sends plain RTP. \"allow\" answers the carrier's SRTP and offers SRTP on outbound calls (a carrier that only does plain RTP rejects those). \"require\" refuses plain RTP both ways. Needs transport \"tls\" (SRTP keys travel in the SIP messages); refused otherwise. The carrier must have SRTP enabled too.",
             "$ref": "#/$defs/__schema8"
           },
           "__schema8": {
-            "type": "boolean"
+            "type": "string",
+            "enum": [
+              "disable",
+              "allow",
+              "require"
+            ]
           },
           "__schema9": {
-            "description": "SIP digest username the carrier issued.",
+            "default": false,
+            "description": "Accept calls the carrier sends to Speko.",
             "$ref": "#/$defs/__schema10"
           },
           "__schema10": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 160
+            "type": "boolean"
           },
           "__schema11": {
-            "description": "SIP digest password. Secret: never returned.",
+            "default": false,
+            "description": "Place calls out through the carrier.",
             "$ref": "#/$defs/__schema12"
           },
           "__schema12": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 256
+            "type": "boolean"
           },
           "__schema13": {
-            "description": "Carrier name shown on numbers, e.g. \"Odorik\". Defaults to the provider or host.",
+            "description": "SIP digest username the carrier issued.",
             "$ref": "#/$defs/__schema14"
           },
           "__schema14": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 160
           },
           "__schema15": {
-            "description": "Connection name. Defaults to provider_label.",
+            "description": "SIP digest password. Secret: never returned.",
             "$ref": "#/$defs/__schema16"
           },
           "__schema16": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 256
           },
           "__schema17": {
-            "description": "SIP From user for outbound calls, for carriers that identify the account by it (voip.ms sub-accounts, e.g. \"117167_bot\"). Omit to send the number in E.164.",
+            "description": "Carrier name shown on numbers, e.g. \"Odorik\". Defaults to the provider or host.",
             "$ref": "#/$defs/__schema18"
           },
           "__schema18": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9_.+-]{1,64}$"
+            "minLength": 1,
+            "maxLength": 120
           },
           "__schema19": {
-            "description": "Caller name sent as the SIP From display name on outbound calls, e.g. \"Acme Support\". Set it with from_user so the callee does not see the account name. Omit (or send \"\") to send none.",
+            "description": "Connection name. Defaults to provider_label.",
             "$ref": "#/$defs/__schema20"
           },
           "__schema20": {
             "type": "string",
-            "pattern": "^$|^[^\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\"<>\\\\]{1,40}$"
+            "minLength": 1,
+            "maxLength": 120
           },
           "__schema21": {
-            "default": "none",
-            "description": "Also send the number as <sip:+E164@host> in this header. Use with from_user when the carrier reads the caller ID from P-Asserted-Identity or P-Preferred-Identity.",
+            "description": "SIP From user for outbound calls, for carriers that identify the account by it (voip.ms sub-accounts, e.g. \"117167_bot\"). Omit to send the number in E.164.",
             "$ref": "#/$defs/__schema22"
           },
           "__schema22": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.+-]{1,64}$"
+          },
+          "__schema23": {
+            "description": "Caller name sent as the SIP From display name on outbound calls, e.g. \"Acme Support\". Set it with from_user so the callee does not see the account name. Omit (or send \"\") to send none.",
+            "$ref": "#/$defs/__schema24"
+          },
+          "__schema24": {
+            "type": "string",
+            "pattern": "^$|^[^\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff\"<>\\\\]{1,40}$"
+          },
+          "__schema25": {
+            "default": "none",
+            "description": "Also send the number as <sip:+E164@host> in this header. Use with from_user when the carrier reads the caller ID from P-Asserted-Identity or P-Preferred-Identity.",
+            "$ref": "#/$defs/__schema26"
+          },
+          "__schema26": {
             "type": "string",
             "enum": [
               "none",
@@ -21730,43 +21752,43 @@
               "p-preferred-identity"
             ]
           },
-          "__schema23": {
+          "__schema27": {
             "default": "e164",
             "description": "How the dialed number is sent: \"e164\" (+14155550100) or \"e164_without_plus\" (14155550100, what voip.ms expects).",
-            "$ref": "#/$defs/__schema24"
+            "$ref": "#/$defs/__schema28"
           },
-          "__schema24": {
+          "__schema28": {
             "type": "string",
             "enum": [
               "e164",
               "e164_without_plus"
             ]
           },
-          "__schema25": {
+          "__schema29": {
             "default": "digest",
             "description": "How Speko authenticates calls the carrier sends in. \"digest\" (default) challenges the carrier for auth_username/auth_password. \"ip_allowlist\" accepts calls from inbound_allowed_addresses instead, for carriers that route a number to a SIP URI and never answer a digest challenge (voip.ms). Generic carriers only.",
-            "$ref": "#/$defs/__schema26"
+            "$ref": "#/$defs/__schema30"
           },
-          "__schema26": {
+          "__schema30": {
             "type": "string",
             "enum": [
               "digest",
               "ip_allowlist"
             ]
           },
-          "__schema27": {
+          "__schema31": {
             "description": "The carrier's public SIP signaling IPv4 addresses, or CIDRs no wider than /24, e.g. [\"208.100.60.40\", \"208.100.60.41\"]. Required with inbound_auth \"ip_allowlist\"; private, loopback and link-local ranges are refused.",
-            "$ref": "#/$defs/__schema28"
+            "$ref": "#/$defs/__schema32"
           },
-          "__schema28": {
+          "__schema32": {
             "minItems": 1,
             "maxItems": 10,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/__schema29"
+              "$ref": "#/$defs/__schema33"
             }
           },
-          "__schema29": {
+          "__schema33": {
             "type": "string",
             "pattern": "^\\d{1,3}(\\.\\d{1,3}){3}(\\/\\d{1,2})?$"
           }
@@ -21822,7 +21844,16 @@
                 "type": "string",
                 "enum": [
                   "udp",
-                  "tcp"
+                  "tcp",
+                  "tls"
+                ]
+              },
+              "media_encryption": {
+                "type": "string",
+                "enum": [
+                  "disable",
+                  "allow",
+                  "require"
                 ]
               },
               "allow_inbound": {
@@ -21896,6 +21927,7 @@
               "host",
               "port",
               "transport",
+              "media_encryption",
               "allow_inbound",
               "allow_outbound",
               "has_auth_username",
