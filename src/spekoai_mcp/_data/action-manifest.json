@@ -28890,7 +28890,7 @@
     {
       "id": "voice_clones.list",
       "version": 1,
-      "description": "List the workspace's custom (cloned) voices. Each voice lists its provisions: one per TTS provider it was cloned onto. A provision with status \"ready\" carries provider_voice_id, which is the voice id to pass as voice to audio.synthesize (pinned to that provider with constraints.allowedProviders.tts) or to an agent. voices.list shows only catalog voices, never these. An empty list means no voice was cloned yet; create one with voice_clones.create.",
+      "description": "List the workspace's custom (cloned) voices. Each voice lists its provisions: one per TTS provider it was cloned onto. A provision with status \"ready\" carries provider_voice_id, which is the voice id to pass as voice to audio.synthesize (pinned to that provider with constraints.allowedProviders.tts) or to an agent. voices.list shows only catalog voices, never these. A provision unused for 30 days on a Speko managed key is \"archived\": voice_clones.provision restores it under a new provider_voice_id. An empty list means no voice was cloned yet; create one with voice_clones.create.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -28947,7 +28947,8 @@
                               "pending",
                               "provisioning",
                               "ready",
-                              "failed"
+                              "failed",
+                              "archived"
                             ]
                           },
                           "provider_voice_id": {
@@ -29187,7 +29188,8 @@
                         "pending",
                         "provisioning",
                         "ready",
-                        "failed"
+                        "failed",
+                        "archived"
                       ]
                     },
                     "provider_voice_id": {
@@ -29381,7 +29383,8 @@
                         "pending",
                         "provisioning",
                         "ready",
-                        "failed"
+                        "failed",
+                        "archived"
                       ]
                     },
                     "provider_voice_id": {
