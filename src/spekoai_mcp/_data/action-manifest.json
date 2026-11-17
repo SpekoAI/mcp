@@ -1815,6 +1815,23 @@
                 "default": true,
                 "type": "boolean"
               },
+              "transcriptStorageEnabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "transcriptRetentionDays": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "voicemailGreeting": {
                 "default": null,
                 "type": [
@@ -2006,6 +2023,8 @@
               "workDomain",
               "recordingEnabled",
               "postCallAnalysisEnabled",
+              "transcriptStorageEnabled",
+              "transcriptRetentionDays",
               "voicemailGreeting",
               "retrievalProvider",
               "imessageProvider",
@@ -23929,7 +23948,7 @@
     {
       "id": "sessions.transcript.get",
       "version": 1,
-      "description": "Get the ordered transcript and per-turn latency for a workspace session, including who spoke each caller turn on calls with speaker labels on (speaker: S1, S2, …; speakerSegments when one turn holds several voices), any tool calls made mid-call (toolCalls, by name and args) and a latencyStatus per turn (\"partial\"|\"complete\"|\"interrupted\"|\"error\"). Use this to confirm whether a keypad press (send_dtmf) was invoked, or whether a turn with no agent text and an \"error\" latency status points to a synthesis failure rather than the callee hanging up.",
+      "description": "Get the ordered transcript and per-turn latency for a workspace session, including who spoke each caller turn on calls with speaker labels on (speaker: S1, S2, …; speakerSegments when one turn holds several voices), any tool calls made mid-call (toolCalls, by name and args) and a latencyStatus per turn (\"partial\"|\"complete\"|\"interrupted\"|\"error\"). Use this to confirm whether a keypad press (send_dtmf) was invoked, or whether a turn with no agent text and an \"error\" latency status points to a synthesis failure rather than the callee hanging up. transcriptStored is false when the workspace keeps no transcripts (Settings → Workspace → Store transcripts): entries are then served only while the call is live and are empty once it ends; timings then carries each turn with its latency and no text. transcriptExpired is true when the workspace transcript retention period removed the words.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -23959,217 +23978,26 @@
               "entries": {
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    },
-                    "index": {
-                      "type": "integer",
-                      "minimum": 0,
-                      "maximum": 9007199254740991
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "user",
-                        "agent",
-                        "system"
-                      ]
-                    },
-                    "text": {
-                      "type": "string"
-                    },
-                    "startedAt": {
-                      "type": "string",
-                      "format": "date-time",
-                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                    },
-                    "endedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "provider": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "model": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "sttProvider": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "sttModel": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "ttsProvider": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "ttsModel": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "eouMs": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "llmTtftMs": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "ttsTtfbMs": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "latencyStatus": {
-                      "anyOf": [
-                        {
-                          "type": "string",
-                          "enum": [
-                            "partial",
-                            "complete",
-                            "interrupted",
-                            "error"
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "conversationalLatencyMs": {
-                      "anyOf": [
-                        {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "toolCalls": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "args": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name",
-                          "args"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "speaker": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "speakerSegments": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "speaker": {
-                            "type": "string"
-                          },
-                          "text": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "speaker",
-                          "text"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "index",
-                    "source",
-                    "text",
-                    "startedAt",
-                    "endedAt",
-                    "provider",
-                    "model",
-                    "sttProvider",
-                    "sttModel",
-                    "ttsProvider",
-                    "ttsModel",
-                    "eouMs",
-                    "llmTtftMs",
-                    "ttsTtfbMs",
-                    "latencyStatus",
-                    "conversationalLatencyMs",
-                    "toolCalls"
-                  ],
-                  "additionalProperties": false
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "transcriptStored": {
+                "default": true,
+                "type": "boolean"
+              },
+              "transcriptExpired": {
+                "type": "boolean"
+              },
+              "timings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
                 }
               }
             },
             "required": [
-              "entries"
+              "entries",
+              "transcriptStored"
             ],
             "additionalProperties": false
           },
@@ -24232,7 +24060,217 @@
           "warnings",
           "resourceLinks"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "user",
+                  "agent",
+                  "system"
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "endedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "provider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sttProvider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sttModel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ttsProvider": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ttsModel": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "eouMs": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "llmTtftMs": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ttsTtfbMs": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "latencyStatus": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "partial",
+                      "complete",
+                      "interrupted",
+                      "error"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "conversationalLatencyMs": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "toolCalls": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "args"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "speaker": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "speakerSegments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "speaker": {
+                      "type": "string"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "speaker",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "id",
+              "index",
+              "source",
+              "text",
+              "startedAt",
+              "endedAt",
+              "provider",
+              "model",
+              "sttProvider",
+              "sttModel",
+              "ttsProvider",
+              "ttsModel",
+              "eouMs",
+              "llmTtftMs",
+              "ttsTtfbMs",
+              "latencyStatus",
+              "conversationalLatencyMs",
+              "toolCalls"
+            ],
+            "additionalProperties": false
+          }
+        }
       },
       "effect": "read",
       "requiredScopes": [
