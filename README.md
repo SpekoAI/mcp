@@ -62,6 +62,10 @@ names:
   `phone_numbers.sip_connections.create` connects a customer SIP trunk and
   `phone_numbers.import` attaches a number that rides it, with no SIP gateway
   or support ticket;
+- WhatsApp calling through the customer's own Meta app:
+  `phone_numbers.whatsapp_connections.create` connects a WhatsApp Business
+  number and returns the webhook URL and verify token for the Meta app;
+  `.list` and `.delete`. The access token and app secret are never returned;
 - verified caller IDs: `phone_numbers.verified_caller_ids.start` sends a code
   to a number the user already has and `.confirm` submits it, after which
   `sessions.phone.create` accepts that number as `from`; `.list` and

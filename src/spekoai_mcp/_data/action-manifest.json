@@ -29630,6 +29630,670 @@
       ],
       "secretInputPaths": [],
       "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.whatsapp_connections.create",
+      "version": 1,
+      "description": "Connect a WhatsApp Business number through the customer's own Meta app, so a Speko agent answers WhatsApp voice calls to it (inbound only). phone_number_id is Meta's numeric phone number ID, not the phone number. access_token is a system user token with the whatsapp_business_management and whatsapp_business_messaging permissions; app_secret is the secret of the Meta app that receives the calls webhooks. Speko reads the number from Meta with the token before saving anything. The token and app secret are stored encrypted and never returned by any tool; do not repeat them in replies. agent_id is the agent that answers; without one the number answers no calls. One agent answers at most one WhatsApp number. The result carries webhook_url and verify_token: they go in the Meta app's WhatsApp webhook (Callback URL and Verify token), subscribed to the calls field. No call reaches Speko before that, nor while number.calling_status is not \"enabled\" (calling is turned on per number in WhatsApp Manager). phone_numbers.whatsapp_connections.list shows both values again. Connecting charges nothing. Retrying is safe: the same phone_number_id, access_token, and app_secret as the workspace's live connection return that connection unchanged. Errors: WHATSAPP_TOKEN_INVALID (Meta refused the token; make a new system user token with both permissions), WHATSAPP_APP_SECRET_INVALID (app_secret is not the secret of the Meta app that issued the token; copy it from that app's settings), WHATSAPP_NUMBER_NOT_FOUND (the token sees no number with that ID), WHATSAPP_NUMBER_NOT_CLOUD_API (the number is not registered on the WhatsApp Cloud API, or runs on the On-Premises API; register it on the Cloud API), WHATSAPP_NUMBER_ON_BUSINESS_APP (the number is also on the WhatsApp Business app; calling needs a number used only with the Cloud API), WHATSAPP_NUMBER_ALREADY_CONNECTED (connected elsewhere or with other secrets; disconnect it first with phone_numbers.whatsapp_connections.delete), AGENT_ALREADY_LINKED (the agent answers another WhatsApp number), AGENT_NOT_FOUND, WHATSAPP_GRAPH_UNAVAILABLE (Meta did not answer; retry).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Meta system user access token with the whatsapp_business_management and whatsapp_business_messaging permissions on the WhatsApp Business Account that owns the number. Secret: stored encrypted, never returned."
+          },
+          "app_secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "App secret of the Meta app that receives the calls webhooks (App Dashboard, App settings, Basic). Secret: stored encrypted, never returned."
+          },
+          "phone_number_id": {
+            "type": "string",
+            "pattern": "^[0-9]{1,32}$",
+            "description": "Meta's numeric phone number ID (WhatsApp Manager, Phone numbers)."
+          },
+          "agent_id": {
+            "description": "Agent that answers calls to the number. Omit or null to connect without one.",
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "access_token",
+          "app_secret",
+          "phone_number_id"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "Connection id, the connection_id to disconnect it."
+              },
+              "webhook_url": {
+                "type": "string"
+              },
+              "verify_token": {
+                "type": "string"
+              },
+              "number": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "phone_number_id": {
+                    "type": "string"
+                  },
+                  "e164": {
+                    "type": "string"
+                  },
+                  "display_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "agent_id": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/__schema0"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null when no agent answers the number."
+                  },
+                  "calling_status": {
+                    "type": "string",
+                    "enum": [
+                      "enabled",
+                      "disabled",
+                      "unknown"
+                    ],
+                    "description": "Whether Meta lets the number take calls. \"unknown\" when Meta could not be read."
+                  },
+                  "calling_status_checked_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "connection": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "platform",
+                          "customer_app"
+                        ]
+                      },
+                      "webhook_url": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/__schema1"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Callback URL for the Meta app's WhatsApp webhook. null for platform."
+                      },
+                      "verify_token": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/__schema2"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Verify token for the Meta app's WhatsApp webhook. null for platform."
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind",
+                      "webhook_url",
+                      "verify_token"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  }
+                },
+                "required": [
+                  "id",
+                  "phone_number_id",
+                  "e164",
+                  "display_name",
+                  "agent_id",
+                  "calling_status",
+                  "calling_status_checked_at",
+                  "connection",
+                  "created_at"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "webhook_url",
+              "verify_token",
+              "number"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string"
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "write",
+      "requiredScopes": [
+        "speko:credentials"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [
+        "access_token",
+        "app_secret"
+      ],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.whatsapp_connections.list",
+      "version": 1,
+      "description": "List the workspace's WhatsApp numbers. A number connected through the customer's own Meta app has connection.kind \"customer_app\" with the webhook_url and verify_token its Meta app webhook needs; a number Speko connected through its own app has kind \"platform\" and null for both. agent_id is the agent that answers calls to the number, null when none does. calling_status says whether Meta lets the number take calls (\"unknown\" when Meta could not be read); one read more than 10 minutes ago is read again. Access tokens and app secrets are never returned. An empty list means no WhatsApp number is connected; connect one with phone_numbers.whatsapp_connections.create.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "numbers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "phone_number_id": {
+                      "type": "string"
+                    },
+                    "e164": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agent_id": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/__schema0"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "null when no agent answers the number."
+                    },
+                    "calling_status": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled",
+                        "unknown"
+                      ],
+                      "description": "Whether Meta lets the number take calls. \"unknown\" when Meta could not be read."
+                    },
+                    "calling_status_checked_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "connection": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "platform",
+                            "customer_app"
+                          ]
+                        },
+                        "webhook_url": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/__schema1"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Callback URL for the Meta app's WhatsApp webhook. null for platform."
+                        },
+                        "verify_token": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/__schema2"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Verify token for the Meta app's WhatsApp webhook. null for platform."
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "webhook_url",
+                        "verify_token"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "phone_number_id",
+                    "e164",
+                    "display_name",
+                    "agent_id",
+                    "calling_status",
+                    "calling_status_checked_at",
+                    "connection",
+                    "created_at"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "numbers"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string"
+          },
+          "__schema1": {
+            "type": "string"
+          },
+          "__schema2": {
+            "type": "string"
+          }
+        }
+      },
+      "effect": "read",
+      "requiredScopes": [
+        "speko:read"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "none",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
+    },
+    {
+      "id": "phone_numbers.whatsapp_connections.delete",
+      "version": 1,
+      "description": "Disconnect a WhatsApp number connected through the customer's own Meta app: ends any call in progress on it, deletes the stored access token and app secret, unlinks its agent, and the number leaves phone_numbers.whatsapp_connections.list. The webhook URL keeps answering Meta but starts no calls; past sessions stay. connection_id is number.connection.id from the list (kind \"customer_app\") or id from phone_numbers.whatsapp_connections.create. Repeating the call returns the same revoked_at. calls_not_ended counts calls in progress that could not be ended (0 normally; null on a repeat or when the calls in progress could not be read); the number is disconnected either way. Connecting the number again creates a new connection with a new webhook_url and verify_token, so the Meta app webhook must be updated. Errors: WHATSAPP_CONNECTION_NOT_FOUND (no customer_app connection with that id in this workspace; platform connections cannot be disconnected here).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "connection_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Connection id from phone_numbers.whatsapp_connections.list."
+          }
+        },
+        "required": [
+          "connection_id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "result"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "revoked_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "calls_not_ended": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "revoked_at",
+              "calls_not_ended"
+            ],
+            "additionalProperties": false
+          },
+          "warnings": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceLinks": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uri": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "uri",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "resourceVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "kind",
+          "data",
+          "warnings",
+          "resourceLinks"
+        ],
+        "additionalProperties": false
+      },
+      "effect": "destructive",
+      "requiredScopes": [
+        "speko:credentials"
+      ],
+      "allowedPrincipals": [
+        "oauth-user",
+        "api-key"
+      ],
+      "idempotency": "required",
+      "execution": "sync",
+      "profiles": [
+        "customer"
+      ],
+      "secretInputPaths": [],
+      "secretOutputPaths": []
     }
   ],
   "legacyMcpActionIds": [
