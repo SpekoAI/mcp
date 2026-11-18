@@ -24448,6 +24448,10 @@
           "from": {
             "description": "The caller ID the call will use, when known.",
             "$ref": "#/$defs/__schema0"
+          },
+          "channel": {
+            "description": "The channel the call will use. `whatsapp` is priced at the agent minute alone, with no telephony and no destination rules.",
+            "$ref": "#/$defs/__schema1"
           }
         },
         "required": [
@@ -24458,6 +24462,13 @@
           "__schema0": {
             "type": "string",
             "pattern": "^\\+[1-9]\\d{6,14}$"
+          },
+          "__schema1": {
+            "type": "string",
+            "enum": [
+              "phone",
+              "whatsapp"
+            ]
           }
         }
       },
