@@ -24451,7 +24451,7 @@
     {
       "id": "sessions.phone.quote",
       "version": 1,
-      "description": "Check a phone call before placing it, without dialing or spending credit. Returns whether this workspace can call `to` now (status ready, free_call, top_up_required, insufficient_credits, spending_cap_reached or not_allowed), the estimated price per minute, the smallest top-up that unlocks the call (requiredTopUpUsd), how long the balance lasts (maxCallSeconds), and, when a top-up is needed, a one-tap topUpUrl. Free credit covers the US and Canada; other countries need one top-up of any amount.",
+      "description": "Check a phone call before placing it, without dialing or spending credit. Returns whether this workspace can call `to` now (status ready, free_call, top_up_required, insufficient_credits, spending_cap_reached or not_allowed), the estimated price per minute, the smallest top-up that unlocks the call (requiredTopUpUsd), how long the balance lasts (maxCallSeconds), and, when a top-up is needed, a one-tap topUpUrl. Free credit covers the US and Canada; other countries need one top-up of any amount. savedHandoffNumber is the phone the user gave on an earlier call for being brought in (handoff.to on sessions.phone.create): confirm it with them (\"If they ask for you, should I bring you in at that number?\") instead of asking for it again.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -24573,6 +24573,9 @@
               "currency": {
                 "type": "string",
                 "const": "USD"
+              },
+              "savedHandoffNumber": {
+                "type": "string"
               }
             },
             "required": [

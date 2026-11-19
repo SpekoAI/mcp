@@ -3112,12 +3112,12 @@ async def create_phone_session(
     shared Speko caller ID (US and Canada only) instead of buying one.
 
     Before calling a business about the user's own account, card or booking
-    (bank, card issuer, airline, hotel, insurer, utility, telecom, government
-    office, clinic), ask once: "If they ask to speak with you directly, what
-    number should I bring you in on?" Pass it as body.handoff.to (calls
-    without agentId only); the agent then adds the user to the call by phone
-    when the other side asks for the account holder. If the user declines,
-    call without it. Don't ask for other calls.
+    (bank, card issuer, airline, hotel, insurer, utility, government office,
+    clinic), get the number to bring the user in on if the other side asks
+    for the account holder: confirm the price quote's savedHandoffNumber if
+    you have one, else ask once. Pass it as body.handoff.to (calls without
+    agentId only). If the user declines, call without it. Don't ask for
+    other calls.
 
     Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
     calls default to five minutes, or 30 with handoff (a shared caller ID stops

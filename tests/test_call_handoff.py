@@ -72,3 +72,21 @@ async def test_every_calling_surface_tells_the_model_to_ask(profile, monkeypatch
 
 def test_server_instructions_name_the_handoff_field():
     assert "handoff.to on sessions.phone.create" in INSTRUCTIONS
+
+
+@pytest.mark.parametrize(
+    ("profile", "serves_quote"),
+    [(None, True), ("connector", True), ("gemini", True), ("chatgpt", False), ("replit", False)],
+)
+async def test_instructions_point_at_the_saved_number_only_where_the_quote_is_served(
+    profile, serves_quote, monkeypatch
+):
+    # Naming a tool the host withholds dead-ends the model on that host.
+    if profile:
+        monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
+    else:
+        monkeypatch.delenv(DEFAULT_PROFILE_ENV_VAR, raising=False)
+    instructions = create_server().instructions or ""
+    assert "handoff.to on sessions.phone.create" in instructions
+    assert ("sessions.phone.quote" in instructions) is serves_quote
+    assert ("savedHandoffNumber" in instructions) is serves_quote

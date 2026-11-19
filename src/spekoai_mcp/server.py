@@ -44,7 +44,7 @@ from spekoai_mcp.http_client import (
     set_current_anthropic_client,
     set_current_client_ua,
 )
-from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile
+from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile, profile_serves_tool
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 from spekoai_mcp.setup_tools import (
@@ -145,60 +145,81 @@ USER_AGENT_MAX_LENGTH = 128
 
 logger = logging.getLogger(__name__)
 
-INSTRUCTIONS = "\n\n".join(
-    " ".join(paragraph.split())
-    for paragraph in [
-        """
-        Speko MCP is the authenticated operational interface for Speko voice-AI
-        accounts.
-        """,
-        """
-        Use these tools to inspect organization state, manage agents, deploy
-        versions, create sessions and phone calls, retrieve transcripts and
-        recordings, manage phone numbers and knowledge bases, run evals, and
-        build or migrate SessionConfig drafts.
-        """,
-        """
-        Docs are in-band: docs.search(query) finds SDK usage, API body shapes
-        and migration steps; then read the matching spekoai://docs/{slug}
-        resource (spekoai://docs/index lists them all). If a write tool rejects
-        a body, search the failing field name before retrying.
-        """,
-        """
-        Tool names use domain.action dot notation, for example agents.list and
-        docs.search. Automation may use a Speko API key as Authorization:
-        Bearer sk_*.
-        """,
-        """
-        Before phoning a business about the user's own account, card or booking
-        (a bank, airline, insurer), ask what number to bring them in on if the
-        other side asks for the account holder; pass it as handoff.to on
-        sessions.phone.create.
-        """,
-        """
-        When the user is blocked by something only the Speko team can fix (an
-        error says to contact support, a feature is not enabled for the
-        workspace, a billing issue beyond credit, or a platform bug), offer
-        to open a ticket with support.ticket.create instead of sending them to
-        email.
-        Put the trace_id and any agent, session or call ids in the ticket, and
-        give the user the ticketUrl it returns. A SUPPORT_REPLY_UNREAD warning
-        means the team replied: read it with support.ticket.get and answer with
-        support.ticket.reply. Tickets
-        are only for problems with Speko itself, never for the assistant or
-        another product. Show the user the exact summary and details and get
-        their yes before calling support.ticket.create, and leave out personal
-        details the Speko problem does not need.
-        """,
-        """
-        Using a carrier or VoIP number the user already has (Twilio, Telnyx,
-        Vonage) needs no ticket and no SIP gateway: connect it with
-        phone_numbers.sip_connections.create then phone_numbers.import, or
-        the dashboard's Import number > Add carrier connection. The SIP
-        gateway is only for a PBX.
-        """,
-    ]
-)
+# The handoff guidance names sessions.phone.quote only where the profile serves
+# it: ChatGPT does not (no credit links there), and pointing a model at a tool
+# its host withholds dead-ends it. The profile is fixed per deployment.
+_HANDOFF_WITH_QUOTE = """
+    Before phoning a business about the user's own account or booking (a bank,
+    airline), get the number to bring them in on if the other side asks for the
+    account holder: call sessions.phone.quote first and confirm its
+    savedHandoffNumber, else ask. Pass it as handoff.to on sessions.phone.create.
+"""
+_HANDOFF_WITHOUT_QUOTE = """
+    Before phoning a business about the user's own account or booking (a bank,
+    airline), ask for the number to bring them in on if the other side asks for
+    the account holder. Pass it as handoff.to on sessions.phone.create.
+"""
+
+
+def _instructions(handoff_paragraph: str) -> str:
+    return "\n\n".join(
+        " ".join(paragraph.split())
+        for paragraph in [
+            """
+            Speko MCP is the authenticated operational interface for Speko voice-AI
+            accounts.
+            """,
+            """
+            Use these tools to manage and deploy agents, phone numbers and
+            knowledge bases, place sessions and phone calls, read transcripts and
+            recordings, run evals, and build or migrate SessionConfig drafts.
+            """,
+            """
+            Docs are in-band: docs.search(query) finds SDK usage, API body shapes
+            and migration steps; then read the matching spekoai://docs/{slug}
+            resource (spekoai://docs/index lists them all). If a write tool rejects
+            a body, search the failing field name before retrying.
+            """,
+            """
+            Tool names use domain.action dot notation, for example agents.list and
+            docs.search. Automation may use a Speko API key as Authorization:
+            Bearer sk_*.
+            """,
+            handoff_paragraph,
+            """
+            When the user is blocked by something only the Speko team can fix (an
+            error says to contact support, a feature is not enabled for the
+            workspace, a billing issue beyond credit, or a platform bug), offer
+            to open a ticket with support.ticket.create instead of sending them to
+            email.
+            Put the trace_id and any agent, session or call ids in the ticket, and
+            give the user the ticketUrl it returns. A SUPPORT_REPLY_UNREAD warning
+            means the team replied: read it with support.ticket.get and answer with
+            support.ticket.reply. Tickets
+            are only for problems with Speko itself, never for the assistant or
+            another product. Show the user the exact summary and details and get
+            their yes before calling support.ticket.create, and leave out personal
+            details the Speko problem does not need.
+            """,
+            """
+            Using a carrier or VoIP number the user already has (Twilio, Telnyx)
+            needs no ticket and no SIP gateway: connect it with
+            phone_numbers.sip_connections.create then phone_numbers.import, or
+            the dashboard's Import number > Add carrier connection. The SIP
+            gateway is only for a PBX.
+            """,
+        ]
+    )
+
+
+def instructions_for(profile: str | None) -> str:
+    """The server instructions for a deployment serving `profile`."""
+    serves_quote = profile_serves_tool("sessions.phone.quote", profile)
+    return _instructions(_HANDOFF_WITH_QUOTE if serves_quote else _HANDOFF_WITHOUT_QUOTE)
+
+
+INSTRUCTIONS = instructions_for(None)
+
 
 PUBLIC_INSTRUCTIONS = "\n\n".join(
     " ".join(paragraph.split())
@@ -271,7 +292,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     mcp: FastMCP = FastMCP(
         name=SERVER_NAME,
         version=_package_version(),
-        instructions=INSTRUCTIONS,
+        instructions=instructions_for(default_profile()),
         website_url=WEBSITE_URL,
         icons=SERVER_ICONS,
         auth=auth,
