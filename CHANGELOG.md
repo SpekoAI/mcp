@@ -3,6 +3,8 @@
 ## Unreleased
 
 - `agents.get` and `agents.list` return `stackPreferences.strictProviders`. Set it to `true` with `agents.update` to keep a live call on the providers in `allowedProviders`: Speko adds no voice, transcriber or LLM the agent did not list.
+- `sessions.phone.create` takes `body.handoff` (`{to, name?}`, calls without `agentId`): the user's own phone. When the other side asks for the account holder, or needs something only the user can give, the agent rings that number and connects the user to the call. The description tells the model to ask for the number before calling a business about the user's own account, card or booking, and not to ask for other calls. Directory calls with `handoff` default to 30 minutes instead of 5, so a hold queue does not end them. A formatted `handoff.to` ("+998 97 123 45 67") is sent without separators.
+- The `sessions.phone.create` description and body description, and the server instructions, fit the 2 KB field cap again.
 
 ## 0.2.62
 

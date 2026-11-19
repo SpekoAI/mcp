@@ -134,7 +134,12 @@ def session_is_api_key() -> bool:
 # profile (`apply_directory_disclosure`), so the person who answers is told
 # they are speaking to an AI before anything else is said, and it creates
 # exactly one call per explicit tool call — no bulk, schedule or fan-out path
-# reaches it. The rest of the cut stands: nothing on this surface generates
+# reaches it. The one second leg is `handoff`: when the callee asks for the
+# account holder, the agent rings the number the USER gave for themselves and
+# bridges them in on answer. No screening agent speaks to them; the calling
+# agent is muted once the bridge lands (the mute request follows the move, so
+# the tail of its "please hold" can reach them).
+# The rest of the cut stands: nothing on this surface generates
 # speech on demand, and nothing configures or deploys an agent. See
 # DIRECTORY_CALLING_TOOL_NAMES.
 #

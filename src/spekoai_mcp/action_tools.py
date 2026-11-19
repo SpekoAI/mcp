@@ -372,6 +372,9 @@ TEXT_TOO_LONG_NEXT_STEP = (
 # that, the card-required 402 fell to the generic "Retry the Speko MCP request"
 # step: prod 2026-10-19..21 has 22 of these, several retried within minutes.
 
+# Default cap for a directory call that carries `handoff` (see create_phone_session).
+HANDOFF_MAX_DURATION_SECONDS = 1800
+
 FREE_CALL_NOTE = (
     "This is the workspace's one free call abroad and it ends after 2 minutes. Later calls "
     "abroad need one top-up."
@@ -399,6 +402,7 @@ def _retry_same_call_step(body: dict[str, Any]) -> str:
     if len(arguments) > _RETRY_ARGUMENTS_MAX_CHARS:
         return step
     return f"{step} Retry arguments: {arguments}"
+
 
 # The monthly spending cap counts spend, not balance, so adding credit does
 # not clear it. The dashboard has no spending-cap screen: only the
@@ -2252,6 +2256,12 @@ def validate_create_phone_session_body(body: dict[str, Any]) -> None:
             "phone number such as '+12015551234'; "
             f"next_step={CREATE_PHONE_SESSION_NEXT_STEP}"
         )
+    # The user types their own number the way they read it ("+998 97 149 24 00").
+    handoff = body.get("handoff")
+    if isinstance(handoff, dict):
+        handoff_to = _strip_phone_formatting(handoff.get("to"))
+        if handoff_to is not None:
+            handoff["to"] = handoff_to
     validate_session_target(
         body, tool="create_phone_session", next_step=CREATE_PHONE_SESSION_NEXT_STEP
     )
@@ -3085,18 +3095,14 @@ async def create_phone_session(
                 "('ww1w8')}), constraints "
                 "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
                 "metadata (object), maxDurationSeconds (int, minimum 30; "
-                "maximum 3600 for s2s or 14400 for cascade). ChatGPT and "
-                "connector calls default to 300 seconds when omitted. "
-                "ringTimeoutSeconds (int 20-45, default 45): how long the call "
-                "rings before it ends as no-answer; overrides the agent's "
-                "ringTimeoutSeconds. "
-                "idleRePrompts (agent shape minus enabled). "
-                "Per-call fields win over agent defaults. "
-                "Without an own number the call usually goes out from a shared "
-                "Speko caller ID. Do not collect KYB fields. "
-                "Leave `voice` unset unless it is a value already configured on "
-                "the target agent. An unowned or misspelled voice id is accepted "
-                "here but can fail silently downstream. " + END_CALL_NOTE
+                "maximum 3600 for s2s or 14400 for cascade), "
+                "ringTimeoutSeconds (int 20-45, default 45, rings before "
+                "no-answer), idleRePrompts (agent shape minus enabled), handoff "
+                "({to: E.164, the user's own phone; name?: what to call them}; "
+                "no agentId): adds the user to the call when asked for. "
+                "Per-call fields win over agent defaults. Do not collect KYB "
+                "fields. Leave `voice` unset unless it is already configured on "
+                "the target agent. " + END_CALL_NOTE
             )
         ),
     ],
@@ -3105,39 +3111,38 @@ async def create_phone_session(
     workspace's own number. A workspace with no number usually calls from a
     shared Speko caller ID (US and Canada only) instead of buying one.
 
+    Before calling a business about the user's own account, card or booking
+    (bank, card issuer, airline, hotel, insurer, utility, telecom, government
+    office, clinic), ask once: "If they ask to speak with you directly, what
+    number should I bring you in on?" Pass it as body.handoff.to (calls
+    without agentId only); the agent then adds the user to the call by phone
+    when the other side asks for the account holder. If the user declines,
+    call without it. Don't ask for other calls.
+
     Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
-    calls default to five minutes. Use sessions.end to hang up immediately
-    when the call is stuck or the user wants to stop; sessions.get confirms
-    that it ended.
+    calls default to five minutes, or 30 with handoff (a shared caller ID stops
+    at 10). Use sessions.end to hang up; sessions.get confirms that it ended.
 
     Free credit covers US and Canada calls and one free 2-minute call to the
-    user's own mobile abroad; other countries need one top-up from $5, then stay
-    unlocked. Calls cost $0.09/min plus telephony.
+    user's own mobile abroad; other countries need one top-up from $5, then
+    stay unlocked. Calls cost $0.09/min plus telephony.
 
-    A rejected call returns one of these codes in the error body:
-    AGENT_NOT_FOUND (agentId not in this workspace),
-    PHONE_NUMBER_CONSENT_REQUIRED (the connector's phone-use authorization
-    needs reacceptance), PHONE_NUMBER_KYB_ACCESS_SUSPENDED (compliance
-    review pending, retrying will not help; check phone_numbers.kyb.get for
-    status), PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED, _PENDING, and
-    _FAILED (auto-provisioning a number failed or needs credit; see the
-    returned balance and price fields), PHONE_NUMBER_CARD_REQUIRED,
-    DESTINATION_REQUIRES_CARD and INSUFFICIENT_CREDITS. A 2xx
-    response does not mean the call was answered. No-answer, voicemail, and
-    carrier rejection all settle normally and appear afterward in get_call
-    or sessions.transcript.get, not as a tool error here.
+    A rejected call returns a code: AGENT_NOT_FOUND,
+    PHONE_NUMBER_KYB_ACCESS_SUSPENDED (compliance review pending, retrying
+    will not help; see phone_numbers.kyb.get),
+    PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED / _PENDING / _FAILED,
+    PHONE_NUMBER_CARD_REQUIRED, DESTINATION_REQUIRES_CARD,
+    INSUFFICIENT_CREDITS. A 403 PHONE_NUMBER_SCOPE_REQUIRED needs a full
+    reconnect (a token refresh cannot add the permission);
+    PHONE_NUMBER_CONSENT_REQUIRED needs the workspace to accept the phone-use
+    consent screen, no reconnect. A 2xx does not mean the call was answered:
+    no-answer, voicemail and carrier rejection settle normally and appear
+    afterward in get_call or sessions.transcript.get.
 
-    A 403 with code PHONE_NUMBER_SCOPE_REQUIRED means this connection predates phone
-    calling and needs a full reconnect (a token refresh cannot add the permission). A
-    403 with code PHONE_NUMBER_CONSENT_REQUIRED means the workspace needs to accept the
-    phone-use consent screen instead - no reconnect needed.
-
-    `body.voice`, if set, is not validated against what the selected TTS
-    provider owns before dialing. An unrecognized or foreign voice id can
-    produce a dead-air leg with no error. Omit `voice` unless it came from
-    this agent's own configuration; there is no voice-lookup tool on this
-    profile. A Paxa voice speaks only on the models its GET /v1/voices entry
-    lists in `models`; any other Paxa voice is replaced by a default one.
+    Omit body.voice unless it came from this agent's own configuration: an
+    unknown voice id is not checked before dialing and can produce a dead-air
+    leg. A Paxa voice speaks only on the models its GET /v1/voices entry
+    lists in `models`.
     """
     validate_create_phone_session_body(body)
     # Before the rewrites below, so a retry goes through them once, not twice.
@@ -3145,7 +3150,12 @@ async def create_phone_session(
     apply_directory_disclosure(body)
     apply_directory_phone_s2s_pin(body)
     if current_profile() in DIRECTORY_PROFILES:
-        body.setdefault("maxDurationSeconds", 300)
+        # A call that may bring the user in waits out a hold queue first (the
+        # Chase call held 17 minutes), so five minutes would cut it off.
+        body.setdefault(
+            "maxDurationSeconds",
+            HANDOFF_MAX_DURATION_SECONDS if body.get("handoff") else 300,
+        )
     try:
         created = await call("POST", "/v1/sessions/phone", body=body, text="Created phone session.")
     except ToolError as exc:

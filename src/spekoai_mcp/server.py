@@ -159,18 +159,21 @@ INSTRUCTIONS = "\n\n".join(
         build or migrate SessionConfig drafts.
         """,
         """
-        Docs are available in-band: call docs.search(query) to find SDK usage,
-        API body shapes, and migration steps across the bundled Speko docs,
-        then read the matching spekoai://docs/{slug} resource.
-        spekoai://docs/index lists every bundled doc. If a write tool rejects
+        Docs are in-band: docs.search(query) finds SDK usage, API body shapes
+        and migration steps; then read the matching spekoai://docs/{slug}
+        resource (spekoai://docs/index lists them all). If a write tool rejects
         a body, search the failing field name before retrying.
         """,
         """
-        All tools require the hosted MCP endpoint at /mcp. Interactive clients
-        may use OAuth; automation may supply a Speko API key as Authorization:
-        Bearer sk_*. Tool names use
-        domain.action dot notation, for example agents.list, sessions.create,
-        docs.search, and knowledge_bases.documents.create.
+        Tool names use domain.action dot notation, for example agents.list and
+        docs.search. Automation may use a Speko API key as Authorization:
+        Bearer sk_*.
+        """,
+        """
+        Before phoning a business about the user's own account, card or booking
+        (a bank, airline, insurer), ask what number to bring them in on if the
+        other side asks for the account holder; pass it as handoff.to on
+        sessions.phone.create.
         """,
         """
         When the user is blocked by something only the Speko team can fix (an
@@ -179,9 +182,9 @@ INSTRUCTIONS = "\n\n".join(
         to open a ticket with support.ticket.create instead of sending them to
         email.
         Put the trace_id and any agent, session or call ids in the ticket, and
-        give the user the ticketUrl it returns. The team replies on the ticket:
-        a result warning SUPPORT_REPLY_UNREAD means a reply is waiting, read it
-        with support.ticket.get and answer with support.ticket.reply. Tickets
+        give the user the ticketUrl it returns. A SUPPORT_REPLY_UNREAD warning
+        means the team replied: read it with support.ticket.get and answer with
+        support.ticket.reply. Tickets
         are only for problems with Speko itself, never for the assistant or
         another product. Show the user the exact summary and details and get
         their yes before calling support.ticket.create, and leave out personal
