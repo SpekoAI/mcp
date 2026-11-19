@@ -7016,6 +7016,9 @@
                             }
                           },
                           "additionalProperties": false
+                        },
+                        "strictProviders": {
+                          "type": "boolean"
                         }
                       },
                       "additionalProperties": false
@@ -7955,6 +7958,9 @@
                           }
                         },
                         "additionalProperties": false
+                      },
+                      "strictProviders": {
+                        "type": "boolean"
                       }
                     },
                     "additionalProperties": false
@@ -9084,6 +9090,9 @@
                               }
                             },
                             "additionalProperties": false
+                          },
+                          "strictProviders": {
+                            "type": "boolean"
                           }
                         },
                         "additionalProperties": false

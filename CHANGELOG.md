@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `agents.get` and `agents.list` return `stackPreferences.strictProviders`. Set it to `true` with `agents.update` to keep a live call on the providers in `allowedProviders`: Speko adds no voice, transcriber or LLM the agent did not list.
+
 ## 0.2.62
 
 - New `gemini` profile for `https://gemini.speko.ai/mcp`, the host for Google's Connected Apps Platform (Gemini app). It serves phone calls with a price quote first, past-call transcripts and recordings, narration and transcription, and support tickets. It serves no tool that creates, changes, deploys or tests a voice agent, because Google's policy bans agent-to-agent interactions, and no purchase, billing, delete, knowledge-base or SMS tool. Outbound calls get the server-side AI disclosure, as on the other directory hosts.
