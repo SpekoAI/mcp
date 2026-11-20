@@ -51,7 +51,7 @@ Event mapping: `call-start` -> `onConnect`; `call-end` -> `onDisconnect`; `speec
 
 Method mapping: `vapi.send` add-message -> `sendChatMessage`; `setMuted` -> `setMicMuted`; `stop` -> `endSession`.
 
-See the [realtime conversation guide](https://docs.speko.dev/guides/realtime-conversation) and the [Vapi migration skill](https://speko.ai/skills/speko-migrate-vapi/SKILL.md).
+See the [realtime conversation guide](https://docs.speko.dev/guides/realtime-conversation) and the [Vapi and Retell migration guide](https://speko.com/migrate-voice-agent).
 
 ## Do Not
 

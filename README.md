@@ -1,6 +1,6 @@
 # spekoai-mcp
 
-FastMCP v4 server for [SpekoAI](https://speko.ai). The hosted endpoint is:
+FastMCP v4 server for [SpekoAI](https://speko.com). The hosted endpoint is:
 
 ```text
 https://mcp.speko.ai/mcp

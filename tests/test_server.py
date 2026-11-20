@@ -561,7 +561,7 @@ def _assert_server_identity(info: dict[str, object]) -> None:
     assert info["websiteUrl"] == "https://docs.speko.ai"
     icons = info["icons"]
     assert isinstance(icons, list)
-    assert {"src": "https://speko.ai/icon.svg", "mimeType": "image/svg+xml", "sizes": ["any"]} in (
+    assert {"src": "https://speko.com/icon.svg", "mimeType": "image/svg+xml", "sizes": ["any"]} in (
         icons
     )
 

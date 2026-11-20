@@ -69,8 +69,8 @@ MCP_PROTOCOL_VERSION = "2026-07-28"
 SERVER_NAME = "speko"
 WEBSITE_URL = "https://docs.speko.ai"
 SERVER_ICONS = [
-    Icon(src="https://speko.ai/icon.svg", mime_type="image/svg+xml", sizes=["any"]),
-    Icon(src="https://speko.ai/apple-icon.png", mime_type="image/png", sizes=["180x180"]),
+    Icon(src="https://speko.com/icon.svg", mime_type="image/svg+xml", sizes=["any"]),
+    Icon(src="https://speko.com/apple-icon.png", mime_type="image/png", sizes=["180x180"]),
 ]
 SERVER_TITLE = "Speko"
 SERVER_DESCRIPTION = (
