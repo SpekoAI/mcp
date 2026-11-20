@@ -86,3 +86,17 @@ async def test_phone_tool_advertises_duration_and_hangup(monkeypatch):
     )
     assert "maxDurationSeconds" in json.dumps(tool.parameters)
     assert "sessions.end" in tool.description
+
+
+async def test_phone_tool_says_a_queue_call_needs_a_long_limit(monkeypatch):
+    """Lane duration (11-16..19): calling assistants set 120-600 s on calls into
+    airline and retail queues, and the cap cut the person off mid-answer
+    (9d6e1f81 at 601 s, 0429c9da after an 8.5 min hold)."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "chatgpt")
+    tool = next(
+        tool for tool in await create_server().list_tools() if tool.name == "sessions.phone.create"
+    )
+    schema = json.dumps(tool.parameters)
+    assert "phone queue" in schema
+    assert "1800-3600" in schema
+    assert "1800-3600" in tool.description

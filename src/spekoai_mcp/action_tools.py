@@ -3095,7 +3095,9 @@ async def create_phone_session(
                 "('ww1w8')}), constraints "
                 "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
                 "metadata (object), maxDurationSeconds (int, minimum 30; "
-                "maximum 3600 for s2s or 14400 for cascade), "
+                "maximum 3600 for s2s or 14400 for cascade; the limit cuts the call "
+                "mid-sentence, so a call that waits in a phone queue for a person "
+                "needs 1800-3600), "
                 "ringTimeoutSeconds (int 20-45, default 45, rings before "
                 "no-answer), idleRePrompts (agent shape minus enabled), handoff "
                 "({to: E.164, the user's own phone; name?: what to call them}; "
@@ -3120,7 +3122,8 @@ async def create_phone_session(
     other calls.
 
     Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
-    calls default to five minutes, or 30 with handoff (a shared caller ID stops
+    calls default to five minutes, or 30 with handoff; a phone-queue call
+    needs 1800-3600 (a shared caller ID stops
     at 10). Use sessions.end to hang up; sessions.get confirms that it ended.
 
     Free credit covers US and Canada calls and one free 2-minute call to the
