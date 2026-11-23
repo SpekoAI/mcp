@@ -51,6 +51,7 @@ CHATGPT_PROFILE = "chatgpt"
 REPLIT_PROFILE = "replit"
 MUSE_PROFILE = "muse"
 GEMINI_PROFILE = "gemini"
+VERCEL_PROFILE = "vercel"
 CUSTOMER_PROFILE = "customer"
 
 # Every value SPEKOAI_MCP_DEFAULT_PROFILE will honour. Unknown non-empty values
@@ -63,6 +64,7 @@ KNOWN_PROFILES: frozenset[str] = frozenset(
         REPLIT_PROFILE,
         MUSE_PROFILE,
         GEMINI_PROFILE,
+        VERCEL_PROFILE,
         CUSTOMER_PROFILE,
     }
 )
@@ -76,6 +78,7 @@ _CHATGPT_MANIFEST_TOOL_NAMES = manifest_tool_names(CHATGPT_PROFILE)
 _REPLIT_MANIFEST_TOOL_NAMES = manifest_tool_names(REPLIT_PROFILE)
 _MUSE_MANIFEST_TOOL_NAMES = manifest_tool_names(MUSE_PROFILE)
 _GEMINI_MANIFEST_TOOL_NAMES = manifest_tool_names(GEMINI_PROFILE)
+_VERCEL_MANIFEST_TOOL_NAMES = manifest_tool_names(VERCEL_PROFILE)
 # Actions the server refuses to an API-key principal (credentials, billing,
 # agent access). Advertising them to an API-key session only produced 403
 # ACTION_PRINCIPAL_FORBIDDEN on every call.
@@ -487,12 +490,28 @@ GEMINI_PROFILE_TOOL_NAMES: list[str] = [
 
 _GEMINI_PROFILE_TOOL_SET = frozenset(GEMINI_PROFILE_TOOL_NAMES) | _GEMINI_MANIFEST_TOOL_NAMES
 
+# The Vercel Connect preset, published as `https://vercel.speko.ai/mcp`. Vercel's
+# eve agent framework reaches outside services through Connect, and eve has no
+# live phone voice of its own (its Twilio channel takes one spoken message and
+# replies by SMS). The listing leads with phone calls, so this serves the Gemini
+# surface: quoted calls with an agent the account already deployed, call
+# read-backs, narration and transcription, and support tickets. Fork the list
+# when the two listings need different tools.
+#
+# Connect authenticates with the user's Speko API key, so tools the server
+# refuses to API keys are dropped by ToolProfileMiddleware on top of this list.
+# The AI disclosure opener is injected server side because this profile is in
+# DIRECTORY_PROFILES.
+VERCEL_PROFILE_TOOL_NAMES: list[str] = GEMINI_PROFILE_TOOL_NAMES
+
+_VERCEL_PROFILE_TOOL_SET = frozenset(VERCEL_PROFILE_TOOL_NAMES) | _VERCEL_MANIFEST_TOOL_NAMES
+
 # Profiles published in a third-party assistant directory. Every outbound call
 # created through one of these MUST disclose that the caller is an AI (see
 # `apply_directory_disclosure` in action_tools) — direct MCP clients on the
 # default path are not rewritten.
 DIRECTORY_PROFILES: frozenset[str] = frozenset(
-    {CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE, GEMINI_PROFILE}
+    {CONNECTOR_PROFILE, CHATGPT_PROFILE, MUSE_PROFILE, GEMINI_PROFILE, VERCEL_PROFILE}
 )
 
 # The curated builder preset, in the order clients see it. Reads first,
@@ -747,6 +766,9 @@ class ToolProfileMiddleware(Middleware):
         elif profile == GEMINI_PROFILE:
             if name not in _GEMINI_PROFILE_TOOL_SET:
                 raise NotFoundError(f"Unknown tool: {name!r}")
+        elif profile == VERCEL_PROFILE:
+            if name not in _VERCEL_PROFILE_TOOL_SET:
+                raise NotFoundError(f"Unknown tool: {name!r}")
         elif name in BUILDER_ONLY_TOOL_NAMES or (
             name in _MANIFEST_TOOL_NAMES and name not in _DEFAULT_MANIFEST_TOOL_NAMES
         ):
@@ -814,6 +836,16 @@ def _for_profile(tools: Sequence[Tool], profile: str | None) -> Sequence[Tool]:
             )
         )
         return filtered
+    if profile == VERCEL_PROFILE:
+        filtered = [tool for tool in tools if tool.name in _VERCEL_PROFILE_TOOL_SET]
+        filtered.sort(
+            key=lambda tool: (
+                (0, VERCEL_PROFILE_TOOL_NAMES.index(tool.name))
+                if tool.name in VERCEL_PROFILE_TOOL_NAMES
+                else (1, tool.name)
+            )
+        )
+        return filtered
     if profile == REPLIT_PROFILE:
         filtered = [tool for tool in tools if tool.name in _REPLIT_PROFILE_TOOL_SET]
         # Build-time tools first; the order is the whole point of this
@@ -860,6 +892,8 @@ def profile_serves_tool(name: str, profile: str | None) -> bool:
         return name in _MUSE_PROFILE_TOOL_SET
     if profile == GEMINI_PROFILE:
         return name in _GEMINI_PROFILE_TOOL_SET
+    if profile == VERCEL_PROFILE:
+        return name in _VERCEL_PROFILE_TOOL_SET
     if profile == REPLIT_PROFILE:
         return name in _REPLIT_PROFILE_TOOL_SET
     visible = name not in BUILDER_ONLY_TOOL_NAMES and (

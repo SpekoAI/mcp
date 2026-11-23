@@ -58,7 +58,7 @@ async def test_handoff_number_is_sent_without_separators(sent, monkeypatch):
     assert sent[-1]["handoff"] == {"to": "+998971234567", "name": "Bek"}
 
 
-@pytest.mark.parametrize("profile", ["chatgpt", "connector", "gemini", "muse", None])
+@pytest.mark.parametrize("profile", ["chatgpt", "connector", "gemini", "muse", "vercel", None])
 async def test_every_calling_surface_tells_the_model_to_ask(profile, monkeypatch):
     if profile:
         monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, profile)
@@ -76,7 +76,14 @@ def test_server_instructions_name_the_handoff_field():
 
 @pytest.mark.parametrize(
     ("profile", "serves_quote"),
-    [(None, True), ("connector", True), ("gemini", True), ("chatgpt", False), ("replit", False)],
+    [
+        (None, True),
+        ("connector", True),
+        ("gemini", True),
+        ("vercel", True),
+        ("chatgpt", False),
+        ("replit", False),
+    ],
 )
 async def test_instructions_point_at_the_saved_number_only_where_the_quote_is_served(
     profile, serves_quote, monkeypatch
