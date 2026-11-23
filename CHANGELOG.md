@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.63
 
 - New `vercel` profile for `https://vercel.speko.ai/mcp`, the host for the Vercel Connect listing that Vercel's eve agents use. Vercel Connect signs in with the user's Speko API key. The profile serves the same tools as `gemini`: phone calls with a price quote first, past-call transcripts and recordings, narration and transcription, and support tickets. Outbound calls get the server-side AI disclosure, as on the other directory hosts.
 - `agents.get` and `agents.list` return `stackPreferences.strictProviders`. Set it to `true` with `agents.update` to keep a live call on the providers in `allowedProviders`: Speko adds no voice, transcriber or LLM the agent did not list.
