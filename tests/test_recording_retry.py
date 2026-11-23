@@ -22,6 +22,7 @@ from spekoai_mcp.action_tools import (
     NON_RETRYABLE_NEXT_STEP,
     NOT_FOUND_NEXT_STEP,
     RECORDING_DISABLED_NEXT_STEP,
+    RECORDING_EXPIRED_NEXT_STEP,
     RECORDING_MISSING_FILE_NEXT_STEP,
     RECORDING_PENDING_NEXT_STEP,
     RECORDING_PENDING_NEXT_STEP_SESSIONS,
@@ -166,6 +167,17 @@ def test_terminal_recording_tells_the_model_to_stop(status: str) -> None:
     assert "never exist" in step
     assert "Do not retry" in step
     assert "Retry the Speko MCP request" not in step
+
+
+@pytest.mark.parametrize("path", [RECORDING_PATH, SESSION_RECORDING_PATH])
+def test_expired_recording_says_retention_not_poll(path: str) -> None:
+    """A recording past the 30-day window is gone; polling cannot bring it back."""
+    step = next_step_for_error(_raise_from(_not_available("expired")), path=path)
+
+    assert step == RECORDING_EXPIRED_NEXT_STEP
+    assert "30 days" in step
+    assert "Do not retry" in step
+    assert "5 seconds" not in step
 
 
 def test_ready_but_missing_file_is_not_a_polling_problem() -> None:

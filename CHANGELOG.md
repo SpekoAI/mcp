@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `calls.recording.get` and `sessions.recording.get`: a recording past Speko's 30-day retention now answers 404 with status `expired`, and the error tells the model the audio was deleted and not to retry. It used to fall through to the wording that suggests checking again.
+
 ## 0.2.64
 
 OpenAI plugin review (ChatGPT host):

@@ -620,6 +620,17 @@ RECORDING_TERMINAL_NEXT_STEP = (
     "no audio."
 )
 
+# `expired` is derived on read (`services/recording-retention.ts`): the call had
+# a recording, but its audio is past the 30-day retention window and deleted.
+RECORDING_EXPIRED_STATE = "expired"
+
+RECORDING_EXPIRED_NEXT_STEP = (
+    "This call's recording has expired: Speko keeps call audio for 30 days after the call, "
+    "then deletes it, so it can no longer be played or downloaded. Do not retry. Tell the user "
+    "the audio is past retention; sessions.transcript.get(<session id>) may still have what "
+    "was said."
+)
+
 # `status: 'ready'` still 404s when the row has no stored object path, so "ready"
 # is not the same thing as "fetchable" and polling cannot fix this one.
 RECORDING_MISSING_FILE_NEXT_STEP = (
@@ -673,11 +684,13 @@ def _recording_next_step(resource_status: str | None, *, path: str) -> str:
     """What to do about a `RECORDING_NOT_AVAILABLE` 404 in `resource_status`.
 
     `pending`, `uploading`, `null` and anything unrecognized are still in flight
-    and get the bounded wait; the terminal states and the missing-file case get
-    a hard stop, because no number of retries can change them. One session route
+    and get the bounded wait; the terminal states, `expired` and the missing-file
+    case get a hard stop, because no number of retries can change them. One session route
     omits `status` entirely (the Daily branch at `routes/sessions.ts:4357`), and
     it lands on the bounded wait - wrong about the cause, but capped.
     """
+    if resource_status == RECORDING_EXPIRED_STATE:
+        return RECORDING_EXPIRED_NEXT_STEP
     if resource_status in RECORDING_TERMINAL_STATES:
         return RECORDING_TERMINAL_NEXT_STEP
     if resource_status == "ready":

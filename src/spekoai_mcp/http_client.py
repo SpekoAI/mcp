@@ -370,7 +370,7 @@ def _resource_status(payload: dict[str, Any]) -> str | None:
 
     `GET /v1/calls/:id/recording` answers `404 {code:
     'RECORDING_NOT_AVAILABLE', status: 'pending' | 'uploading' | 'ready' |
-    'failed' | 'suppressed' | 'discarded' | null}` - the egress state of the
+    'failed' | 'suppressed' | 'discarded' | 'expired' | null}` - the egress state of the
     recording, which decides whether waiting can help. Read as a string only:
     a route that puts an HTTP status number here means something else entirely.
     """
