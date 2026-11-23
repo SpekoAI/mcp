@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.64
 
 OpenAI plugin review (ChatGPT host):
 

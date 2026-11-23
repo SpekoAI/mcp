@@ -1404,7 +1404,7 @@ wheels = [
 
 [[package]]
 name = "spekoai-mcp"
-version = "0.2.63"
+version = "0.2.64"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
