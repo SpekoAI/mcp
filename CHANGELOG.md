@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+OpenAI plugin review (ChatGPT host):
+
+- `agents.update`, `sessions.phone.create`, `support.ticket.create`, `support.ticket.reply` and `support.ticket.rate` carry `destructiveHint: true`. `support.ticket.get` is no longer read-only, because reading marks the team's replies read.
+- The server instructions name only the tools the host serves. The scope sentence follows the host's tool list. The SIP import paragraph appears only on the customer host, and the ChatGPT host has no API-key sentence.
+- The ChatGPT host shows no prices, top-up amounts or payment tools. Tool descriptions keep pricing only on hosts that serve a quote, top-up link or checkout tool. Payment refusals on ChatGPT say that the request is not available on the workspace's current balance or plan, and that nothing was charged.
+- `resources/list` and `prompts/list` follow the host. The Add credit card (`ui://speko/top-up.html`) is listed only where `billing.top_up_link.create` is served. The ChatGPT host lists no prompts.
+- Descriptions use dotted tool names and do not name tools that the host does not serve. `audio.synthesize` says that it takes no reference audio and does not clone a voice.
+- On the ChatGPT host, `agents.create`, `agents.update` and `sessions.phone.create` refuse `webhooks` and `turnHandling.onHuman: "hangup"`.
+- The AI disclosure opener on directory hosts also says that the call may be recorded. When an agent's greeting already starts with the earlier opener, the server replaces it with the new opener and keeps the rest of the greeting.
+
+Failures from production logs (2026-11-16 to 11-23):
+
+- `audio.synthesize` refused with `ALL_PROVIDERS_FAILED` tells the model to drop the voice or model pin or to choose another provider, instead of "retry".
+- Calls to the Speko API have separate connect, read, write and pool timeouts. A failed first connection is retried once, and the error names the exception type. The read timeout of a linked synthesis is 285 s, below the 300 s Cloud Run request limit. A synthesis read timeout says that the server may still bill the request and that the user must confirm a resend.
+- The server repairs common argument shapes before validation: `audio.transcribe` with `intent.language`; `audio.synthesize` with string `speed`, `spokenForm` or `intent`, a list for `constraints.allowedProviders`, or `en_US`; `sessions.list` status aliases such as `in_progress`.
+- `voices.search` takes `name` (alias `query`), which filters the catalog by voice name or id. This needs the platform release with `GET /v1/tts/voices?name=`.
+- `audio.transcribe` of an expired Speko signed link says that the link expired and names the tool that gives a new one.
+
 ## 0.2.63
 
 - New `vercel` profile for `https://vercel.speko.ai/mcp`, the host for the Vercel Connect listing that Vercel's eve agents use. Vercel Connect signs in with the user's Speko API key. The profile serves the same tools as `gemini`: phone calls with a price quote first, past-call transcripts and recordings, narration and transcription, and support tickets. Outbound calls get the server-side AI disclosure, as on the other directory hosts.

@@ -82,8 +82,28 @@ def test_gemini_serves_no_agent_to_agent_tool() -> None:
 
 
 def test_gemini_serves_no_destructive_delete() -> None:
-    leaked = sorted(set(GEMINI_PROFILE_TOOL_NAMES) & DESTRUCTIVE_PUBLIC_NAMES)
+    deletes = {name for name in DESTRUCTIVE_PUBLIC_NAMES if name.endswith((".delete", ".rollback"))}
+    leaked = sorted(set(GEMINI_PROFILE_TOOL_NAMES) & deletes)
     assert leaked == [], f"destructive tools leaked: {leaked}"
+
+
+async def test_gemini_destructive_tools_are_the_call_and_ticket_sends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """destructiveHint marks irreversible sends too: a call, a hang-up, a ticket."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, GEMINI_PROFILE)
+    destructive = {
+        tool.name
+        for tool in await create_server().list_tools()
+        if tool.annotations.destructive_hint
+    }
+    assert destructive == {
+        "sessions.phone.create",
+        "sessions.end",
+        "support.ticket.create",
+        "support.ticket.reply",
+        "support.ticket.rate",
+    }
 
 
 def test_gemini_serves_no_purchase_billing_or_secrets() -> None:

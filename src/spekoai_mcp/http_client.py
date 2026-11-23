@@ -542,6 +542,50 @@ def _validation_issue_summary(value: Any) -> str | None:
     return "; ".join(parts) + suffix
 
 
+def _timeout(read: float) -> httpx.Timeout:
+    """Separate limits per phase: a dead host fails in seconds, not after `read`."""
+    return httpx.Timeout(connect=10.0, read=read, write=30.0, pool=10.0)
+
+
+READ_TIMEOUT_CODE = "READ_TIMEOUT"
+
+
+def _transport_error(target: str, exc: httpx.HTTPError) -> SpekoApiError:
+    """The error for a transport failure. httpx timeouts stringify to "", so the
+    exception's class says whether the connect or the read failed.
+
+    A read timeout is not "unreachable": the server took the request and may
+    still be working on it (and billing it), so it carries its own code.
+    """
+    detail = str(exc).strip()
+    name = type(exc).__name__ + (f": {detail}" if detail else "")
+    if isinstance(exc, httpx.ReadTimeout):
+        return SpekoApiError(0, f"{target} did not answer in time ({name})", code=READ_TIMEOUT_CODE)
+    return SpekoApiError(0, f"Unable to reach {target}: {name}")
+
+
+async def _send(client: httpx.AsyncClient, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    """Send once, and once more when the connection never opened.
+
+    A connect failure means no byte of the request was sent, so repeating it is
+    safe even for a POST. A read timeout is not retried: the server may have
+    acted on the request.
+    """
+    try:
+        return await client.request(method, url, **kwargs)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        # Only when the first hop failed: with follow_redirects, a connect
+        # failure on a redirect target comes after the server acted on the
+        # request, and repeating it would repeat the action.
+        try:
+            failed_url = exc.request.url
+        except RuntimeError:  # raised before a request was attached
+            failed_url = httpx.URL(url)
+        if failed_url != httpx.URL(url):
+            raise
+        return await client.request(method, url, **kwargs)
+
+
 async def _call_speko_api(
     method: str,
     path: str,
@@ -552,19 +596,20 @@ async def _call_speko_api(
     headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
-            timeout=60.0,
+            timeout=_timeout(60.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("platform")
-            resp = await client.request(
+            resp = await _send(
+                client,
                 method.upper(),
                 url,
                 headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+        raise _transport_error(f"SpekoAI API at {api_base}", exc) from exc
     if resp.status_code >= 400:
         _raise_api_error(resp)
     if not resp.content:
@@ -600,14 +645,14 @@ async def call_action(
     url = f"{api_base}/v1/actions/{path_segment(action_id)}"
     try:
         async with httpx.AsyncClient(
-            timeout=60.0,
+            timeout=_timeout(60.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("platform")
-            response = await client.request("POST", url, headers=headers, json=body)
+            response = await _send(client, "POST", url, headers=headers, json=body)
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+        raise _transport_error(f"SpekoAI API at {api_base}", exc) from exc
     if response.status_code >= 400:
         _raise_api_error(response)
     payload = response.json()
@@ -626,19 +671,20 @@ async def call_speko_api_any(
     headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
-            timeout=60.0,
+            timeout=_timeout(60.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("platform")
-            resp = await client.request(
+            resp = await _send(
+                client,
                 method.upper(),
                 url,
                 headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+        raise _transport_error(f"SpekoAI API at {api_base}", exc) from exc
     if resp.status_code >= 400:
         _raise_api_error(resp)
     if not resp.content:
@@ -661,19 +707,20 @@ async def _call_speko_api_raw(
     headers = _platform_headers()
     try:
         async with httpx.AsyncClient(
-            timeout=timeout,
+            timeout=_timeout(timeout),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("platform")
-            resp = await client.request(
+            resp = await _send(
+                client,
                 method.upper(),
                 url,
                 headers=headers,
                 json=body,
             )
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+        raise _transport_error(f"SpekoAI API at {api_base}", exc) from exc
     if resp.status_code >= 400:
         _raise_api_error(resp)
     return SpekoRawResponse(
@@ -715,14 +762,14 @@ async def post_speko_api_bytes(
     )
     try:
         async with httpx.AsyncClient(
-            timeout=120.0,
+            timeout=_timeout(120.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("platform")
-            resp = await client.post(url, headers=headers, content=payload)
+            resp = await _send(client, "POST", url, headers=headers, content=payload)
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach SpekoAI API at {api_base}: {exc}") from exc
+        raise _transport_error(f"SpekoAI API at {api_base}", exc) from exc
     if resp.status_code >= 400:
         _raise_api_error(resp)
     return SpekoRawResponse(
@@ -790,14 +837,14 @@ async def post_router_transcription(
     }
     try:
         async with httpx.AsyncClient(
-            timeout=120.0,
+            timeout=_timeout(120.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("router_direct")
-            response = await client.post(url, headers=headers, files=files)
+            response = await _send(client, "POST", url, headers=headers, files=files)
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
+        raise _transport_error(f"the Speko Router at {base}", exc) from exc
     if response.status_code >= 400:
         details = _parse_api_error(response)
         raise SpekoApiError(
@@ -837,14 +884,14 @@ async def post_router_speech(
     }
     try:
         async with httpx.AsyncClient(
-            timeout=120.0,
+            timeout=_timeout(120.0),
             follow_redirects=True,
             transport=_TEST_TRANSPORT,
         ) as client:
             mark_receiver("router_direct")
-            response = await client.post(url, headers=headers, json=request_payload)
+            response = await _send(client, "POST", url, headers=headers, json=request_payload)
     except httpx.HTTPError as exc:
-        raise SpekoApiError(0, f"Unable to reach the Speko Router at {base}: {exc}") from exc
+        raise _transport_error(f"the Speko Router at {base}", exc) from exc
     if response.status_code >= 400:
         details = _parse_api_error(response)
         raise SpekoApiError(
@@ -875,12 +922,19 @@ def _credit_exhausted_message(exc: SpekoApiError) -> str:
     and who can act on it), and says plainly that retrying without a top-up
     fails the same way, so the model does not loop.
     """
-    from spekoai_mcp.payment import remedy
+    from spekoai_mcp.payment import cause as plan_cause
+    from spekoai_mcp.payment import hides_pricing, remedy
 
+    trace_id = exc.trace_id or "unavailable"
+    if hides_pricing():
+        # No balance in dollars and no way to pay: see payment.NO_PRICING_PROFILES.
+        return (
+            f"The Speko API refused the request with 402 {INSUFFICIENT_CREDITS_CODE}. "
+            f"{plan_cause(exc)} trace_id={trace_id}"
+        )
     balance = ""
     if exc.balance_usd is not None:
         balance = f" (balance ${exc.balance_usd:.2f})"
-    trace_id = exc.trace_id or "unavailable"
     cause = (
         f"This Speko workspace is out of credit{balance}, so the Speko API refused the request "
         f"with 402 {INSUFFICIENT_CREDITS_CODE}."
@@ -892,7 +946,25 @@ def tool_error_message(exc: Exception, *, next_step: str) -> str:
     if isinstance(exc, SpekoApiError) and exc.credit_exhausted:
         return credit_exhausted_message(exc)
     trace_id = getattr(exc, "trace_id", None) or "unavailable"
-    return f"{exc}; trace_id={trace_id}; next_step={next_step}"
+    return f"{_error_summary(exc)}; trace_id={trace_id}; next_step={next_step}"
+
+
+def _error_summary(exc: Exception) -> str:
+    """The error as the model reads it.
+
+    Platform's message and `hint` for a payment refusal name amounts and top-up
+    links. On a surface that names no price (payment.NO_PRICING_PROFILES) only
+    the status and code are kept; the next step says what is not available.
+    """
+    from spekoai_mcp.payment import hides_pricing, is_payment_refusal
+
+    if (
+        isinstance(exc, SpekoApiError)
+        and (is_payment_refusal(exc) or exc.code == "SPENDING_CAP_REACHED")
+        and hides_pricing()
+    ):
+        return f"Speko API returned {exc.status_code} {exc.code or ''}".rstrip()
+    return str(exc)
 
 
 async def get_balance() -> dict[str, Any]:

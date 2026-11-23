@@ -333,3 +333,119 @@ def test_wrapper_that_conflicts_with_a_top_level_argument_is_left_alone() -> Non
     schema = {"properties": {"agent_id": {"type": "string"}}, "required": ["agent_id"]}
     sent = {"agent_id": "agent_A", "path": {"agent_id": "agent_B"}}
     assert normalize_arguments("agents.delete", schema, sent) == sent
+
+
+# --- the prod tool_error groups of the week to 2026-11-20 ----------------------
+
+
+async def _schema(name: str) -> dict[str, Any]:
+    tool = await create_server().get_tool(name)
+    assert tool is not None
+    return tool.parameters
+
+
+async def test_transcribe_intent_language_becomes_the_language_argument(api: Any) -> None:
+    """227 a week sent audio.synthesize's `intent` shape to audio.transcribe."""
+    schema = await _schema("audio.transcribe")
+    reshaped = normalize_arguments(
+        "audio.transcribe",
+        schema,
+        {"audio_url": "https://x.test/a.wav", "intent": {"language": "es"}},
+    )
+    assert reshaped == {"audio_url": "https://x.test/a.wav", "language": "es"}
+
+
+async def test_transcribe_intent_with_other_keys_is_left_alone(api: Any) -> None:
+    """Lifting the language alone would drop optimizeFor without telling the caller."""
+    schema = await _schema("audio.transcribe")
+    sent = {
+        "audio_url": "https://x.test/a.wav",
+        "intent": {"language": "en", "optimizeFor": "accuracy"},
+    }
+    assert normalize_arguments("audio.transcribe", schema, sent) == sent
+
+
+async def test_transcribe_intent_that_disagrees_with_language_is_left_alone(api: Any) -> None:
+    schema = await _schema("audio.transcribe")
+    sent = {"audio_url": "https://x.test/a.wav", "language": "en", "intent": {"language": "es"}}
+    assert normalize_arguments("audio.transcribe", schema, sent) == sent
+
+
+@pytest.mark.parametrize(
+    ("sent", "repaired"),
+    [
+        ({"speed": "1.25"}, {"speed": 1.25}),
+        ({"spokenForm": "true"}, {"spokenForm": True}),
+        ({"spokenForm": "False"}, {"spokenForm": False}),
+        ({"intent": '{"language": "fr"}'}, {"intent": {"language": "fr"}}),
+        ({"intent": "de"}, {"intent": {"language": "de"}}),
+        ({"intent": "en_US"}, {"intent": {"language": "en-US"}}),
+        ({"intent": {"language": "pt_br"}}, {"intent": {"language": "pt-BR"}}),
+        (
+            {"constraints": {"allowedProviders": ["cartesia"]}},
+            {"constraints": {"allowedProviders": {"tts": ["cartesia"]}}},
+        ),
+    ],
+)
+async def test_synthesize_body_shapes_are_repaired(
+    api: Any, sent: dict[str, Any], repaired: dict[str, Any]
+) -> None:
+    """About 270 Platform 400s a week were one of these nested shapes."""
+    schema = await _schema("audio.synthesize")
+    body = {"text": "hi", "intent": {"language": "en"}, **sent}
+    reshaped = normalize_arguments("audio.synthesize", schema, {"body": body})
+    assert reshaped == {"body": {"text": "hi", "intent": {"language": "en"}, **repaired}}
+
+
+@pytest.mark.parametrize(
+    "sent",
+    [
+        {"speed": "fast"},
+        {"spokenForm": "yes"},
+        {"intent": "English"},
+        {"constraints": {"allowedProviders": {"tts": ["cartesia"]}}},
+    ],
+)
+async def test_ambiguous_synthesize_shapes_reach_the_api_unchanged(
+    api: Any, sent: dict[str, Any]
+) -> None:
+    schema = await _schema("audio.synthesize")
+    body = {"text": "hi", **sent}
+    assert normalize_arguments("audio.synthesize", schema, {"body": body}) == {"body": body}
+
+
+@pytest.mark.parametrize(
+    ("sent", "status"),
+    [
+        ("in_progress", "active"),
+        ("live", "active"),
+        ("running", "active"),
+        ("ringing", "connecting"),
+        ("started", "connecting"),
+        ("Ended", "ended"),
+    ],
+)
+async def test_session_status_aliases_reach_the_api_as_accepted_values(
+    api: Any, sent: str, status: str
+) -> None:
+    """One looping agent sent `in_progress` to sessions.list 242 times in a week."""
+    api.reply = (200, {"entries": [], "nextCursor": None})
+    await create_server().call_tool("sessions.list", {"status": sent})
+    assert api.calls[-1]["query"]["status"] == status
+
+
+async def test_unknown_session_status_fails_validation_before_a_request(api: Any) -> None:
+    with pytest.raises(Exception, match="status"):
+        await create_server().call_tool("sessions.list", {"status": "paused"})
+    assert api.calls == []
+
+
+async def test_voice_search_query_is_sent_as_name(
+    api: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """264 voices.search calls a week passed a voice name as `query`."""
+    monkeypatch.setenv(DEFAULT_PROFILE_ENV_VAR, "builder")
+    api.reply = (200, {"voices": [], "next_cursor": None})
+    await create_server().call_tool("voices.search", {"query": "Charon"})
+    assert api.calls[-1]["path"] == "/v1/tts/voices"
+    assert api.calls[-1]["query"]["name"] == "Charon"

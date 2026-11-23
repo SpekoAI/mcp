@@ -895,7 +895,13 @@ def test_failed_phone_provisioning_says_buy_a_number_not_retry(
 
     next_step = next_step_for_error(error.value, path="/v1/sessions/phone")
 
-    assert "Phone numbers page" in next_step
+    # ChatGPT names no purchase (payment.NO_PRICING_PROFILES): it says the call
+    # was not placed and points at a support ticket instead.
+    if profile == "chatgpt":
+        assert "buy" not in next_step.lower()
+        assert "support.ticket.create" in next_step
+    else:
+        assert "Phone numbers page" in next_step
     assert ("phone_numbers.create" in next_step) is names_purchase_tools
     assert "Retry the Speko MCP request" not in next_step
 

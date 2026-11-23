@@ -4,6 +4,7 @@ from spekoai_mcp import action_tools
 from spekoai_mcp.action_tools import (
     DISCLOSURE_OPENER,
     DISCLOSURE_RULE,
+    LEGACY_DISCLOSURE_OPENER,
     apply_ai_disclosure,
 )
 from spekoai_mcp.profiles import (
@@ -40,6 +41,22 @@ def test_disclosure_is_idempotent() -> None:
 
 def test_blank_first_message_still_discloses() -> None:
     assert apply_ai_disclosure({"firstMessage": "   "})["firstMessage"] == DISCLOSURE_OPENER
+
+
+def test_opener_discloses_the_ai_and_the_recording() -> None:
+    assert DISCLOSURE_OPENER == (
+        "Before we start, I should say I am an AI assistant, and this call may be recorded."
+    )
+
+
+def test_an_agent_saved_with_the_earlier_opener_gets_the_recording_notice() -> None:
+    """Agents created before the recording clause open with the old sentence.
+    Re-saving one swaps in the current opener once and keeps the greeting."""
+    first = f"{LEGACY_DISCLOSURE_OPENER} Hi, this is Ava."
+    body = apply_ai_disclosure({"firstMessage": first, "systemPrompt": "Be brief."})
+    assert body["firstMessage"] == f"{DISCLOSURE_OPENER} Hi, this is Ava."
+    assert LEGACY_DISCLOSURE_OPENER not in body["firstMessage"]
+    assert apply_ai_disclosure(dict(body))["firstMessage"] == body["firstMessage"]
 
 
 def test_connector_profile_hides_bulk_and_scheduled_tools() -> None:

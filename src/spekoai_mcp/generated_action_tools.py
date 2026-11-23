@@ -156,6 +156,15 @@ def _title(action_id: str) -> str:
 
 _MANIFEST_ACTION_IDS: frozenset[str] = frozenset(entry["id"] for entry in action_entries())
 
+# Manifest writes whose effect is destructive in the sense of OpenAI's plugin
+# guidelines (6.3) but whose contract effect stays `write`: the contract maps
+# `destructive` to a required idempotency key, which would break callers. A new
+# ticket and a reply are sent to the Speko team and cannot be unsent; a rating
+# replaces the earlier one.
+DESTRUCTIVE_HINT_ACTION_IDS: frozenset[str] = frozenset(
+    {"support.ticket.create", "support.ticket.reply", "support.ticket.rate"}
+)
+
 
 def register_generated_action_tools(mcp: FastMCP) -> None:
     for entry in action_entries():
@@ -172,7 +181,9 @@ def register_generated_action_tools(mcp: FastMCP) -> None:
                 annotations=ToolAnnotations(
                     title=title,
                     read_only_hint=effect == "read",
-                    destructive_hint=effect == "destructive",
+                    destructive_hint=(
+                        effect == "destructive" or action_id in DESTRUCTIVE_HINT_ACTION_IDS
+                    ),
                     idempotent_hint=entry["idempotency"] != "none" or effect == "read",
                     open_world_hint=True,
                 ),

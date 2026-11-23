@@ -42,6 +42,12 @@ PAYMENT_CODES = frozenset(
 LINK_PROFILES = frozenset({"connector", "customer", "muse"})
 CHATGPT_PROFILE = "chatgpt"
 
+# Surfaces where a refusal names no price, amount, top-up or way to pay. OpenAI's
+# plugin guidelines bar advertising pricing or promotions (1.3) and promoting
+# upgrades (5.1), but allow saying a feature is not available on the user's
+# current plan, which is what these surfaces say instead.
+NO_PRICING_PROFILES = frozenset({CHATGPT_PROFILE})
+
 TOP_UP_LINK_TOOL = "billing.top_up_link.create"
 
 # The Add credit button experiment. `apps/server/src/services/payment-wall.ts`
@@ -76,6 +82,36 @@ _CAUSES = {
     ),
 }
 
+# The same refusals where the surface names no price or way to pay. Each says
+# what is not available and what did not happen.
+_PLAN_CAUSES = {
+    DESTINATION_REQUIRES_CARD_CODE: (
+        "Calls to this country are not available on the workspace's current balance or "
+        "plan. The call was not placed and nothing was charged."
+    ),
+    PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE: (
+        "This call needs a dedicated phone number, which is not available on the "
+        "workspace's current balance or plan. The call was not placed and nothing was charged."
+    ),
+    PHONE_NUMBER_CARD_REQUIRED_CODE: (
+        "The workspace has no active phone number, and a new one is not available on its "
+        "current balance or plan. The call was not placed and nothing was charged."
+    ),
+    VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE: (
+        "Calling from the workspace's own verified number is not available on its current "
+        "balance or plan. Nothing was charged."
+    ),
+    INSUFFICIENT_CREDITS_CODE: (
+        "This request is not available on the workspace's current balance or plan. "
+        "Nothing was charged."
+    ),
+    PROVIDER_REQUIRES_TOP_UP_CODE: (
+        "ElevenLabs is not available on the workspace's current balance or plan, and "
+        "nothing was charged. The same request without the ElevenLabs provider pin, voice "
+        "and model is served by another provider."
+    ),
+}
+
 _AFTER_PAYMENT = (
     "Credit shows in credits.balance.get about a minute after payment; until then this "
     "request returns the same refusal."
@@ -105,8 +141,31 @@ def is_payment_refusal(exc: BaseException) -> bool:
     return exc.credit_exhausted or exc.code in PAYMENT_CODES
 
 
+# Tools that quote a price or take a payment. A surface that serves none of them
+# has no way to act on a price, so its tool text names none.
+PRICING_TOOLS = ("sessions.phone.quote", TOP_UP_LINK_TOOL, http_client.CHECKOUT_ACTION_ID)
+
+
+def profile_shows_prices(profile: str | None) -> bool:
+    """Whether tool text on ``profile`` may name prices and top-ups."""
+    from spekoai_mcp.profiles import profile_serves_tool
+
+    if profile in NO_PRICING_PROFILES:
+        return False
+    return any(profile_serves_tool(name, profile) for name in PRICING_TOOLS)
+
+
+def hides_pricing() -> bool:
+    """Whether this deployment's surface names no price, top-up or way to pay."""
+    from spekoai_mcp.profiles import current_profile
+
+    return current_profile() in NO_PRICING_PROFILES
+
+
 def cause(exc: http_client.SpekoApiError) -> str:
     code = INSUFFICIENT_CREDITS_CODE if exc.credit_exhausted else (exc.code or "")
+    if hides_pricing():
+        return _PLAN_CAUSES.get(code, _PLAN_CAUSES[INSUFFICIENT_CREDITS_CODE])
     return _CAUSES.get(code, "")
 
 
@@ -120,6 +179,8 @@ def how_to_pay(top_up_url: str | None) -> str:
     from spekoai_mcp.profiles import current_profile, session_can_call
 
     profile = current_profile()
+    if profile in NO_PRICING_PROFILES:
+        return ""
     url = top_up_url if profile in LINK_PROFILES else None
     button = session_can_call(TOP_UP_LINK_TOOL)
     if url:
@@ -141,12 +202,9 @@ def how_to_pay(top_up_url: str | None) -> str:
             f"{http_client.CHECKOUT_ACTION_ID} returns a payment link for an amount the user "
             f"names, from $5 to $10,000. {_AFTER_PAYMENT}"
         )
-    if profile == CHATGPT_PROFILE:
-        return f"Credit is added in the Speko console. {_AFTER_PAYMENT}"
     return f"A workspace owner or admin adds credit at {http_client.BILLING_URL}. {_AFTER_PAYMENT}"
 
 
 def payment_step(exc: http_client.SpekoApiError) -> str:
     """The next step for a payment refusal: what blocks the request, then how to pay."""
-    lead = cause(exc)
-    return f"{lead} {remedy(exc)}" if lead else remedy(exc)
+    return " ".join(part for part in (cause(exc), remedy(exc)) if part)

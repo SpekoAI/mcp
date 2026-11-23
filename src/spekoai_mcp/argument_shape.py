@@ -48,7 +48,27 @@ _ALIASES: dict[str, dict[str, str]] = {
         "created_before": "to",
     },
     "phone_numbers.available.search": {"countryCode": "country", "country_code": "country"},
+    # Models search a voice by its name: 264 calls in the week to 2026-11-20
+    # sent `query` ('Charon') and were rejected before any request.
+    "voices.search": {"query": "name"},
 }
+
+# `sessions.list` status words models use for the five the API accepts. One
+# looping agent sent `in_progress` 242 times in a week.
+_SESSION_STATUS_ALIASES = {
+    "in_progress": "active",
+    "in-progress": "active",
+    "live": "active",
+    "running": "active",
+    "ringing": "connecting",
+    "started": "connecting",
+}
+_SESSION_STATUSES = frozenset({"created", "connecting", "active", "ended", "failed"})
+
+_NUMBER = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)")
+# 'en', 'en-US', 'yue': a bare language a model put where the intent object goes.
+_BARE_LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z]{2})?")
+_UNDERSCORE_LANGUAGE = re.compile(r"([A-Za-z]{2,3})_([A-Za-z]{2})")
 
 # `phone_numbers.available.search` takes 'US' | 'CA'; models send the name.
 _COUNTRY_NAMES = {
@@ -143,7 +163,75 @@ def normalize_arguments(
 
     if tool == "phone_numbers.available.search" and isinstance(args.get("country"), str):
         args["country"] = _COUNTRY_NAMES.get(args["country"].strip().upper(), args["country"])
+    if tool == "audio.transcribe":
+        _lift_transcribe_intent(args)
+    if tool == "audio.synthesize" and isinstance(args.get(BODY), dict):
+        args[BODY] = _repair_synthesize_body(args[BODY])
+    if tool == "sessions.list" and isinstance(args.get("status"), str):
+        status = args["status"].strip().lower()
+        status = _SESSION_STATUS_ALIASES.get(status, status)
+        if status in _SESSION_STATUSES:
+            args["status"] = status
     return args
+
+
+def _lift_transcribe_intent(args: dict[str, Any]) -> None:
+    """`audio.transcribe` given `intent: {language}` the way audio.synthesize takes it.
+
+    227 "Invalid arguments" a week. Lifted only when `intent` holds nothing but
+    a language that agrees with any `language` already sent; an intent with
+    other keys (optimizeFor, region) is left for validation, so no preference
+    is dropped without the caller hearing about it.
+    """
+    intent = _as_object(args.get("intent"))
+    if intent is None or set(intent) != {"language"}:
+        return
+    language = intent.get("language")
+    if not isinstance(language, str) or not language.strip():
+        return
+    if "language" in args and args["language"] != language:
+        return
+    args["language"] = language
+    del args["intent"]
+
+
+def _repair_synthesize_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Fix nested `audio.synthesize` body shapes whose meaning is unambiguous.
+
+    About 270 Platform 400s a week were one of these. Anything else is left for
+    the API to reject with its own message.
+    """
+    body = dict(body)
+    speed = body.get("speed")
+    if isinstance(speed, str) and _NUMBER.fullmatch(speed.strip()):
+        body["speed"] = float(speed)
+    spoken = body.get("spokenForm")
+    if isinstance(spoken, str) and spoken.strip().lower() in ("true", "false"):
+        body["spokenForm"] = spoken.strip().lower() == "true"
+    intent = body.get("intent")
+    if isinstance(intent, str):
+        parsed = _as_object(intent)
+        if parsed is not None:
+            intent = parsed
+        elif _BARE_LANGUAGE.fullmatch(intent.strip()) or _UNDERSCORE_LANGUAGE.fullmatch(
+            intent.strip()
+        ):
+            intent = {"language": intent.strip()}
+    if isinstance(intent, dict):
+        intent = dict(intent)
+        language = intent.get("language")
+        match = _UNDERSCORE_LANGUAGE.fullmatch(language) if isinstance(language, str) else None
+        if match is not None:
+            intent["language"] = f"{match.group(1).lower()}-{match.group(2).upper()}"
+    if intent is not None:
+        body["intent"] = intent
+    constraints = body.get("constraints")
+    if isinstance(constraints, dict) and isinstance(constraints.get("allowedProviders"), list):
+        body["constraints"] = {
+            **constraints,
+            "allowedProviders": {"tts": constraints["allowedProviders"]},
+        }
+    return body
 
 
 class ArgumentShapeMiddleware(Middleware):

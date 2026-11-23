@@ -197,6 +197,12 @@ async def test_tools_expose_quality_metadata() -> None:
     assert by_name["agents.create"].annotations.read_only_hint is False
     assert by_name["agents.create"].annotations.destructive_hint is False
     assert by_name["agents.delete"].annotations.destructive_hint is True
+    # Overwrites and irreversible sends are destructive too (OpenAI plugin
+    # guidelines 6.3): an update replaces the live agent, a call cannot be unsent.
+    assert by_name["agents.update"].annotations.destructive_hint is True
+    assert by_name["sessions.phone.create"].annotations.destructive_hint is True
+    assert by_name["support.ticket.create"].annotations.destructive_hint is True
+    assert by_name["support.ticket.get"].annotations.read_only_hint is False
     assert by_name["docs.search"].annotations.open_world_hint is False
     assert by_name["docs.search"].output_schema["properties"]["result"]["type"] == "array"
 

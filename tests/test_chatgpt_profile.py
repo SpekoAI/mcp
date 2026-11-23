@@ -96,7 +96,7 @@ def test_chatgpt_preset_keeps_the_audio_tools() -> None:
 
 def test_every_referenced_tool_is_present() -> None:
     """A kept tool whose description names a dropped tool dead-ends the model
-    on 'Unknown tool'. agents.create names preview_stacks; agents.test_call
+    on 'Unknown tool'. agents.create names agents.preview_stacks; agents.test_call
     names the three review tools."""
     for referenced in (
         "agents.preview_stacks",
@@ -132,8 +132,56 @@ def test_no_billing_read_is_exposed() -> None:
     assert billing == [], f"billing surface leaked: {billing}"
 
 
-def test_no_destructive_tool_is_exposed() -> None:
-    leaked = sorted(set(CHATGPT_PROFILE_TOOL_NAMES) & DESTRUCTIVE_PUBLIC_NAMES)
+# The destructive tools ChatGPT serves, and why each is there. destructiveHint
+# also marks overwrites and irreversible sends (plugin guidelines 6.3), so this
+# is not the set of deletes: no delete or rollback is served.
+CHATGPT_DESTRUCTIVE_TOOL_NAMES = {
+    "agents.update",  # overwrites the live agent
+    "sessions.phone.create",  # places a real call
+    "sessions.end",  # hangs up a live call
+    "support.ticket.create",  # sent to the Speko team
+    "support.ticket.reply",  # sent to the Speko team
+    "support.ticket.rate",  # replaces the earlier rating
+}
+
+# Every tool ChatGPT serves: (readOnlyHint, destructiveHint).
+CHATGPT_ANNOTATIONS = {
+    "docs.search": (True, False),
+    "voices.list": (True, False),
+    "models.list": (True, False),
+    "agents.list": (True, False),
+    "agents.get": (True, False),
+    "agents.preview_stacks": (True, False),
+    "phone_numbers.list": (True, False),
+    "sessions.list": (True, False),
+    "sessions.get": (True, False),
+    "sessions.transcript.get": (True, False),
+    "sessions.recording.get": (True, False),
+    "agents.calls.list": (True, False),
+    "calls.get": (True, False),
+    "calls.recording.get": (True, False),
+    "agents.test_call.get": (True, False),
+    "phone_numbers.kyb.get": (True, False),
+    "audio.transcribe": (False, False),
+    "audio.synthesize": (False, False),
+    "audio.synthesis.get": (True, False),
+    "agents.create": (False, False),
+    "agents.update": (False, True),
+    "agents.test_call": (False, False),
+    "sessions.phone.create": (False, True),
+    "sessions.end": (False, True),
+    "support.ticket.create": (False, True),
+    "support.ticket.list": (True, False),
+    # Reading a ticket marks the team's replies read, a change the user sees.
+    "support.ticket.get": (False, False),
+    "support.ticket.reply": (False, True),
+    "support.ticket.rate": (False, True),
+}
+
+
+def test_no_delete_or_rollback_is_exposed() -> None:
+    deletes = {name for name in DESTRUCTIVE_PUBLIC_NAMES if name.endswith((".delete", ".rollback"))}
+    leaked = sorted(set(CHATGPT_PROFILE_TOOL_NAMES) & deletes)
     assert leaked == [], f"destructive tools leaked: {leaked}"
 
 
@@ -211,35 +259,20 @@ async def test_chatgpt_profile_tools_carry_review_grade_annotations(
 ) -> None:
     """OpenAI names missing or wrong action labels as a common cause of
     rejection, so every advertised tool must carry a title, an output schema
-    and all three hints — with the reads marked read-only, the writes not, and
-    hanging up a live call (sessions.end) the only destructive tool."""
+    and all three hints, and the hints are pinned tool by tool."""
     _force_deployment_profile(monkeypatch, "chatgpt")
     tools = await create_server().list_tools()
     assert all(tool.title for tool in tools)
     assert all(tool.output_schema for tool in tools)
     assert all(tool.annotations is not None for tool in tools)
 
-    by_name = {tool.name: tool for tool in tools}
-    for read_only in (
-        "docs.search",
-        "voices.list",
-        "models.list",
-        "agents.list",
-        "agents.get",
-        "agents.preview_stacks",
-        "phone_numbers.list",
-        "sessions.list",
-        "sessions.get",
-        "sessions.transcript.get",
-        "sessions.recording.get",
-        "calls.get",
-        "calls.recording.get",
-    ):
-        assert by_name[read_only].annotations.read_only_hint is True, read_only
-    for write in ("agents.create", "agents.update", "agents.test_call", "sessions.phone.create"):
-        assert by_name[write].annotations.read_only_hint is False, write
-    destructive = {name for name, tool in by_name.items() if tool.annotations.destructive_hint}
-    assert destructive == {"sessions.end"}
+    table = {
+        tool.name: (tool.annotations.read_only_hint, tool.annotations.destructive_hint)
+        for tool in tools
+    }
+    assert table == CHATGPT_ANNOTATIONS
+    destructive = {name for name, (_, hint) in table.items() if hint}
+    assert destructive == CHATGPT_DESTRUCTIVE_TOOL_NAMES
 
 
 # --- the other surfaces are untouched ---------------------------------------
@@ -300,6 +333,80 @@ def test_disclosure_does_not_fire_on_the_default_profile(
     assert "systemPrompt" not in body
 
 
+# --- fields ChatGPT does not offer ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tool", "body"),
+    [
+        (
+            "create_agent",
+            {
+                "name": "Ava",
+                "systemPrompt": "Be brief.",
+                "intent": {"language": "en"},
+                "webhooks": {"postCall": {"url": "https://example.com/hook"}},
+            },
+        ),
+        (
+            "create_agent",
+            {
+                "name": "Ava",
+                "systemPrompt": "Be brief.",
+                "intent": {"language": "en"},
+                "turnHandling": {"onHuman": "hangup"},
+            },
+        ),
+        ("update_agent", {"webhooks": {"status": {"url": "https://example.com/hook"}}}),
+        ("update_agent", {"turnHandling": {"onHuman": "hangup"}}),
+        (
+            "create_phone_session",
+            {"to": "+12015551234", "agentId": "agent_1", "turnHandling": {"onHuman": "hangup"}},
+        ),
+    ],
+)
+async def test_chatgpt_refuses_webhooks_and_silent_hang_up(
+    monkeypatch: pytest.MonkeyPatch, tool: str, body: dict
+) -> None:
+    """Webhooks send call data to any URL with any headers (plugin guidelines
+    3.3(b)); onHuman 'hangup' ends a call on a live person without a word."""
+    _force_deployment_profile(monkeypatch, "chatgpt")
+
+    async def no_request(*args: object, **kwargs: object) -> object:
+        raise AssertionError("a refused body must not reach the API")
+
+    monkeypatch.setattr(action_tools.http_client, "call_speko_api", no_request)
+    fn = getattr(action_tools, tool)
+    with pytest.raises(ToolError, match="cannot be set from ChatGPT"):
+        if tool == "update_agent":
+            await fn("agent_1", body)
+        else:
+            await fn(body)
+
+
+@pytest.mark.parametrize("profile", [None, "replit", "muse"])
+def test_other_profiles_keep_webhooks_and_on_human(
+    monkeypatch: pytest.MonkeyPatch, profile: str | None
+) -> None:
+    _force_deployment_profile(monkeypatch, profile)
+    action_tools.refuse_chatgpt_only_fields(
+        {
+            "webhooks": {"postCall": {"url": "https://example.com/hook"}},
+            "turnHandling": {"onHuman": "hangup"},
+        },
+        tool="agents.update",
+    )
+
+
+def test_chatgpt_keeps_on_human_continue_and_cleared_webhooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _force_deployment_profile(monkeypatch, "chatgpt")
+    action_tools.refuse_chatgpt_only_fields(
+        {"webhooks": None, "turnHandling": {"onHuman": "continue"}}, tool="agents.update"
+    )
+
+
 # --- every referenced tool is present, checked programmatically -------------
 
 
@@ -307,10 +414,11 @@ async def test_no_advertised_description_names_a_withheld_tool(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ISC-9/10 pin the two cross-references found by hand. This closes the
-    class: scan all 16 descriptions for dotted tool-name-shaped tokens and
+    class: scan every description for dotted tool-name-shaped tokens and
     assert every one that names a real Speko tool is itself in the profile.
     A description that points at a dropped tool dead-ends the model on
-    'Unknown tool' with no way to recover.
+    'Unknown tool' with no way to recover. tests/test_profile_text.py runs the
+    same check on every profile.
     """
     _force_deployment_profile(monkeypatch, "chatgpt")
     tools = await create_server().list_tools()
@@ -330,10 +438,17 @@ async def test_no_advertised_description_names_a_withheld_tool(
             if referenced not in CHATGPT_PROFILE_TOOL_NAMES:
                 dangling.append((tool.name, referenced))
 
-    # parse_external_config is the one documented exception: agents.create
-    # mentions it as a migrations-only escape hatch, not a step in any ChatGPT
-    # workflow, exactly as the builder preset documents.
-    dangling = [d for d in dangling if d[1] != "migration.external_config.parse"]
+    # The one exception is manifest text this package cannot edit:
+    # support.ticket.create names the carrier-import tools "where available".
+    dangling = [
+        d
+        for d in dangling
+        if d
+        not in {
+            ("support.ticket.create", "phone_numbers.sip_connections.create"),
+            ("support.ticket.create", "phone_numbers.import"),
+        }
+    ]
     assert dangling == [], f"descriptions point at withheld tools: {dangling}"
 
 

@@ -44,7 +44,12 @@ from spekoai_mcp.http_client import (
     set_current_anthropic_client,
     set_current_client_ua,
 )
-from spekoai_mcp.profiles import ToolProfileMiddleware, default_profile, profile_serves_tool
+from spekoai_mcp.profiles import (
+    CHATGPT_PROFILE,
+    ToolProfileMiddleware,
+    default_profile,
+    profile_serves_tool,
+)
 from spekoai_mcp.prompts import register_prompts
 from spekoai_mcp.resources import register_resources
 from spekoai_mcp.setup_tools import (
@@ -161,61 +166,148 @@ _HANDOFF_WITHOUT_QUOTE = """
 """
 
 
-def _instructions(handoff_paragraph: str) -> str:
-    return "\n\n".join(
-        " ".join(paragraph.split())
-        for paragraph in [
-            """
-            Speko MCP is the authenticated operational interface for Speko voice-AI
-            accounts.
-            """,
-            """
-            Use these tools to manage and deploy agents, phone numbers and
-            knowledge bases, place sessions and phone calls, read transcripts and
-            recordings, run evals, and build or migrate SessionConfig drafts.
-            """,
-            """
-            Docs are in-band: docs.search(query) finds SDK usage, API body shapes
-            and migration steps; then read the matching spekoai://docs/{slug}
-            resource (spekoai://docs/index lists them all). If a write tool rejects
-            a body, search the failing field name before retrying.
-            """,
-            """
-            Tool names use domain.action dot notation, for example agents.list and
-            docs.search. Automation may use a Speko API key as Authorization:
-            Bearer sk_*.
-            """,
-            handoff_paragraph,
-            """
-            When the user is blocked by something only the Speko team can fix (an
-            error says to contact support, a feature is not enabled for the
-            workspace, a billing issue beyond credit, or a platform bug), offer
-            to open a ticket with support.ticket.create instead of sending them to
-            email.
-            Put the trace_id and any agent, session or call ids in the ticket, and
-            give the user the ticketUrl it returns. A SUPPORT_REPLY_UNREAD warning
-            means the team replied: read it with support.ticket.get and answer with
-            support.ticket.reply. Tickets
-            are only for problems with Speko itself, never for the assistant or
-            another product. Show the user the exact summary and details and get
-            their yes before calling support.ticket.create, and leave out personal
-            details the Speko problem does not need.
-            """,
-            """
-            Using a carrier or VoIP number the user already has (Twilio, Telnyx)
-            needs no ticket and no SIP gateway: connect it with
-            phone_numbers.sip_connections.create then phone_numbers.import, or
-            the dashboard's Import number > Add carrier connection. The SIP
-            gateway is only for a PBX.
-            """,
-        ]
-    )
+# The scope sentence every profile used to share. It stays where the profile
+# serves everything it names (the bare default, customer and Muse hosts).
+_FULL_SCOPE = """
+    Use these tools to manage and deploy agents, phone numbers and knowledge bases,
+    place sessions and phone calls, read transcripts and recordings, run evals, and
+    build or migrate SessionConfig drafts.
+"""
+_FULL_SCOPE_TOOLS = (
+    "agents.deploy",
+    "phone_numbers.create",
+    "knowledge_bases.create",
+    "sessions.create",
+    "sessions.phone.create",
+    "sessions.transcript.get",
+    "agents.evals.run",
+    "migration.session_config.build",
+)
+
+# Elsewhere the sentence lists only what the profile serves. Each clause names
+# the first tool in its group the profile serves; ChatGPT's reviewers read an
+# overclaim here as a description that does not match behavior.
+_SCOPE_CLAUSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("create and edit agents", ("agents.create", "agents.update")),
+    ("create agents", ("agents.create",)),
+    ("read agents", ("agents.list",)),
+)
+_SCOPE_OPTIONAL: tuple[tuple[str, str], ...] = (
+    ("test agents with simulated calls", "agents.test_call"),
+    ("place phone calls", "sessions.phone.create"),
+    ("read transcripts and recordings", "sessions.transcript.get"),
+    ("transcribe audio", "audio.transcribe"),
+    ("synthesize speech", "audio.synthesize"),
+    ("read phone numbers", "phone_numbers.list"),
+    ("manage knowledge bases", "knowledge_bases.create"),
+    ("look up voices and models", "voices.list"),
+    ("open and follow support tickets", "support.ticket.create"),
+)
+
+_DOCS = """
+    Docs are in-band: docs.search(query) finds SDK usage, API body shapes
+    and migration steps; then read the matching spekoai://docs/{slug}
+    resource (spekoai://docs/index lists them all). If a write tool rejects
+    a body, search the failing field name before retrying.
+"""
+
+_SUPPORT = """
+    When the user is blocked by something only the Speko team can fix (an
+    error says to contact support, a feature is not enabled for the
+    workspace, a billing issue beyond credit, or a platform bug), offer
+    to open a ticket with support.ticket.create instead of sending them to
+    email.
+    Put the trace_id and any agent, session or call ids in the ticket, and
+    give the user the ticketUrl it returns. A SUPPORT_REPLY_UNREAD warning
+    means the team replied: read it with support.ticket.get and answer with
+    support.ticket.reply. Tickets
+    are only for problems with Speko itself, never for the assistant or
+    another product. Show the user the exact summary and details and get
+    their yes before calling support.ticket.create, and leave out personal
+    details the Speko problem does not need.
+"""
+
+_CARRIER_WITH_TOOLS = """
+    Using a carrier or VoIP number the user already has (Twilio, Telnyx)
+    needs no ticket and no SIP gateway: connect it with
+    phone_numbers.sip_connections.create then phone_numbers.import, or
+    the dashboard's Import number > Add carrier connection. The SIP
+    gateway is only for a PBX.
+"""
+_CARRIER_TOOLS = ("phone_numbers.sip_connections.create", "phone_numbers.import")
+_CARRIER_DASHBOARD = """
+    Using a carrier or VoIP number the user already has (Twilio, Telnyx)
+    needs no ticket and no SIP gateway: connect it in the dashboard's Import
+    number > Add carrier connection. The SIP gateway is only for a PBX.
+"""
+
+
+def _scope(profile: str | None) -> str:
+    if all(profile_serves_tool(name, profile) for name in _FULL_SCOPE_TOOLS):
+        return _FULL_SCOPE
+    clauses = [
+        next(
+            (
+                clause
+                for clause, tools in _SCOPE_CLAUSES
+                if all(profile_serves_tool(name, profile) for name in tools)
+            ),
+            None,
+        ),
+        *(clause for clause, name in _SCOPE_OPTIONAL if profile_serves_tool(name, profile)),
+    ]
+    named = [clause for clause in clauses if clause]
+    if len(named) > 1:
+        named[-1] = f"and {named[-1]}"
+    return f"Use these tools to {', '.join(named)}."
+
+
+def _naming(profile: str | None) -> str:
+    examples = [
+        name
+        for name in ("agents.list", "docs.search", "sessions.list")
+        if profile_serves_tool(name, profile)
+    ][:2]
+    sentence = f"Tool names use domain.action dot notation, for example {' and '.join(examples)}."
+    # ChatGPT signs in with OAuth only, and OpenAI's plugin guidelines (3.3(b)) bar
+    # metadata that asks for secrets, so its instructions name no API key.
+    if profile != CHATGPT_PROFILE:
+        sentence += " Automation may use a Speko API key as Authorization: Bearer sk_*."
+    return sentence
 
 
 def instructions_for(profile: str | None) -> str:
-    """The server instructions for a deployment serving `profile`."""
-    serves_quote = profile_serves_tool("sessions.phone.quote", profile)
-    return _instructions(_HANDOFF_WITH_QUOTE if serves_quote else _HANDOFF_WITHOUT_QUOTE)
+    """The server instructions for a deployment serving `profile`.
+
+    A paragraph that names a tool appears only where the profile serves that
+    tool: pointing a model at a tool its host withholds dead-ends it.
+    """
+
+    def serves(name: str) -> bool:
+        return profile_serves_tool(name, profile)
+
+    handoff = ""
+    if serves("sessions.phone.create"):
+        handoff = _HANDOFF_WITH_QUOTE if serves("sessions.phone.quote") else _HANDOFF_WITHOUT_QUOTE
+    if all(serves(name) for name in _CARRIER_TOOLS):
+        carrier = _CARRIER_WITH_TOOLS
+    elif serves("phone_numbers.create"):
+        carrier = _CARRIER_DASHBOARD
+    else:
+        carrier = ""
+    paragraphs = [
+        """
+        Speko MCP is the authenticated operational interface for Speko voice-AI
+        accounts.
+        """,
+        _scope(profile),
+        _DOCS if serves("docs.search") else "",
+        _naming(profile),
+        handoff,
+        _SUPPORT if serves("support.ticket.create") else "",
+        carrier,
+    ]
+    return "\n\n".join(" ".join(p.split()) for p in paragraphs if p.strip())
 
 
 INSTRUCTIONS = instructions_for(None)

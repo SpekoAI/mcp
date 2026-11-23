@@ -172,12 +172,22 @@ async def test_synthesize_teaches_the_pin_form_the_server_parses() -> None:
 async def test_synthesize_examples_do_not_steer_to_a_top_up_gated_provider() -> None:
     # Claude copies the examples. They named ElevenLabs, which a workspace on
     # free credit cannot run on Speko's key (PROVIDER_REQUIRES_TOP_UP), so the
-    # examples are providers free credit covers, and the gate is stated.
+    # examples are providers free credit covers. The gate itself is stated by
+    # the refusal (payment.py), not by the description: a top-up sentence in
+    # tool text reads as promotion to directory reviewers.
     tool = next(t for t in await create_server().list_tools() if t.name == "audio.synthesize")
     description = json.dumps(tool.parameters)
     assert "eleven_multilingual_v2" not in description
     assert "'elevenlabs'" not in description
-    assert "PROVIDER_REQUIRES_TOP_UP" in description
+    assert "PROVIDER_REQUIRES_TOP_UP" not in description
+    assert "top-up" not in description
+
+
+async def test_synthesize_says_it_does_not_clone_a_voice() -> None:
+    tool = next(t for t in await create_server().list_tools() if t.name == "audio.synthesize")
+    description = tool.parameters["properties"]["body"]["description"]
+    assert "takes no reference audio and does not clone a voice" in description
+    assert "voice_clones" not in description
 
 
 # --- synthesis -------------------------------------------------------------
@@ -904,6 +914,117 @@ async def test_transcribe_http_503_says_split_the_audio_not_retry(
     assert "trace_id=req-1" in message
     assert action_tools.TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP in message
     assert "Retry the Speko MCP request" not in message
+
+
+async def test_synthesize_all_providers_failed_says_route_around_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One org resent a Munsit-pinned request 48 times in 13 minutes on "Retry"."""
+
+    async def fake_raw(
+        method: str, path: str, *, body: Any = None, timeout: float = 60.0
+    ) -> SpekoRawResponse:
+        raise http_client.SpekoApiError(
+            503, "All providers failed: munsit 429", trace_id="req-2", code="ALL_PROVIDERS_FAILED"
+        )
+
+    monkeypatch.setattr(http_client, "router_bearer_token", lambda: None)
+    monkeypatch.setattr(http_client, "call_speko_api_raw", fake_raw)
+
+    with pytest.raises(ToolError) as error:
+        await action_tools.synthesize_speech(
+            {
+                "text": "hi",
+                "intent": {"language": "ar"},
+                "constraints": {"allowedProviders": {"tts": ["munsit"]}},
+            }
+        )
+
+    message = str(error.value)
+    assert "Speko API returned 503" in message
+    assert "trace_id=req-2" in message
+    assert action_tools.SYNTHESIZE_PROVIDERS_FAILED_NEXT_STEP in message
+    assert "constraints.allowedProviders.tts" in message
+    assert "Retry the Speko MCP request" not in message
+    # ElevenLabs on Speko's key needs a top-up, so a free workspace would only
+    # trade this refusal for PROVIDER_REQUIRES_TOP_UP.
+    for step in (
+        action_tools.SYNTHESIZE_PROVIDERS_FAILED_NEXT_STEP,
+        action_tools.SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP,
+    ):
+        assert "elevenlabs" not in step
+
+
+# --- expired Speko links ---------------------------------------------------
+
+GCS_EXPIRED_V4 = (
+    b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>ExpiredToken</Code>"
+    b"<Message>Invalid argument.</Message><Details>The provided token has expired. "
+    b"Request signature expired at: 2026-11-20T10:00:00+00:00</Details></Error>"
+)
+GCS_EXPIRED_V2 = (
+    b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>AccessDenied</Code>"
+    b"<Message>Access denied.</Message><Details>Request has expired: 1763632800"
+    b"</Details></Error>"
+)
+GCS_ACCESS_DENIED = (
+    b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>AccessDenied</Code>"
+    b"<Message>Access denied.</Message><Details>Anonymous caller does not have "
+    b"storage.objects.get access.</Details></Error>"
+)
+GCS_URL = "https://storage.googleapis.com/speko-media/synth/abc.wav?X-Goog-Signature=x"
+
+
+async def _fetch_gcs_error(monkeypatch: pytest.MonkeyPatch, status: int, body: bytes) -> str:
+    monkeypatch.setattr(action_tools.socket, "getaddrinfo", _public_getaddrinfo)
+    monkeypatch.setattr(
+        action_tools.httpx,
+        "AsyncClient",
+        _client_returning(
+            _FakeStream(
+                status_code=status,
+                headers={"content-type": "application/xml"},
+                chunks=[body[:40], body[40:]],
+            )
+        ),
+    )
+    with pytest.raises(ToolError) as error:
+        await action_tools._fetch_audio(GCS_URL)
+    return str(error.value)
+
+
+@pytest.mark.parametrize(("status", "body"), [(400, GCS_EXPIRED_V4), (403, GCS_EXPIRED_V2)])
+async def test_an_expired_speko_link_names_the_tools_that_re_sign_it(
+    monkeypatch: pytest.MonkeyPatch, status: int, body: bytes
+) -> None:
+    """About 380 a week: synthesis links last 15 minutes, recording links 300 s."""
+    _force_deployment_profile(monkeypatch, None)
+    message = await _fetch_gcs_error(monkeypatch, status, body)
+    assert "has expired" in message
+    assert "audio.synthesis.get" in message
+    assert "sessions.recording.get or calls.recording.get" in message
+    assert "without a sign-in" not in message
+
+
+async def test_an_expired_link_names_only_the_tools_the_profile_serves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replit serves calls.recording.get but not sessions.recording.get."""
+    _force_deployment_profile(monkeypatch, "replit")
+    message = await _fetch_gcs_error(monkeypatch, 400, GCS_EXPIRED_V4)
+    assert "audio.synthesis.get" in message
+    assert "calls.recording.get" in message
+    assert "sessions.recording.get" not in message
+
+
+async def test_other_cloud_storage_refusals_keep_the_sign_in_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    message = await _fetch_gcs_error(monkeypatch, 403, GCS_ACCESS_DENIED)
+    assert message == (
+        "The link answered HTTP 403 from storage.googleapis.com. "
+        "Send a link that downloads the audio directly without a sign-in."
+    )
 
 
 # --- SSE semantics ---------------------------------------------------------

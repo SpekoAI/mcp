@@ -175,9 +175,30 @@ async def test_operational_surfaces_are_withheld(
     assert [n for n in served if n.startswith(prefix)] == []
 
 
-async def test_no_destructive_tool_is_served(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_no_delete_or_rollback_is_served(monkeypatch: pytest.MonkeyPatch) -> None:
     served = await _served_names(monkeypatch)
-    assert [n for n in served if n in DESTRUCTIVE_PUBLIC_NAMES] == []
+    deletes = {name for name in DESTRUCTIVE_PUBLIC_NAMES if name.endswith((".delete", ".rollback"))}
+    assert [n for n in served if n in deletes] == []
+
+
+async def test_destructive_tools_are_the_overwrite_and_the_sends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """destructiveHint marks overwrites and irreversible sends, not only deletes."""
+    _force_deployment_profile(monkeypatch, REPLIT_PROFILE)
+    destructive = {
+        tool.name
+        for tool in await create_server().list_tools()
+        if tool.annotations.destructive_hint
+    }
+    assert destructive == {
+        "agents.update",
+        "sessions.phone.create",
+        "sessions.end",
+        "support.ticket.create",
+        "support.ticket.reply",
+        "support.ticket.rate",
+    }
 
 
 async def test_withheld_tools_are_not_callable(monkeypatch: pytest.MonkeyPatch) -> None:

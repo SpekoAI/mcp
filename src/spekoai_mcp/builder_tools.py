@@ -27,6 +27,7 @@ from pydantic import Field
 from spekoai_mcp import http_client
 from spekoai_mcp.action_tools import SPEKO_API_OUTPUT_SCHEMA, call, tool_title
 from spekoai_mcp.code_snippets import SNIPPET_FRAMEWORKS, SnippetFramework, get_snippet
+from spekoai_mcp.profiles import current_profile, profile_serves_tool
 
 BUILDER_TOOL_NAME_BY_FUNCTION = {
     "list_voices": "voices.list",
@@ -75,6 +76,7 @@ def register_builder_tools(mcp: FastMCP) -> None:
     """Register builder-profile tools. MUST run after the default-surface
     registrations so the default tool ordering stays byte-identical (the
     profile middleware filters these out of the default view)."""
+    descriptions = _profile_descriptions(current_profile())
     for tool in [
         list_voices,
         search_voices,
@@ -88,6 +90,7 @@ def register_builder_tools(mcp: FastMCP) -> None:
             tool,
             name=public_name,
             title=title,
+            description=descriptions.get(name),
             output_schema=(
                 CODE_SNIPPET_OUTPUT_SCHEMA
                 if name == "get_code_snippet"
@@ -101,6 +104,41 @@ def register_builder_tools(mcp: FastMCP) -> None:
                 open_world_hint=name != "get_code_snippet",
             ),
         )
+
+
+def _profile_descriptions(profile: str | None) -> dict[str, str]:
+    """Descriptions that name the audio tools only where ``profile`` serves them."""
+    synthesize = profile_serves_tool("audio.synthesize", profile)
+    audio_tools = [
+        name
+        for name in ("audio.synthesize", "audio.transcribe")
+        if profile_serves_tool(name, profile)
+    ]
+    use_with = (
+        "pass `voice` as audio.synthesize's `voice` and pin the provider in "
+        "constraints.allowedProviders.tts"
+        if synthesize
+        else "pass `voice` as an agent's `voice` and pin the provider in "
+        "stackPreferences.allowedProviders.tts"
+    )
+    priced_scope = f" on {' and '.join(audio_tools)}," if audio_tools else ""
+    return {
+        "search_voices": (
+            "Search every vendor's TTS voices that Speko can route, including ElevenLabs "
+            "on a Speko-managed key. `name` matches part of a voice's name or id, ignoring "
+            f"case. Each result carries `use_with` ({{provider, model, voice}}): {use_with}. "
+            "Results are paginated; follow `next_cursor`."
+        ),
+        "list_models": (
+            "List the STT/LLM/TTS/S2S provider and model catalog. Each entry's `id` "
+            "('vendor' or 'vendor:model') is the literal string accepted by "
+            "`allowedProviders` pins in agent and session configs; `benchmarked` marks "
+            "entries with live Speko benchmark scores. STT and TTS entries carry "
+            f"`priced`:{priced_scope} a `priced: false` model is skipped on Speko-managed "
+            "keys (the request fails if no priced model is left) and works only with the "
+            "caller's own provider key, so pin a `priced: true` model for managed usage."
+        ),
+    }
 
 
 async def list_voices(
@@ -140,14 +178,15 @@ async def search_voices(
         Field(description="Voice gender."),
     ] = None,
     accent: Annotated[str | None, Field(description="Accent, e.g. 'mexican'.")] = None,
+    name: Annotated[
+        str | None,
+        Field(description="Part of the voice's name or id, e.g. 'Charon'. Case does not matter."),
+    ] = None,
     limit: Annotated[int, Field(ge=1, le=100, description="Page size.")] = 25,
     cursor: Annotated[str | None, Field(description="next_cursor from the previous page.")] = None,
 ) -> ToolResult:
-    """Search every vendor's TTS voices that Speko can route, including
-    ElevenLabs on a Speko-managed key. Each result carries `use_with`
-    ({provider, model, voice}): pass `voice` as audio.synthesize's `voice`
-    and pin the provider in constraints.allowedProviders.tts. Results are
-    paginated; follow `next_cursor`."""
+    """Search the TTS voices Speko can route. The registered description is
+    `_profile_descriptions`."""
     return await call(
         "GET",
         http_client.with_query(
@@ -157,6 +196,7 @@ async def search_voices(
                 "language": language,
                 "gender": gender,
                 "accent": accent,
+                "name": name,
                 "limit": limit,
                 "cursor": cursor,
             },
@@ -166,14 +206,8 @@ async def search_voices(
 
 
 async def list_models() -> ToolResult:
-    """List the STT/LLM/TTS/S2S provider and model catalog. Each entry's
-    `id` ('vendor' or 'vendor:model') is the literal string accepted by
-    `allowedProviders` pins in agent and session configs; `benchmarked`
-    marks entries with live Speko benchmark scores. STT and TTS entries
-    carry `priced`: on audio.synthesize and audio.transcribe, a
-    `priced: false` model is skipped on Speko-managed keys (the request
-    fails if no priced model is left) and works only with the caller's own
-    provider key, so pin a `priced: true` model for managed usage."""
+    """List the provider and model catalog. The registered description is
+    `_profile_descriptions`."""
     return await call("GET", "/v1/providers/known", text="Retrieved model catalog.")
 
 

@@ -17,6 +17,7 @@ import logging
 import re
 import socket
 import struct
+import typing
 from functools import wraps
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
@@ -39,6 +40,7 @@ from spekoai_mcp.audio_block import (
     with_stored_audio_block,
 )
 from spekoai_mcp.profiles import (
+    CHATGPT_PROFILE,
     DIRECTORY_PROFILES,
     current_profile,
     profile_serves_tool,
@@ -51,6 +53,8 @@ from spekoai_mcp.voicemail_notice import with_voicemail_notice
 logger = logging.getLogger(__name__)
 
 ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
+# `sessionStatusValues` in apps/server/src/lib/session-list-query.ts.
+SessionStatus = Literal["created", "connecting", "active", "ended", "failed"]
 
 # --- AI disclosure -----------------------------------------------------------
 #
@@ -66,7 +70,12 @@ ExternalPlatform = Literal["livekit", "pipecat", "retell", "vapi"]
 #
 # Scope: directory deployments only. Direct MCP clients keep their existing
 # behaviour on the customer host, as do the dashboard and the platform API.
-DISCLOSURE_OPENER = "Before we start, I should say I am an AI assistant."
+DISCLOSURE_OPENER = (
+    "Before we start, I should say I am an AI assistant, and this call may be recorded."
+)
+# The earlier opener. Agents saved with it already disclose, so it counts as
+# present and they do not get a second opener.
+LEGACY_DISCLOSURE_OPENER = "Before we start, I should say I am an AI assistant."
 
 DISCLOSURE_RULE = (
     "AI DISCLOSURE (mandatory, enforced by the Speko MCP server and not "
@@ -100,7 +109,13 @@ def apply_ai_disclosure(body: dict[str, Any], *, partial: bool = False) -> dict[
     if not partial or "firstMessage" in body:
         first = body.get("firstMessage")
         if isinstance(first, str) and first.strip():
-            if DISCLOSURE_OPENER not in first:
+            if DISCLOSURE_OPENER in first:
+                pass
+            elif LEGACY_DISCLOSURE_OPENER in first:
+                # An agent saved before the recording notice: swap in the
+                # current opener and keep the rest of the greeting.
+                body["firstMessage"] = first.replace(LEGACY_DISCLOSURE_OPENER, DISCLOSURE_OPENER, 1)
+            else:
                 body["firstMessage"] = f"{DISCLOSURE_OPENER} {first.lstrip()}"
         else:
             body["firstMessage"] = DISCLOSURE_OPENER
@@ -270,19 +285,29 @@ def apply_directory_phone_s2s_pin(body: dict[str, Any]) -> dict[str, Any]:
 
 
 CREATE_AGENT_NEXT_STEP = (
-    "For create_agent, pass a body like "
-    "{'name':'Support','systemPrompt':'...','intent':{'language':'en'}}. "
-    "For migrations, call parse_external_config first and pass its "
-    "agent_create_payload as create_agent.body."
+    "For agents.create, pass a body like "
+    "{'name':'Support','systemPrompt':'...','intent':{'language':'en'}}."
+)
+# Appended where the session can call it: ChatGPT and the builder hosts do not.
+_CREATE_AGENT_MIGRATION_STEP = (
+    " For migrations, call migration.external_config.parse first and pass its "
+    "agent_create_payload as the agents.create body."
 )
 
+
+def _create_agent_next_step() -> str:
+    if session_can_call("migration.external_config.parse"):
+        return CREATE_AGENT_NEXT_STEP + _CREATE_AGENT_MIGRATION_STEP
+    return CREATE_AGENT_NEXT_STEP
+
+
 CREATE_SESSION_NEXT_STEP = (
-    "For create_session, pass a body like {'agentId':'<agent id>'} or "
+    "For sessions.create, pass a body like {'agentId':'<agent id>'} or "
     "{'intent':{'language':'en'}}. Add mode:'s2s' for speech-to-speech."
 )
 
 CREATE_PHONE_SESSION_NEXT_STEP = (
-    "For create_phone_session, pass a body like "
+    "For sessions.phone.create, pass a body like "
     "{'to':'+12015551234','agentId':'<agent id>'} or "
     "{'to':'+12015551234','intent':{'language':'en'}}."
 )
@@ -297,7 +322,7 @@ END_CALL_NOTE = (
 )
 
 UPDATE_AGENT_NEXT_STEP = (
-    "For update_agent, pass only the fields to change, for example "
+    "For agents.update, pass only the fields to change, for example "
     "{'systemPrompt':'...'} or {'intent':{'language':'es'}}."
 )
 
@@ -364,7 +389,7 @@ NO_PROVIDER_AVAILABLE_NEXT_STEP = (
 TEXT_TOO_LONG_CODE = "TEXT_TOO_LONG"
 TEXT_TOO_LONG_NEXT_STEP = (
     "The text is too long for one synthesis. Split it at sentence ends into parts of "
-    "at most maxChars characters (see the message above), call synthesize_speech once "
+    "at most maxChars characters (see the message above), call audio.synthesize once "
     "per part, and give the user every audio link in order. Do not retry the same text."
 )
 # Payment refusals (out of credit, a destination free credit does not cover, a
@@ -379,6 +404,10 @@ FREE_CALL_NOTE = (
     "This is the workspace's one free call abroad and it ends after 2 minutes. Later calls "
     "abroad need one top-up."
 )
+# The same note where the surface names no top-up (payment.NO_PRICING_PROFILES).
+FREE_CALL_NOTE_NO_PRICING = (
+    "This is the workspace's one free call abroad and it ends after 2 minutes."
+)
 
 # Refusals the user clears by paying (payment.PAYMENT_CODES). Prod
 # 2026-10-08..11-07: 586 dials hit the destination-payment gate across 393
@@ -391,8 +420,14 @@ PAYMENT_GATE_CODES = payment.PAYMENT_CODES
 _RETRY_ARGUMENTS_MAX_CHARS = 4000
 
 
-def _retry_same_call_step(body: dict[str, Any]) -> str:
-    """Keep the refused call, and retry it unchanged once the user has paid."""
+def _retry_same_call_step(body: dict[str, Any]) -> str | None:
+    """Keep the refused call, and retry it unchanged once the user has paid.
+
+    None where the surface names no way to pay: the refusal already says the
+    call was not placed, and a retry would be refused the same way.
+    """
+    if payment.hides_pricing():
+        return None
     step = (
         "The call was not placed and nothing was charged. Keep this call: once the user "
         "has paid, call sessions.phone.create again with the same body, without asking "
@@ -460,7 +495,25 @@ SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP = (
     "The voice provider stalled before returning audio; the request itself is fine and "
     "no audio was delivered. Retry the same request once. If it stalls again, route "
     "around that provider: drop any model pin, or set constraints.allowedProviders.tts "
-    "to a different provider (for example ['cartesia'] or ['elevenlabs'])."
+    "to a different provider (for example ['cartesia'] or ['inworld'])."
+)
+
+# Every synthesis provider the request allowed failed, often a 429 from the one
+# pinned provider. Prod 2026-11 had one org resend the same Munsit-pinned
+# request 48 times in 13 minutes on the generic "Retry" step.
+SYNTHESIZE_PROVIDERS_FAILED_NEXT_STEP = (
+    "Every voice provider this request allowed failed, so the same request fails the same "
+    "way. Route around them before retrying: drop any model or voice pin, or set "
+    "constraints.allowedProviders.tts to a different provider (for example ['cartesia'] "
+    "or ['inworld'])."
+)
+
+# The MCP stopped waiting, but Platform took the request and may still finish
+# and bill it. A blind resend bills the same text twice.
+SYNTHESIZE_READ_TIMEOUT_NEXT_STEP = (
+    "The synthesis did not finish in time. The server may still complete and bill it, so "
+    "sending this text again, whole or in parts, can bill it twice. Ask the user before "
+    "sending it again."
 )
 
 UNPROCESSABLE_NEXT_STEP = (
@@ -494,6 +547,12 @@ def _phone_provisioning_failed_next_step() -> str:
         "again, so retrying returns the same error. "
     )
     profile = current_profile()
+    if payment.hides_pricing():
+        # No purchase is named where the surface names no price.
+        step += "The call was not placed. "
+        if session_can_call("support.ticket.create"):
+            step += "support.ticket.create opens a ticket with the Speko team. "
+        return step.rstrip()
     if all(profile_serves_tool(name, profile) for name in _PHONE_NUMBER_PURCHASE_TOOLS):
         step += (
             "Tell the user, and with their approval (a number is billed to workspace "
@@ -629,7 +688,7 @@ def _recording_next_step(resource_status: str | None, *, path: str) -> str:
 
 
 CREATE_AGENT_TOOL_NEXT_STEP = (
-    "For create_agent_tool, pass a body like {'name':'lookup_order',"
+    "For agents.tools.create, pass a body like {'name':'lookup_order',"
     "'description':'Look up an order by id.',"
     "'parameters':{'type':'object','properties':{}},"
     "'source':{'kind':'webhook','url':'https://...','secret':'<min 8 chars>'}}."
@@ -808,6 +867,10 @@ APP_META_BY_FUNCTION: dict[str, dict[str, Any]] = {
     "create_top_up_link": TOP_UP_META,
 }
 
+# `destructiveHint` covers more than deletes: OpenAI's plugin guidelines (6.3)
+# count overwriting and irreversible sends too, and allow `false` only for
+# additive writes. `update_agent` overwrites the live agent in place, and
+# `create_phone_session` places a real, billed call that cannot be taken back.
 DESTRUCTIVE_ACTION_TOOL_NAMES = {
     "delete_agent",
     "delete_agent_tool",
@@ -816,41 +879,306 @@ DESTRUCTIVE_ACTION_TOOL_NAMES = {
     "delete_knowledge_base",
     "delete_knowledge_document",
     "delete_monitor",
+    "update_agent",
+    "create_phone_session",
 }
 
 
-async def synthesize_speech(
-    body: Annotated[
-        dict[str, Any],
-        Field(
-            description=(
-                "JSON body for POST /v1/synthesize. Required: text (1-50000 "
-                "chars, must contain a speakable character) and intent "
-                "({language, region?: string, optimizeFor?: "
-                "'balanced'|'accuracy'|'latency'|'cost'}). language is a "
-                "lowercase 2-3 letter code with an optional uppercase region: "
-                "'en' or 'en-US', not 'en_US', 'en-us' or 'English'. "
-                "Optional: voice (a vendor-specific voice id copied from "
-                "voices.list, or a custom voice's provider_voice_id from "
-                "voice_clones.list pinned to its provider; never typed from "
-                "memory; omit it to get the provider's default), model (upstream model such as "
-                "'inworld-tts-2' or 'tts-rt-v2'), speed (0.5-2), "
-                "instructions (speaking-style text, applied only when the "
-                "resolved model is instruction-capable), spokenForm (bool; "
-                "normalizes markdown, URLs and numbers before synthesis), "
-                "sampleRate (omit it: 24000 is the rate nearly every provider "
-                "serves, and 16000, 44100 or 48000 usually leave no provider "
-                "and fail with 422), constraints ({allowedProviders?: {tts?: "
-                "string[]}}; each entry is a lowercase provider key such as "
-                "'inworld' or 'soniox', or a 'provider:model' id from "
-                "models.list such as 'soniox:tts-rt-v2'; on a Speko-managed "
-                "key, pin a model models.list marks priced: true). On free "
-                "credit, ElevenLabs runs on Speko's key only after the "
-                "workspace's first top-up (402 PROVIDER_REQUIRES_TOP_UP); "
-                "every other provider runs on free credit."
-            )
+# --- Profile-dependent tool text ---------------------------------------------
+#
+# One image serves every profile, and the profile is fixed per deployment, so
+# the text a tool carries is chosen at registration. A description names a tool
+# only where the profile serves it (a model sent to an unserved tool dead-ends
+# on "Unknown tool"), and prices only where the profile serves a quote or
+# payment tool (`payment.profile_shows_prices`).
+
+
+def _serves(name: str, profile: str | None) -> bool:
+    return profile_serves_tool(name, profile)
+
+
+def synthesize_body_doc(profile: str | None) -> str:
+    voice_source = (
+        "a vendor-specific voice id copied from voices.list"
+        if _serves("voices.list", profile)
+        else "a vendor-specific voice id"
+    )
+    pin_source = (
+        "a 'provider:model' id from models.list such as 'soniox:tts-rt-v2'; on a "
+        "Speko-managed key, pin a model models.list marks priced: true"
+        if _serves("models.list", profile)
+        else "a 'provider:model' id such as 'soniox:tts-rt-v2'; on a Speko-managed key, "
+        "pin a model the catalog marks priced: true"
+    )
+    return (
+        "JSON body for POST /v1/synthesize. Required: text (1-50000 chars, must contain a "
+        "speakable character) and intent ({language, region?: string, optimizeFor?: "
+        "'balanced'|'accuracy'|'latency'|'cost'}). language is a lowercase 2-3 letter code "
+        "with an optional uppercase region: 'en' or 'en-US', not 'en_US', 'en-us' or "
+        f"'English'. Optional: voice ({voice_source}; never typed from memory; omit it to "
+        "get the provider's default), model (upstream model such as 'inworld-tts-2' or "
+        "'tts-rt-v2'), speed (0.5-2), instructions (speaking-style text, applied only when "
+        "the resolved model is instruction-capable), spokenForm (bool; normalizes markdown, "
+        "URLs and numbers before synthesis), sampleRate (omit it: 24000 is the rate nearly "
+        "every provider serves, and 16000, 44100 or 48000 usually leave no provider and fail "
+        "with 422), constraints ({allowedProviders?: {tts?: string[]}}; each entry is a "
+        "lowercase provider key such as 'inworld' or 'soniox', or "
+        f"{pin_source}). The tool takes no reference audio and does not clone a voice."
+    )
+
+
+def transcribe_audio_url_doc(profile: str | None) -> str:
+    recording_tools = [
+        name for name in ("sessions.recording.get", "calls.recording.get") if _serves(name, profile)
+    ]
+    recordings = (
+        f" Signed recording URLs from {' and '.join(recording_tools)} work directly."
+        if recording_tools
+        else ""
+    )
+    return (
+        "HTTPS URL of the audio file (mp3, wav, m4a, ogg, flac, webm; up to 25 MB) that "
+        "downloads without a sign-in. Google Drive and Dropbox share links to a FILE are "
+        "accepted and converted to direct downloads; in Drive the file must be shared as "
+        f"'Anyone with the link'.{recordings}"
+    )
+
+
+def create_agent_body_doc(profile: str | None) -> str:
+    tiers = (
+        " The stack tiers available for a given description, and their stt/llm/tts "
+        "components, are reported by agents.preview_stacks."
+        if _serves("agents.preview_stacks", profile)
+        else ""
+    )
+    migrated = (
+        " Migrated agents supply agent_create_payload from migration.external_config.parse, "
+        "which already carries an intent."
+        if _serves("migration.external_config.parse", profile)
+        else ""
+    )
+    return (
+        "JSON body for POST /v1/agents. Required shape: {name: string, systemPrompt: "
+        "string, intent: {language: string, optimizeFor?: 'latency'|'quality'|'cost', "
+        "region?: string}}. intent.optimizeFor selects which failover stack the server "
+        "pins: 'quality' is the premium tier, 'latency' the fastest tier, 'cost' the "
+        "cheapest. intent.region defaults to 'usa'. The intent field is routing metadata "
+        f"describing how to route the agent's audio, not a use-case string.{tiers}{migrated} "
+        "Optional turnHandling ({profile?: 'conversational'|'ivr', dtmfToolDescription?: "
+        "string, onMachine?: 'leave_message'|..., amdPrompt?: string, ...}). On OUTBOUND "
+        "calls the keypad tool (send_dtmf) arms when answering-machine detection (AMD) or "
+        "the menu wording (English, Spanish, Dutch, French, German) identifies an automated "
+        "menu; with profile 'ivr' it also arms when AMD ends without a human verdict (a long "
+        "menu with no pause). Profile 'ivr' arms it from the first turn only on inbound and "
+        "web calls. Keep telephony.amd enabled on calls that must press keys: with AMD "
+        "disabled the keypad never arms on an outbound call and the agent can only speak "
+        "digits."
+    )
+
+
+def create_agent_doc(profile: str | None) -> str:
+    tiers = (
+        " Stack tiers and their components for a given description are reported by "
+        "agents.preview_stacks."
+        if _serves("agents.preview_stacks", profile)
+        else ""
+    )
+    return (
+        "Create a Speko agent.\n\n"
+        "Never send endCall: the end_call tool is always on and {'enabled': false} is "
+        "rejected with 400. To keep the agent from hanging up early, say so in "
+        "systemPrompt.\n\n"
+        "The agent is pinned to the failover stack matching intent.optimizeFor (quality / "
+        f"latency / cost) and intent.region.{tiers}"
+    )
+
+
+def preview_stacks_doc(profile: str | None) -> str:
+    create = (
+        "\n\nagents.create takes the chosen tier as intent.optimizeFor (Quality = 'quality', "
+        "Fastest = 'latency', Cheapest = 'cost') plus intent.region, and pins that tier's "
+        "failover stack, so the created agent matches the preview."
+        if _serves("agents.create", profile)
+        else ""
+    )
+    return (
+        "Preview the three voice-stack tiers for an agent before it is created.\n\n"
+        "Returns the recommendation the dashboard's agent create shows: three tiers, each "
+        "with its STT, LLM and TTS components. The dashboard labels them premium = "
+        '"Quality", balanced = "Fastest" and cost_optimized = "Cheapest". The region '
+        f"defaults to USA.{create}"
+    )
+
+
+# `webhooks` and `onHuman: 'hangup'` are refused on ChatGPT
+# (`refuse_chatgpt_only_fields`), so its text does not offer them.
+def update_agent_body_doc(profile: str | None) -> str:
+    chatgpt = profile == CHATGPT_PROFILE
+    on_human = (
+        ""
+        if chatgpt
+        else "onHuman?: 'hangup'|'continue' ('hangup': Realtime outbound calls hang up "
+        "without a word when a live person answers), "
+    )
+    webhooks = (
+        ""
+        if chatgpt
+        else ", webhooks ({preCall?|postCall?|status?|analysis?|recording?: {url: string, "
+        "headers?: object, timeoutMs?: 100-8000}|null}|null)"
+    )
+    return (
+        "JSON body for PATCH /v1/agents/{id}. All fields optional; only supplied fields "
+        "change, and null clears a nullable field. Fields: name (string, <=120 chars), "
+        "systemPrompt (string), voice (string|null), intent ({language: BCP-47 string, "
+        "optimizeFor?: 'latency'|'quality'|'cost'}), llmOptions ({temperature?: 0-2, "
+        "maxTokens?: int, model?: string, reasoningEffort?: 'none'|'minimal'|'low'|'medium'|"
+        "'high'|'xhigh' (nearest value on any reasoning model, ignored elsewhere)}|null), "
+        "stackPreferences ({allowedProviders?: {stt?|llm?|tts?|s2s?: string[]}}|null), "
+        "sttOptions ({keywords?: string[] <=200 entries, language?: string, workload?: "
+        "'conversation'|'transcription'|'narration', diarization?: bool, speakersExpected?: "
+        "1-10, smartFormat?: bool, fillerWords?: bool, profanityFilter?: bool, "
+        "wordTimestamps?: bool, providerOptions?: {provider: {param: value}}, <=2KB "
+        "serialized}|null), ttsOptions ({speed?: 0.5-2, model?: string, workload?: same "
+        "enum, providerOptions?: same shape}|null), runMode ('cascade'|'s2s'), "
+        "backgroundAudio ({ambient?: {clip: 'office-ambience'|'city-ambience'|"
+        "'forest-ambience'|'crowded-room'|'keyboard-typing'|'keyboard-typing2' OR soundId: "
+        "a sound library id (exactly one of the two), volume?: 0-16, linear gain where 1 = "
+        "the clip's own level; office-ambience needs ~5-10 to be audible, crowded-room "
+        "distorts past ~1.6}, toolSound?: {same clip|soundId choice, volume?: 0-16 (default "
+        "0.6), minDurationMs?: 0-10000 (default 600), startDelayMs?: 0-5000 (default 0)} — "
+        "plays while a tool call is in flight so a slow webhook is not dead air}|null), "
+        "speechNormalization ({pronunciationDictionary?: {term: spoken}, textReplacements?: "
+        "{from: to}}|null), turnHandling ({profile?: 'conversational'|'ivr', vad?: "
+        "{provider: 'silero'|'ai-coustics'}, noiseCancellation?: {enabled: boolean, model?: "
+        "'quail'|'quail-voice-focus'}, endpointing?: {minDelay?: int ms, maxDelay?: int ms}, "
+        "interruption?: {mode?: 'adaptive'|'vad', minDuration?: int ms, minWords?: int}, "
+        "turnDetection?: boolean|'stt', turnDetector?: 'smart_turn'|'speko_turn_v1', "
+        "contextThreshold?: boolean, heardBy?: 'content'|'timing', keypad?: boolean, "
+        "keypadAllowedKeys?: string[] (subset of 0-9 * #; the only keys send_dtmf may "
+        "press), textGate?: boolean, recordCallerKeypad?: boolean (record keys the caller "
+        "presses; default off), dtmfToolDescription?: string, amdPrompt?: string, "
+        "waitForCallee?: boolean, onMachine?: 'hangup'|'leave_message'|'agent_decides'|"
+        f"'continue' ('continue' ignores a voicemail verdict), {on_human}voicemailMessage?: "
+        "string, voicemailSoundId?: string (a ready sound from the sound library, played "
+        "verbatim into the mailbox under leave_message instead of speaking "
+        "voicemailMessage), holdTimeoutSeconds?: int 60-7200 (seconds a phone menu/hold "
+        "queue may hold the line before the call ends; default 600; never past "
+        "maxDurationSeconds), machineBudgetSeconds?: int 30-600 (seconds on a voicemail "
+        "greeting or an unanswered call screener before the call ends; default 120)}|null; "
+        "no other keys are accepted. On outbound calls the keypad tool (send_dtmf) arms when "
+        "answering-machine detection or the menu wording identifies an automated menu, or, "
+        "with profile 'ivr', when AMD ends without a human verdict; never with telephony.amd "
+        "disabled. Profile 'ivr' arms it from the first turn only on inbound and web calls), "
+        "outboundDtmf (string|null: keys every outbound call presses after answer, before "
+        "the agent speaks, to replay a menu path you already know, e.g. '8w2'; 0-9 * # and w "
+        "or , for a 0.5s pause, <=64 chars; a per-call telephony.dtmf wins), "
+        "maxDurationSeconds (int 30-14400|null: hard cap on each of the agent's phone calls "
+        "when the call names none; default 3600; a per-call value wins)"
+        f"{webhooks}."
+    )
+
+
+CREATE_PHONE_SESSION_BODY_DOC = (
+    "JSON body for POST /v1/sessions/phone. Required: to (E.164 string such as "
+    "'+12015551234') plus either agentId (string) or intent ({language: BCP-47 string, "
+    "optimizeFor?: 'balanced'|'accuracy'|'latency'|'cost'}). Optional: from (E.164 "
+    "string; defaults to an owned phone number), channel ('phone'|'whatsapp'; 'whatsapp' "
+    "calls from a workspace WhatsApp number: `from`, else the agent's; the callee must "
+    "have granted call permission, else WHATSAPP_CALL_PERMISSION_REQUIRED), runMode "
+    "('cascade'|'s2s'; 's2s' hosts the call on the speech-to-speech model GPT-Live "
+    "instead of an STT/LLM/TTS cascade and wins over the agent's saved run mode), voice "
+    "(string), systemPrompt (string), firstMessage (string), llm ({temperature?: 0-2, "
+    "maxTokens?: int}), ttsOptions ({sampleRate?: int, speed?: number, workload?: "
+    "'conversation'|'transcription'|'narration', providerOptions?: {provider: {param: "
+    "value}}, <=2KB serialized}), sttOptions ({keywords?: string[] <=200 entries, "
+    "language?: string, workload?: same enum, diarization?: bool, speakersExpected?: "
+    "1-10, smartFormat?: bool, fillerWords?: bool, profanityFilter?: bool, "
+    "wordTimestamps?: bool, providerOptions?: same shape}), telephony ({region?: string, "
+    "amd?: {mode: 'agent'|'carrier'|'disabled' (default 'agent'), timeoutSeconds?: int "
+    "<=60}, dtmf?: keys on answer ('ww1w8')}), constraints ({allowedProviders?: "
+    "{stt?|llm?|tts?: string[]}}), metadata (object), maxDurationSeconds (int, minimum "
+    "30; maximum 3600 for s2s or 14400 for cascade; the limit cuts the call "
+    "mid-sentence, so a call that waits in a phone queue for a person needs 1800-3600), "
+    "ringTimeoutSeconds (int 20-45, default 45, rings before no-answer), idleRePrompts "
+    "(agent shape minus enabled), handoff ({to: E.164, the user's own phone; name?: what "
+    "to call them}; no agentId): adds the user to the call when asked for. Per-call "
+    "fields win over agent defaults. Do not collect KYB fields. " + END_CALL_NOTE
+)
+
+
+def phone_session_doc(profile: str | None) -> str:
+    prices = payment.profile_shows_prices(profile)
+    caller_id = (
+        "A workspace with no number usually calls from a shared Speko caller ID (US and "
+        "Canada only) instead of buying one."
+        if prices
+        else "A workspace with no number usually calls from a shared Speko caller ID (US "
+        "and Canada only)."
+    )
+    handoff_source = (
+        "confirm the price quote's savedHandoffNumber if you have one, else ask once"
+        if _serves("sessions.phone.quote", profile)
+        else "ask once"
+    )
+    confirm_end = (
+        "; sessions.get confirms that it ended" if _serves("sessions.get", profile) else ""
+    )
+    hang_up = (
+        f" Use sessions.end to hang up{confirm_end}." if _serves("sessions.end", profile) else ""
+    )
+    pricing = (
+        "Free credit covers US and Canada calls and one free 2-minute call to the user's "
+        "own mobile abroad; other countries need one top-up from $5, then stay unlocked. "
+        "Calls cost $0.09/min plus telephony."
+        if prices
+        else "Calls to some countries are not available on every workspace's balance or "
+        "plan; such a call is refused before dialing and nothing is charged."
+    )
+    kyb = "; see phone_numbers.kyb.get" if _serves("phone_numbers.kyb.get", profile) else ""
+    return (
+        "Create an outbound phone session, dialing `body.to` from the workspace's own "
+        f"number. {caller_id}\n\n"
+        "Before calling a business about the user's own account, card or booking (bank, "
+        "card issuer, airline, hotel, insurer, utility, government office, clinic), get the "
+        "number to bring the user in on if the other side asks for the account holder: "
+        f"{handoff_source}. Pass it as body.handoff.to (calls without agentId only). If the "
+        "user declines, call without it. Don't ask for other calls.\n\n"
+        "Use maxDurationSeconds to set a hard call limit. ChatGPT and connector calls "
+        "default to five minutes, or 30 with handoff; a phone-queue call needs 1800-3600 "
+        f"(a shared caller ID stops at 10).{hang_up}\n\n"
+        f"{pricing}\n\n"
+        "A rejected call returns a code: AGENT_NOT_FOUND, PHONE_NUMBER_KYB_ACCESS_SUSPENDED "
+        f"(compliance review pending, retrying will not help{kyb}), "
+        "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED / _PENDING / _FAILED, "
+        "PHONE_NUMBER_CARD_REQUIRED, DESTINATION_REQUIRES_CARD, INSUFFICIENT_CREDITS. A 403 "
+        "PHONE_NUMBER_SCOPE_REQUIRED needs a full reconnect (a token refresh cannot add the "
+        "permission); PHONE_NUMBER_CONSENT_REQUIRED needs the workspace to accept the "
+        "phone-use consent screen, no reconnect. A 2xx does not mean the call was answered: "
+        "no-answer, voicemail and carrier rejection settle normally and appear afterward in "
+        "calls.get or sessions.transcript.get.\n\n"
+        "Omit body.voice unless it came from this agent's own configuration: an unknown "
+        "voice id is not checked before dialing and can produce a dead-air leg. A Paxa "
+        "voice speaks only on the models its GET /v1/voices entry lists in `models`."
+    )
+
+
+def profile_tool_texts(profile: str | None) -> dict[str, tuple[str | None, dict[str, str]]]:
+    """Description and parameter text per tool function for ``profile``."""
+    return {
+        "synthesize_speech": (None, {"body": synthesize_body_doc(profile)}),
+        "transcribe_audio": (None, {"audio_url": transcribe_audio_url_doc(profile)}),
+        "create_agent": (
+            create_agent_doc(profile),
+            {"body": create_agent_body_doc(profile)},
         ),
-    ],
+        "preview_stacks": (preview_stacks_doc(profile), {}),
+        "update_agent": (None, {"body": update_agent_body_doc(profile)}),
+        "create_phone_session": (phone_session_doc(profile), {}),
+    }
+
+
+async def synthesize_speech(
+    body: Annotated[dict[str, Any], Field(description=synthesize_body_doc(None))],
 ) -> ToolResult:
     """Synthesize speech from text, returning a download link and base64 audio.
 
@@ -1044,8 +1372,10 @@ def _router_audio_fits_inline(router_payload: dict[str, Any]) -> bool:
 
 # A linked synthesis answers only once the whole clip is synthesized and
 # stored, so the 60 s per-read default would cut off a long narration that the
-# server goes on to finish and bill.
-_LINKED_SYNTHESIS_TIMEOUT_S = 300.0
+# server goes on to finish and bill. It stays just under Cloud Run's 300 s
+# request timeout: at 300 s Cloud Run cut the request first, and the user got a
+# bare 504 instead of this server's error (67 in prod 2026-11).
+_LINKED_SYNTHESIS_TIMEOUT_S = 285.0
 
 
 async def _linked_synthesis_result(content: bytes) -> ToolResult:
@@ -1324,15 +1654,7 @@ def _reject_non_audio_link(url: str) -> None:
 async def transcribe_audio(
     audio_url: Annotated[
         str,
-        Field(
-            description=(
-                "HTTPS URL of the audio file (mp3, wav, m4a, ogg, flac, webm; up to 25 MB) "
-                "that downloads without a sign-in. Google Drive and Dropbox share links "
-                "to a FILE are accepted and converted to direct downloads; in Drive the "
-                "file must be shared as 'Anyone with the link'. Signed recording URLs "
-                "from sessions.recording.get and calls.recording.get work directly."
-            )
-        ),
+        Field(description=(transcribe_audio_url_doc(None))),
     ],
     language: Annotated[
         str,
@@ -1761,6 +2083,9 @@ async def _fetch_audio(url: str) -> tuple[bytes, str]:
                         current = str(httpx.URL(current).join(location))
                         continue
                     if response.status_code >= 400:
+                        if await _is_expired_signed_link(response, final_host):
+                            _warn_audio_rejection(final_host, "expired_signed_link")
+                            raise ToolError(_expired_link_message())
                         _warn_audio_rejection(final_host, f"http_{response.status_code}")
                         raise ToolError(
                             DRIVE_MESSAGE
@@ -1808,6 +2133,49 @@ async def _fetch_audio(url: str) -> tuple[bytes, str]:
                 raise ToolError(f"Unable to fetch audio from {final_host}.") from None
     _warn_audio_rejection(httpx.URL(current).host, "too_many_redirects")
     raise ToolError(f"audio_url exceeded {_MAX_REDIRECTS} redirects.")
+
+
+# Speko's own links are Cloud Storage signed URLs: a synthesis link lasts 15
+# minutes and a recording link 300 seconds. Prod 2026-11 had about 380 a week
+# answer 400 or 403 here, most of them links that had expired before the call,
+# and the old step asked for "a link that downloads without a sign-in".
+_GCS_HOSTS = ("storage.googleapis.com",)
+_GCS_ERROR_BODY_MAX_BYTES = 4096
+_GCS_ERROR_CODE = re.compile(rb"<Code>\s*([A-Za-z]+)\s*</Code>")
+
+
+async def _is_expired_signed_link(response: Any, host: str | None) -> bool:
+    """Whether a Cloud Storage 400/403 says the signed link has expired."""
+    if response.status_code not in (400, 403) or not host:
+        return False
+    if host not in _GCS_HOSTS and not host.endswith(tuple(f".{h}" for h in _GCS_HOSTS)):
+        return False
+    body = b""
+    async for chunk in response.aiter_bytes():
+        body += chunk
+        if len(body) >= _GCS_ERROR_BODY_MAX_BYTES:
+            break
+    body = body[:_GCS_ERROR_BODY_MAX_BYTES]
+    code = _GCS_ERROR_CODE.search(body)
+    if code is not None and code.group(1) == b"ExpiredToken":
+        return True
+    return b"request has expired" in body.lower()
+
+
+def _expired_link_message() -> str:
+    """Say the link expired, and name the tools this session can re-sign it with."""
+    message = "The audio link has expired, so Cloud Storage refused it."
+    if session_can_call("audio.synthesis.get"):
+        message += (
+            " For audio from audio.synthesize, audio.synthesis.get with its synthesis_id "
+            "returns a fresh link."
+        )
+    recording_tools = [
+        name for name in ("sessions.recording.get", "calls.recording.get") if session_can_call(name)
+    ]
+    if recording_tools:
+        message += f" For a call recording, {' or '.join(recording_tools)} returns a fresh link."
+    return message + " A fresh link also lasts only minutes."
 
 
 def _transcript_from_sse(stream: str) -> str:
@@ -1893,6 +2261,7 @@ def _parse_sse(stream: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 def register_action_tools(mcp: FastMCP) -> None:
+    texts = profile_tool_texts(current_profile())
     for tool in [
         get_organization,
         get_credit_balance,
@@ -1961,11 +2330,13 @@ def register_action_tools(mcp: FastMCP) -> None:
         name = tool.__name__
         public_name = ACTION_TOOL_NAME_BY_FUNCTION[name]
         title = tool_title(name)
-        attributed_tool = _with_action_attribution(tool, public_name)
+        description, param_docs = texts.get(name, (None, {}))
+        attributed_tool = _with_action_attribution(tool, public_name, param_docs=param_docs)
         mcp.tool(
             attributed_tool,
             name=public_name,
             title=title,
+            description=description,
             app=APP_CONFIG_BY_FUNCTION.get(name),
             meta=APP_META_BY_FUNCTION.get(name),
             output_schema=SPEKO_API_OUTPUT_SCHEMA,
@@ -1979,8 +2350,14 @@ def register_action_tools(mcp: FastMCP) -> None:
         )
 
 
-def _with_action_attribution(tool: Any, action_id: str) -> Any:
-    """Bind the public dotted tool name while a handwritten relay executes."""
+def _with_action_attribution(
+    tool: Any, action_id: str, *, param_docs: dict[str, str] | None = None
+) -> Any:
+    """Bind the public dotted tool name while a handwritten relay executes.
+
+    ``param_docs`` replaces parameter descriptions on the wrapper only, so one
+    function can carry the text its deployment's profile needs.
+    """
 
     @wraps(tool)
     async def attributed(*args: Any, **kwargs: Any) -> Any:
@@ -1990,6 +2367,13 @@ def _with_action_attribution(tool: Any, action_id: str) -> Any:
         finally:
             http_client.reset_current_action_id(token)
 
+    if param_docs:
+        hints = typing.get_type_hints(tool, include_extras=True)
+        for param, text in param_docs.items():
+            # A later Field in the metadata wins when pydantic merges them.
+            base, *metadata = typing.get_args(hints[param])
+            hints[param] = Annotated[(base, *metadata, Field(description=text))]  # type: ignore[valid-type]
+        attributed.__annotations__ = hints
     return attributed
 
 
@@ -2070,6 +2454,11 @@ async def call_list(
 
 
 def _spending_cap_next_step() -> str:
+    if payment.hides_pricing():
+        return (
+            "The workspace reached its monthly spending cap, so this request is not available "
+            "until the cap changes. Nothing was charged."
+        )
     if not session_can_call(SPENDING_CAP_UPDATE_ACTION_ID):
         return SPENDING_CAP_REACHED_NEXT_STEP
     return (
@@ -2084,7 +2473,7 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         return "Check authentication and retry the Speko MCP request."
     if isinstance(exc, http_client.SpekoApiError) and exc.status_code == 400:
         if path == "/v1/agents":
-            return CREATE_AGENT_NEXT_STEP
+            return _create_agent_next_step()
         if path == "/v1/sessions":
             return CREATE_SESSION_NEXT_STEP
         if path == "/v1/sessions/phone":
@@ -2127,6 +2516,12 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
         and path == "/v1/synthesize"
     ):
         return SYNTHESIZE_PROVIDER_TIMEOUT_NEXT_STEP
+    if (
+        isinstance(exc, http_client.SpekoApiError)
+        and exc.code == http_client.READ_TIMEOUT_CODE
+        and path == "/v1/synthesize"
+    ):
+        return SYNTHESIZE_READ_TIMEOUT_NEXT_STEP
     if isinstance(exc, http_client.SpekoApiError) and exc.code in payment.PAYMENT_CODES:
         return payment.payment_step(exc)
     if isinstance(exc, http_client.SpekoApiError) and exc.code == SPENDING_CAP_REACHED_CODE:
@@ -2136,6 +2531,8 @@ def next_step_for_error(exc: Exception, *, path: str) -> str:
     if isinstance(exc, http_client.SpekoApiError):
         if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/transcribe":
             return TRANSCRIBE_PROVIDERS_FAILED_NEXT_STEP
+        if exc.code == ALL_PROVIDERS_FAILED_CODE and path == "/v1/synthesize":
+            return SYNTHESIZE_PROVIDERS_FAILED_NEXT_STEP
         if exc.code == PHONE_NUMBER_PROVISIONING_FAILED_CODE:
             return _phone_provisioning_failed_next_step()
     return "Retry the Speko MCP request or inspect the Speko API response details."
@@ -2157,34 +2554,34 @@ def validate_create_agent_body(body: dict[str, Any]) -> None:
     ]
     if missing:
         raise ToolError(
-            "Invalid create_agent body: missing required field(s) "
-            f"{', '.join(missing)}; next_step={CREATE_AGENT_NEXT_STEP}"
+            "Invalid agents.create body: missing required field(s) "
+            f"{', '.join(missing)}; next_step={_create_agent_next_step()}"
         )
 
     if not isinstance(body.get("name"), str):
         raise ToolError(
-            "Invalid create_agent body: body.name must be a string; "
-            f"next_step={CREATE_AGENT_NEXT_STEP}"
+            "Invalid agents.create body: body.name must be a string; "
+            f"next_step={_create_agent_next_step()}"
         )
     if not isinstance(body.get("systemPrompt"), str):
         raise ToolError(
-            "Invalid create_agent body: body.systemPrompt must be a string; "
-            f"next_step={CREATE_AGENT_NEXT_STEP}"
+            "Invalid agents.create body: body.systemPrompt must be a string; "
+            f"next_step={_create_agent_next_step()}"
         )
 
     intent = body.get("intent")
     if not isinstance(intent, dict):
         raise ToolError(
-            "Invalid create_agent body: body.intent must be an object with a routing "
+            "Invalid agents.create body: body.intent must be an object with a routing "
             "language, for example {'language':'en'}. It is not a use-case string "
-            f"like 'customer_support'; next_step={CREATE_AGENT_NEXT_STEP}"
+            f"like 'customer_support'; next_step={_create_agent_next_step()}"
         )
 
     language = intent.get("language")
     if not isinstance(language, str) or len(language.strip()) < 2:
         raise ToolError(
-            "Invalid create_agent body: body.intent.language must be a BCP-47 "
-            f"language string such as 'en' or 'en-US'; next_step={CREATE_AGENT_NEXT_STEP}"
+            "Invalid agents.create body: body.intent.language must be a BCP-47 "
+            f"language string such as 'en' or 'en-US'; next_step={_create_agent_next_step()}"
         )
 
 
@@ -2225,18 +2622,18 @@ def validate_create_session_body(body: dict[str, Any]) -> None:
         has_model = spec.get("model") not in (None, "")
         if has_provider != has_model:
             raise ToolError(
-                "Invalid create_session body: s2s.provider and s2s.model must "
+                "Invalid sessions.create body: s2s.provider and s2s.model must "
                 f"be supplied together; next_step={CREATE_SESSION_NEXT_STEP}"
             )
         if has_provider and has_model:
             if body.get("intent") is not None:
                 validate_intent_field(
                     body["intent"],
-                    tool="create_session",
+                    tool="sessions.create",
                     next_step=CREATE_SESSION_NEXT_STEP,
                 )
             return
-    validate_session_target(body, tool="create_session", next_step=CREATE_SESSION_NEXT_STEP)
+    validate_session_target(body, tool="sessions.create", next_step=CREATE_SESSION_NEXT_STEP)
 
 
 def validate_create_phone_session_body(body: dict[str, Any]) -> None:
@@ -2245,14 +2642,14 @@ def validate_create_phone_session_body(body: dict[str, Any]) -> None:
         body["to"] = to
     if isinstance(to, str) and _DIAL_STRING_SUFFIX_RE.match(to):
         raise ToolError(
-            "Invalid create_phone_session body: body.to carries keys after the "
+            "Invalid sessions.phone.create body: body.to carries keys after the "
             "number. Send the bare E.164 number in body.to and the keys in "
             "body.telephony.dtmf (e.g. 'ww1'); they are pressed after answer, "
             f"before the agent speaks; next_step={CREATE_PHONE_SESSION_NEXT_STEP}"
         )
     if not isinstance(to, str) or not _E164_RE.match(to):
         raise ToolError(
-            "Invalid create_phone_session body: body.to must be an E.164 "
+            "Invalid sessions.phone.create body: body.to must be an E.164 "
             "phone number such as '+12015551234'; "
             f"next_step={CREATE_PHONE_SESSION_NEXT_STEP}"
         )
@@ -2263,18 +2660,44 @@ def validate_create_phone_session_body(body: dict[str, Any]) -> None:
         if handoff_to is not None:
             handoff["to"] = handoff_to
     validate_session_target(
-        body, tool="create_phone_session", next_step=CREATE_PHONE_SESSION_NEXT_STEP
+        body, tool="sessions.phone.create", next_step=CREATE_PHONE_SESSION_NEXT_STEP
     )
+
+
+def refuse_chatgpt_only_fields(body: dict[str, Any], *, tool: str) -> None:
+    """Refuse the agent fields the ChatGPT plugin does not offer.
+
+    `webhooks` sends call data to any URL with any headers: OpenAI's plugin
+    guidelines (3.3(b)) bar metadata that invites secrets or directs data
+    transfers. `turnHandling.onHuman: 'hangup'` ends an outbound call without a
+    word when a live person answers. Other profiles accept both.
+    """
+    if current_profile() != CHATGPT_PROFILE:
+        return
+    if body.get("webhooks") is not None:
+        raise ToolError(
+            f"Invalid {tool} body: webhooks cannot be set from ChatGPT. Remove the "
+            "webhooks field; a workspace owner can set webhooks in the Speko dashboard."
+        )
+    turn_handling = body.get("turnHandling")
+    if isinstance(turn_handling, dict) and turn_handling.get("onHuman") == "hangup":
+        raise ToolError(
+            f"Invalid {tool} body: turnHandling.onHuman 'hangup' cannot be set from "
+            "ChatGPT, because it ends the call without a word when a person answers. "
+            "Remove onHuman or set it to 'continue'."
+        )
 
 
 def validate_update_agent_body(body: dict[str, Any]) -> None:
     if not body:
         raise ToolError(
-            "Invalid update_agent body: pass at least one field to change; "
+            "Invalid agents.update body: pass at least one field to change; "
             f"next_step={UPDATE_AGENT_NEXT_STEP}"
         )
     if body.get("intent") is not None:
-        validate_intent_field(body["intent"], tool="update_agent", next_step=UPDATE_AGENT_NEXT_STEP)
+        validate_intent_field(
+            body["intent"], tool="agents.update", next_step=UPDATE_AGENT_NEXT_STEP
+        )
 
 
 def validate_agent_tool_simulation(body: dict[str, Any], *, tool: str, allow_null: bool) -> None:
@@ -2328,21 +2751,21 @@ def validate_create_agent_tool_body(body: dict[str, Any]) -> None:
     ]
     if missing:
         raise ToolError(
-            "Invalid create_agent_tool body: missing required field(s) "
+            "Invalid agents.tools.create body: missing required field(s) "
             f"{', '.join(missing)}; next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
         )
     source = body.get("source")
     if not isinstance(source, dict) or source.get("kind") not in TOOL_SOURCE_KINDS:
         raise ToolError(
-            "Invalid create_agent_tool body: body.source.kind must be one of "
+            "Invalid agents.tools.create body: body.source.kind must be one of "
             f"{', '.join(TOOL_SOURCE_KINDS)}; next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
         )
     if source["kind"] == "webhook" and not (source.get("url") and source.get("secret")):
         raise ToolError(
-            "Invalid create_agent_tool body: a webhook source requires url and "
+            "Invalid agents.tools.create body: a webhook source requires url and "
             f"secret (>=8 chars); next_step={CREATE_AGENT_TOOL_NEXT_STEP}"
         )
-    validate_agent_tool_simulation(body, tool="create_agent_tool", allow_null=False)
+    validate_agent_tool_simulation(body, tool="agents.tools.create", allow_null=False)
 
 
 async def get_organization() -> ToolResult:
@@ -2439,19 +2862,7 @@ async def preview_stacks(
         ),
     ] = "usa",
 ) -> ToolResult:
-    """Preview the THREE voice-stack options before creating an agent — so the user picks.
-
-    Returns the same recommendation the dashboard's agent-create shows, as three tiers.
-    Present them to the user with these labels and each tier's STT / LLM / TTS:
-        premium        -> "Quality"
-        balanced       -> "Fastest"
-        cost_optimized -> "Cheapest"
-    Ask which one they want (and confirm the region — default USA). Then call create_agent
-    with the chosen objective mapped to intent.optimizeFor:
-        Quality -> 'quality',  Fastest -> 'latency',  Cheapest -> 'cost'
-    plus intent.region. The server then pins that tier's failover stack automatically, so
-    the created agent matches exactly what you previewed.
-    """
+    """Preview the voice-stack tiers. The registered description is `preview_stacks_doc`."""
     return await call(
         "POST",
         "/v1/recommend-stack/from-description",
@@ -2468,46 +2879,11 @@ async def preview_stacks(
 
 
 async def create_agent(
-    body: Annotated[
-        dict[str, Any],
-        Field(
-            description=(
-                "JSON body for POST /v1/agents. Required shape: "
-                "{name: string, systemPrompt: string, intent: {language: string, "
-                "optimizeFor?: 'latency'|'quality'|'cost', region?: string}}. "
-                "intent.optimizeFor selects which failover stack the server pins: "
-                "'quality' is the premium tier, 'latency' the fastest tier, 'cost' "
-                "the cheapest. intent.region defaults to 'usa'. The intent field is "
-                "routing metadata describing how to route the agent's audio, not a "
-                "use-case string. The stack tiers available for a given description, "
-                "and their stt/llm/tts components, are reported by preview_stacks. "
-                "Migrated agents supply agent_create_payload from "
-                "parse_external_config, which already carries an intent. "
-                "Optional turnHandling ({profile?: 'conversational'|'ivr', "
-                "dtmfToolDescription?: string, onMachine?: 'leave_message'|..., "
-                "amdPrompt?: string, ...}). On OUTBOUND calls the keypad tool "
-                "(send_dtmf) arms when answering-machine detection (AMD) or "
-                "the menu wording (English, Spanish, Dutch, French, German) "
-                "identifies an automated menu; with profile 'ivr' it also arms "
-                "when AMD ends without a human verdict (a long menu with no "
-                "pause). Profile 'ivr' arms it from the first turn only on "
-                "inbound and web calls. Keep telephony.amd enabled on calls that "
-                "must press keys: with AMD disabled the keypad never arms on an "
-                "outbound call and the agent can only speak digits."
-            )
-        ),
-    ],
+    body: Annotated[dict[str, Any], Field(description=create_agent_body_doc(None))],
 ) -> ToolResult:
-    """Create a Speko agent.
-
-    Never send endCall: the end_call tool is always on and {'enabled': false}
-    is rejected with 400. To keep the agent from hanging up early, say so in
-    systemPrompt.
-
-    The agent is pinned to the failover stack matching intent.optimizeFor
-    (quality / latency / cost) and intent.region. Stack tiers and their
-    components for a given description are reported by preview_stacks."""
+    """Create a Speko agent. The registered description is `create_agent_doc`."""
     validate_create_agent_body(body)
+    refuse_chatgpt_only_fields(body, tool="agents.create")
     apply_directory_disclosure(body)
     unpinned = copy.deepcopy(body)
     apply_directory_s2s_pin(body)
@@ -2545,87 +2921,7 @@ async def get_agent(
 
 async def update_agent(
     agent_id: Annotated[str, Field(description="Agent id.")],
-    body: Annotated[
-        dict[str, Any],
-        Field(
-            description=(
-                "JSON body for PATCH /v1/agents/{id}. All fields optional; "
-                "only supplied fields change, and null clears a nullable "
-                "field. Fields: name (string, <=120 chars), systemPrompt "
-                "(string), voice (string|null), intent ({language: BCP-47 "
-                "string, optimizeFor?: 'latency'|'quality'|'cost'}), "
-                "llmOptions ({temperature?: 0-2, maxTokens?: int, model?: "
-                "string, reasoningEffort?: 'none'|'minimal'|'low'|'medium'|"
-                "'high'|'xhigh' (nearest value on any reasoning model, "
-                "ignored elsewhere)}|null), stackPreferences ({allowedProviders?: "
-                "{stt?|llm?|tts?|s2s?: string[]}}|null), sttOptions "
-                "({keywords?: string[] <=200 entries, language?: string, "
-                "workload?: 'conversation'|'transcription'|'narration', "
-                "diarization?: bool, speakersExpected?: 1-10, smartFormat?: "
-                "bool, fillerWords?: bool, profanityFilter?: bool, "
-                "wordTimestamps?: bool, "
-                "providerOptions?: {provider: {param: value}}, <=2KB "
-                "serialized}|null), ttsOptions ({speed?: 0.5-2, model?: "
-                "string, workload?: same enum, providerOptions?: same "
-                "shape}|null), runMode "
-                "('cascade'|'s2s'), backgroundAudio ({ambient?: {clip: "
-                "'office-ambience'|'city-ambience'|'forest-ambience'|"
-                "'crowded-room'|'keyboard-typing'|'keyboard-typing2' OR "
-                "soundId: an id from sounds.list (exactly one of the two), "
-                "volume?: 0-16, linear gain where 1 = the clip's own level; "
-                "office-ambience needs ~5-10 to be audible, crowded-room "
-                "distorts past ~1.6}, toolSound?: {same clip|soundId choice, "
-                "volume?: 0-16 (default 0.6), minDurationMs?: 0-10000 "
-                "(default 600), startDelayMs?: 0-5000 (default 0)} — plays "
-                "while a tool call is in flight so a slow webhook is not dead "
-                "air}|null), speechNormalization "
-                "({pronunciationDictionary?: {term: spoken}, "
-                "textReplacements?: {from: to}}|null), turnHandling "
-                "({profile?: 'conversational'|'ivr', vad?: {provider: "
-                "'silero'|'ai-coustics'}, noiseCancellation?: {enabled: boolean, "
-                "model?: 'quail'|'quail-voice-focus'}, endpointing?: {minDelay?: "
-                "int ms, maxDelay?: int ms}, interruption?: {mode?: "
-                "'adaptive'|'vad', minDuration?: int ms, minWords?: int}, "
-                "turnDetection?: boolean|'stt', turnDetector?: "
-                "'smart_turn'|'speko_turn_v1', contextThreshold?: boolean, "
-                "heardBy?: 'content'|'timing', keypad?: boolean, "
-                "keypadAllowedKeys?: string[] (subset of 0-9 * #; the only keys "
-                "send_dtmf may press), textGate?: boolean, "
-                "recordCallerKeypad?: boolean (record keys the caller presses; "
-                "default off), "
-                "dtmfToolDescription?: "
-                "string, amdPrompt?: string, waitForCallee?: boolean, "
-                "onMachine?: 'hangup'|'leave_message'|'agent_decides'|'continue' "
-                "('continue' ignores a voicemail verdict), "
-                "onHuman?: 'hangup'|'continue' ('hangup': Realtime outbound "
-                "calls hang up without a word when a live person answers), "
-                "voicemailMessage?: string, voicemailSoundId?: string (a ready "
-                "sound from the sound library, played verbatim into the "
-                "mailbox under leave_message instead of speaking "
-                "voicemailMessage), holdTimeoutSeconds?: int 60-7200 "
-                "(seconds a phone menu/hold queue may hold the line before the "
-                "call ends; default 600; never past maxDurationSeconds), "
-                "machineBudgetSeconds?: int 30-600 (seconds on a voicemail "
-                "greeting or an unanswered call screener before the call ends; "
-                "default 120)}|null; "
-                "no other keys are accepted. "
-                "On outbound calls the keypad tool (send_dtmf) arms when "
-                "answering-machine detection or the menu wording identifies "
-                "an automated menu, or, with profile 'ivr', when AMD ends "
-                "without a human verdict; never with telephony.amd disabled. "
-                "Profile 'ivr' arms it from the first turn only on inbound and "
-                "web calls), outboundDtmf (string|null: keys every outbound "
-                "call presses after answer, before the agent speaks, to "
-                "replay a menu path you already know, e.g. '8w2'; 0-9 * # and "
-                "w or , for a 0.5s pause, <=64 chars; a per-call "
-                "telephony.dtmf wins), maxDurationSeconds (int 30-14400|null: "
-                "hard cap on each of the agent's phone calls when the call "
-                "names none; default 3600; a per-call value wins), webhooks "
-                "({preCall?|postCall?|status?|analysis?|recording?: {url: "
-                "string, headers?: object, timeoutMs?: 100-8000}|null}|null)."
-            )
-        ),
-    ],
+    body: Annotated[dict[str, Any], Field(description=update_agent_body_doc(None))],
 ) -> ToolResult:
     """Update one Speko agent. Only the fields sent change.
 
@@ -2633,6 +2929,7 @@ async def update_agent(
     is rejected with 400. To keep the agent from hanging up early, say so in
     systemPrompt."""
     validate_update_agent_body(body)
+    refuse_chatgpt_only_fields(body, tool="agents.update")
     apply_directory_disclosure(body, partial=True)
     apply_directory_s2s_update_pin(body)
     return await call(
@@ -2700,7 +2997,7 @@ async def create_agent_tool(
     ],
 ) -> ToolResult:
     """Register a new tool on an agent. A call already in progress will not
-    see it; a new call will, once list_agent_tools shows it registered."""
+    see it; a new call will, once agents.tools.list shows it registered."""
     validate_create_agent_tool_body(body)
     return await call(
         "POST",
@@ -2735,9 +3032,9 @@ async def update_agent_tool(
                 "JSON body for PATCH /v1/agents/{agentId}/tools/{toolId}. "
                 "All fields optional: description (1-1024 chars), "
                 "parameters (JSON Schema object), source (same shapes as "
-                "create_agent_tool; for kind 'webhook', secret is optional "
+                "agents.tools.create; for kind 'webhook', secret is optional "
                 "on update; omit it to keep the existing secret), "
-                "simulation (same shape as create_agent_tool, or null to "
+                "simulation (same shape as agents.tools.create, or null to "
                 "return the tool to the default policy). " + TOOL_SIMULATION_FIELD_DOC
             )
         ),
@@ -2746,7 +3043,7 @@ async def update_agent_tool(
     """Update one agent tool's description, parameters, source, or
     simulated-run behaviour. A call already in progress keeps using the
     version it started with."""
-    validate_agent_tool_simulation(body, tool="update_agent_tool", allow_null=True)
+    validate_agent_tool_simulation(body, tool="agents.tools.update", allow_null=True)
     return await call(
         "PATCH",
         f"/v1/agents/{http_client.path_segment(agent_id)}/tools/{http_client.path_segment(tool_id)}",
@@ -2991,7 +3288,7 @@ async def create_session(
                 "providerOptions?: same shape}), backgroundAudio "
                 "({ambient?: {clip: 'office-ambience'|'city-ambience'|"
                 "'forest-ambience'|'crowded-room'|'keyboard-typing'|"
-                "'keyboard-typing2' OR soundId: an id from sounds.list "
+                "'keyboard-typing2' OR soundId: a sound library id "
                 "(exactly one of the two), volume?: 0-16, linear gain where "
                 "1 = the clip's own level; office-ambience needs ~5-10 to be "
                 "audible, crowded-room distorts past ~1.6}, toolSound?: "
@@ -3062,92 +3359,11 @@ async def _session_runs_s2s(body: dict[str, Any]) -> bool:
 
 
 async def create_phone_session(
-    body: Annotated[
-        dict[str, Any],
-        Field(
-            description=(
-                "JSON body for POST /v1/sessions/phone. Required: to (E.164 "
-                "string such as '+12015551234') plus either agentId "
-                "(string) or intent ({language: BCP-47 string, optimizeFor?: "
-                "'balanced'|'accuracy'|'latency'|'cost'}). Optional: from "
-                "(E.164 string; defaults to an owned phone number), channel "
-                "('phone'|'whatsapp'; 'whatsapp' calls from a workspace "
-                "WhatsApp number: `from`, else the agent's; the callee must "
-                "have granted call permission, else "
-                "WHATSAPP_CALL_PERMISSION_REQUIRED), runMode "
-                "('cascade'|'s2s'; 's2s' hosts the call on the speech-to-speech "
-                "model GPT-Live instead of an STT/LLM/TTS cascade and wins over "
-                "the agent's saved run mode), voice "
-                "(string), systemPrompt (string), firstMessage (string), "
-                "llm ({temperature?: 0-2, maxTokens?: int}), ttsOptions "
-                "({sampleRate?: int, speed?: number, workload?: "
-                "'conversation'|'transcription'|'narration', "
-                "providerOptions?: {provider: {param: value}}, <=2KB "
-                "serialized}), sttOptions ({keywords?: string[] <=200 "
-                "entries, language?: string, workload?: same enum, "
-                "diarization?: bool, speakersExpected?: 1-10, smartFormat?: "
-                "bool, fillerWords?: bool, profanityFilter?: bool, "
-                "wordTimestamps?: bool, "
-                "providerOptions?: same shape}), telephony "
-                "({region?: string, amd?: {mode: "
-                "'agent'|'carrier'|'disabled' (default 'agent'), "
-                "timeoutSeconds?: int <=60}, dtmf?: keys on answer "
-                "('ww1w8')}), constraints "
-                "({allowedProviders?: {stt?|llm?|tts?: string[]}}), "
-                "metadata (object), maxDurationSeconds (int, minimum 30; "
-                "maximum 3600 for s2s or 14400 for cascade; the limit cuts the call "
-                "mid-sentence, so a call that waits in a phone queue for a person "
-                "needs 1800-3600), "
-                "ringTimeoutSeconds (int 20-45, default 45, rings before "
-                "no-answer), idleRePrompts (agent shape minus enabled), handoff "
-                "({to: E.164, the user's own phone; name?: what to call them}; "
-                "no agentId): adds the user to the call when asked for. "
-                "Per-call fields win over agent defaults. Do not collect KYB "
-                "fields. Leave `voice` unset unless it is already configured on "
-                "the target agent. " + END_CALL_NOTE
-            )
-        ),
-    ],
+    body: Annotated[dict[str, Any], Field(description=CREATE_PHONE_SESSION_BODY_DOC)],
 ) -> ToolResult:
-    """Create an outbound phone session, dialing `body.to` from the
-    workspace's own number. A workspace with no number usually calls from a
-    shared Speko caller ID (US and Canada only) instead of buying one.
-
-    Before calling a business about the user's own account, card or booking
-    (bank, card issuer, airline, hotel, insurer, utility, government office,
-    clinic), get the number to bring the user in on if the other side asks
-    for the account holder: confirm the price quote's savedHandoffNumber if
-    you have one, else ask once. Pass it as body.handoff.to (calls without
-    agentId only). If the user declines, call without it. Don't ask for
-    other calls.
-
-    Use maxDurationSeconds to set a hard call limit. ChatGPT and connector
-    calls default to five minutes, or 30 with handoff; a phone-queue call
-    needs 1800-3600 (a shared caller ID stops
-    at 10). Use sessions.end to hang up; sessions.get confirms that it ended.
-
-    Free credit covers US and Canada calls and one free 2-minute call to the
-    user's own mobile abroad; other countries need one top-up from $5, then
-    stay unlocked. Calls cost $0.09/min plus telephony.
-
-    A rejected call returns a code: AGENT_NOT_FOUND,
-    PHONE_NUMBER_KYB_ACCESS_SUSPENDED (compliance review pending, retrying
-    will not help; see phone_numbers.kyb.get),
-    PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED / _PENDING / _FAILED,
-    PHONE_NUMBER_CARD_REQUIRED, DESTINATION_REQUIRES_CARD,
-    INSUFFICIENT_CREDITS. A 403 PHONE_NUMBER_SCOPE_REQUIRED needs a full
-    reconnect (a token refresh cannot add the permission);
-    PHONE_NUMBER_CONSENT_REQUIRED needs the workspace to accept the phone-use
-    consent screen, no reconnect. A 2xx does not mean the call was answered:
-    no-answer, voicemail and carrier rejection settle normally and appear
-    afterward in get_call or sessions.transcript.get.
-
-    Omit body.voice unless it came from this agent's own configuration: an
-    unknown voice id is not checked before dialing and can produce a dead-air
-    leg. A Paxa voice speaks only on the models its GET /v1/voices entry
-    lists in `models`.
-    """
+    """Place an outbound phone call. The registered description is `phone_session_doc`."""
     validate_create_phone_session_body(body)
+    refuse_chatgpt_only_fields(body, tool="sessions.phone.create")
     # Before the rewrites below, so a retry goes through them once, not twice.
     requested = copy.deepcopy(body)
     apply_directory_disclosure(body)
@@ -3164,21 +3380,27 @@ async def create_phone_session(
     except ToolError as exc:
         cause = exc.__cause__
         if isinstance(cause, http_client.SpekoApiError) and cause.code in PAYMENT_GATE_CODES:
-            # On the error too: the out-of-credit middleware re-renders it.
-            cause.retry_step = _retry_same_call_step(requested)
-            raise ToolError(f"{exc} {cause.retry_step}") from cause
+            retry_step = _retry_same_call_step(requested)
+            if retry_step is not None:
+                # On the error too: the out-of-credit middleware re-renders it.
+                cause.retry_step = retry_step
+                raise ToolError(f"{exc} {retry_step}") from cause
         raise
     payload = created.structured_content
     if isinstance(payload, dict) and payload.get("freeCall"):
+        note = FREE_CALL_NOTE_NO_PRICING if payment.hides_pricing() else FREE_CALL_NOTE
         # First, so a text-only host's truncated render still shows it.
-        created = result({"note": FREE_CALL_NOTE, **payload}, text="Created phone session.")
+        created = result({"note": note, **payload}, text="Created phone session.")
     return with_voicemail_notice(created, body)
 
 
 async def list_sessions(
     limit: Annotated[int | None, Field(description="Maximum sessions to return.")] = None,
     cursor: Annotated[str | None, Field(description="ISO cursor from the previous page.")] = None,
-    status: Annotated[str | None, Field(description="Optional status filter.")] = None,
+    status: Annotated[
+        SessionStatus | None,
+        Field(description="Optional status filter. A call in progress is 'active'."),
+    ] = None,
     kind: Annotated[str | None, Field(description="Optional kind filter: cascade or s2s.")] = None,
     from_: Annotated[str | None, Field(description="Optional ISO start timestamp.")] = None,
     to: Annotated[str | None, Field(description="Optional ISO end timestamp.")] = None,
@@ -3232,7 +3454,7 @@ def _session_id(value: str) -> str:
         return candidate
     raise ToolError(
         f"{value!r} is not a call or session id. Pass the session UUID: `sessionId` from "
-        "create_phone_session, or `id` from list_sessions or list_agent_calls."
+        "sessions.phone.create, or `id` from sessions.list or agents.calls.list."
     )
 
 
@@ -3357,8 +3579,8 @@ async def search_available_phone_numbers(
     verification (KYB) is approved and number purchasing is enabled. The error
     names the step; the user completes it on the Phone numbers page, and
     retrying before then fails the same way. BUYING one does not follow from it.
-    `phone_numbers.create` debits the workspace's prepaid credits (setup plus the
-    first month; it is not a card payment or a checkout). OAuth connector users
+    A purchase debits the workspace's prepaid credits (setup plus the first
+    month; it is not a card payment or a checkout). OAuth connector users
     normally do not need this search: their first outbound call automatically
     purchases a dedicated US number after the phone authorization accepted at
     sign-in. Manual dashboard/API callers retain the declaration and purchase
@@ -3389,7 +3611,7 @@ async def create_phone_number(
             description=(
                 "JSON body for POST /v1/phone-numbers. Required: e164 "
                 "(E.164 string such as '+12015551234'; pick one from "
-                "search_available_phone_numbers). Optional: direction "
+                "phone_numbers.available.search). Optional: direction "
                 "('inbound'|'outbound'|'both', default 'outbound'), label "
                 "(string <=120), agentId (string; agent that answers "
                 "inbound calls on this number), dispatchMetadataTemplate "
@@ -3413,7 +3635,7 @@ async def create_phone_number(
     so tell the owner its price and that they can buy it on the Phone numbers
     page of the dashboard, or pick a standard-price number.
     The number renews monthly until it is released with phone_numbers.delete
-    (or receptionist.cancel for a receptionist's number). Calls are billed at
+    (cancelling a receptionist releases its number). Calls are billed at
     $0.09 per connected minute from prepaid credits."""
     return await call("POST", "/v1/phone-numbers", body=body, text="Created phone number.")
 
@@ -3544,7 +3766,7 @@ async def create_knowledge_document(
                 "chars), sizeBytes: non-negative int}. Optional: metadata "
                 "(object). The response includes an upload URL that accepts "
                 "the file bytes by PUT. The document becomes searchable once "
-                "finalize_knowledge_document records the upload."
+                "knowledge_bases.documents.finalize records the upload."
             )
         ),
     ],

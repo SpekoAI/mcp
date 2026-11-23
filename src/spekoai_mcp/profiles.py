@@ -38,11 +38,14 @@ from collections.abc import Sequence
 
 import mcp.types as mt
 from fastmcp.exceptions import NotFoundError
+from fastmcp.prompts import Prompt
+from fastmcp.resources import Resource
 from fastmcp.server.dependencies import get_access_token
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import Tool
 
 from spekoai_mcp.action_manifest import action_entries, manifest_tool_names
+from spekoai_mcp.apps import AUDIO_PLAYER_URI, TOP_UP_URI
 
 DEFAULT_PROFILE_ENV_VAR = "SPEKOAI_MCP_DEFAULT_PROFILE"
 BUILDER_PROFILE = "builder"
@@ -274,17 +277,19 @@ DIRECTORY_WITHHELD_TOOL_NAMES: frozenset[str] = (
 # including its run mode. Everything that is account
 # administration, agent dev-ops, document ingestion, vendor migration, or
 # destructive is out: not because OpenAI forbids it, but because a focused tool
-# set is what the review gate scores and what the model routes well over. The
-# one destructive tool kept is sessions.end: a call the plugin places needs a
-# way to hang it up.
+# set is what the review gate scores and what the model routes well over. No
+# delete or rollback is kept. The tools that carry destructiveHint here are the
+# overwrite and the sends OpenAI's guidelines (6.3) also count: agents.update,
+# sessions.phone.create, sessions.end (a call the plugin places needs a way to
+# hang it up) and the support-ticket create, reply and rate.
 #
 # Same referenced-tool rule as the builder preset: every tool a KEPT tool's
 # description names must itself be kept. That pulls in agents.preview_stacks
 # (named by agents.create as the source of stack tiers) and the
 # agents.test_call review path (calls.get + sessions.transcript.get +
-# calls.recording.get). The one exception is the same one: agents.create's
-# mention of parse_external_config is a migrations-only escape hatch, not a
-# step in any ChatGPT workflow.
+# calls.recording.get). agents.create names migration.external_config.parse
+# only on profiles that serve it (`create_agent_body_doc` in action_tools), and
+# tests/test_profile_text.py checks the rule on every profile.
 #
 # Two builder-only tools are borrowed. `audio.synthesize` routes by intent and
 # will pick a voice on its own, so the profile is not dead-ended without them —
@@ -522,10 +527,9 @@ DIRECTORY_PROFILES: frozenset[str] = frozenset(
 # included, or builder agents dead-end on "Unknown tool". That pulls in
 # `agents.preview_stacks` (named by agents.create as the source of stack
 # tiers) and the agents.test_call review path (`calls.get` +
-# `sessions.transcript.get` + `calls.recording.get`). The one exception:
-# agents.create's mention of parse_external_config is a migrations-only
-# escape hatch, not a step in any builder workflow, so it stays out. The
-# server instructions and `support_handoff` name support.ticket.create, so
+# `sessions.transcript.get` + `calls.recording.get`). agents.create names
+# migration.external_config.parse only where it is served, so it stays out.
+# The server instructions and `support_handoff` name support.ticket.create, so
 # it is served here too.
 #
 # Descriptions state facts and never direct the model — see the directory
@@ -589,9 +593,8 @@ BUILDER_PROFILE_TOOL_NAMES: list[str] = [
 # Same referenced-tool rule as the other presets: every tool a KEPT tool's
 # description names must itself be kept. That pulls in `agents.preview_stacks`
 # (named by agents.create) and the agents.test_call review path (`calls.get`,
-# `sessions.transcript.get`, `calls.recording.get`). The one exception is the
-# same one: agents.create's mention of parse_external_config is a
-# migrations-only escape hatch, not a step in any Replit workflow.
+# `sessions.transcript.get`, `calls.recording.get`). agents.create names
+# migration.external_config.parse only where it is served.
 #
 # NOT in DIRECTORY_PROFILES, deliberately. Replit publishes no AI-disclosure
 # policy for integrations, and `apply_directory_disclosure` overwrites
@@ -711,6 +714,50 @@ def current_profile() -> str | None:
     return default_profile()
 
 
+# A `ui://` app renders one tool's result, so it is listed and readable only
+# where that tool is served. The docs resources are served everywhere.
+APP_RESOURCE_TOOLS: dict[str, str] = {
+    AUDIO_PLAYER_URI: "audio.synthesize",
+    TOP_UP_URI: "billing.top_up_link.create",
+}
+
+# The tools each prompt sends the model to. A prompt is listed and gettable
+# only where its profile serves all of them.
+PROMPT_REQUIRED_TOOLS: dict[str, tuple[str, ...]] = {
+    "scaffold_project": ("docs.search",),
+    "migrate_voice_agent": (
+        "migration.workspace.inspect",
+        "migration.external_config.parse",
+        "sessions.create",
+        "agents.calls.list",
+        "calls.get",
+        "agents.evals.create",
+        "agents.deploy",
+    ),
+}
+
+# Prompts withheld by profile where the tool rule alone keeps them. ChatGPT has
+# no project for scaffold_project to write into, and OpenAI's review reads a
+# code-scaffolding command on a calling plugin as a listing that does not match
+# what the plugin does (plugin guidelines 6.1).
+PROMPT_WITHHELD_PROFILES: dict[str, frozenset[str]] = {
+    "scaffold_project": frozenset({CHATGPT_PROFILE}),
+}
+
+
+def profile_serves_resource(uri: str, profile: str | None) -> bool:
+    """Whether ``profile`` lists and reads the resource at ``uri``."""
+    tool = APP_RESOURCE_TOOLS.get(uri)
+    return tool is None or profile_serves_tool(tool, profile)
+
+
+def profile_serves_prompt(name: str, profile: str | None) -> bool:
+    """Whether ``profile`` lists and renders the prompt ``name``."""
+    if profile in PROMPT_WITHHELD_PROFILES.get(name, frozenset()):
+        return False
+    return all(profile_serves_tool(tool, profile) for tool in PROMPT_REQUIRED_TOOLS.get(name, ()))
+
+
 class ToolProfileMiddleware(Middleware):
     """Filter the tool surface based on the deployment's configured profile.
 
@@ -727,7 +774,48 @@ class ToolProfileMiddleware(Middleware):
     Refusals raise the same ``NotFoundError("Unknown tool: ...")`` the
     FastMCP core raises for unregistered names, so a hidden tool is
     indistinguishable from a nonexistent one.
+
+    Resources and prompts follow the tools they depend on
+    (``profile_serves_resource`` / ``profile_serves_prompt``).
     """
+
+    async def on_list_resources(
+        self,
+        context: MiddlewareContext[mt.ListResourcesRequest],
+        call_next: CallNext[mt.ListResourcesRequest, Sequence[Resource]],
+    ) -> Sequence[Resource]:
+        profile = current_profile()
+        resources = await call_next(context)
+        return [r for r in resources if profile_serves_resource(str(r.uri), profile)]
+
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[mt.ReadResourceRequestParams],
+        call_next: CallNext[mt.ReadResourceRequestParams, object],
+    ) -> object:
+        uri = str(context.message.uri)
+        if not profile_serves_resource(uri, current_profile()):
+            raise NotFoundError(f"Unknown resource: {uri!r}")
+        return await call_next(context)
+
+    async def on_list_prompts(
+        self,
+        context: MiddlewareContext[mt.ListPromptsRequest],
+        call_next: CallNext[mt.ListPromptsRequest, Sequence[Prompt]],
+    ) -> Sequence[Prompt]:
+        profile = current_profile()
+        prompts = await call_next(context)
+        return [p for p in prompts if profile_serves_prompt(p.name, profile)]
+
+    async def on_get_prompt(
+        self,
+        context: MiddlewareContext[mt.GetPromptRequestParams],
+        call_next: CallNext[mt.GetPromptRequestParams, object],
+    ) -> object:
+        name = context.message.name
+        if not profile_serves_prompt(name, current_profile()):
+            raise NotFoundError(f"Unknown prompt: {name!r}")
+        return await call_next(context)
 
     async def on_list_tools(
         self,

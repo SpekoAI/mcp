@@ -86,6 +86,20 @@ def _assert_no_script(text: str) -> None:
 
 PAYMENT_CODES = sorted(payment.PAYMENT_CODES)
 
+# What ChatGPT's text may never say: OpenAI's plugin guidelines bar pricing and
+# promotions (1.3) and promoting upgrades (5.1), and the profile serves no
+# balance read.
+CHATGPT_FORBIDDEN = ("$", "top-up", "top up", "upgrade", "credits.balance.get", "http", "unlock")
+
+
+def _assert_plan_only(text: str, *, names_the_plan: bool = True) -> None:
+    lowered = text.lower()
+    for forbidden in CHATGPT_FORBIDDEN:
+        assert forbidden not in lowered, forbidden
+    assert "buy" not in lowered
+    if names_the_plan:
+        assert "not available on" in text
+
 
 @pytest.mark.parametrize(("profile", "auth_method", "linkable", "tool"), SURFACES)
 @pytest.mark.parametrize("code", PAYMENT_CODES)
@@ -101,15 +115,14 @@ def test_payment_refusal_without_a_link(
     assert profiles.session_can_call(TOOL) is tool
     step = next_step_for_error(_error(code), path="/v1/sessions/phone")
     assert "Retry the Speko MCP request" not in step
-    assert "returns the same refusal" in step
     _assert_no_suggested_amount(step)
     _assert_no_script(step)
+    if profile == "chatgpt":
+        _assert_plan_only(step)
+        return
+    assert "returns the same refusal" in step
     if tool:
         assert TOOL in step
-    elif profile == "chatgpt":
-        assert "Speko console" in step
-        assert http_client.BILLING_URL not in step
-        assert "billing.checkout.create" not in step
     else:
         assert http_client.BILLING_URL in step
 
@@ -185,6 +198,11 @@ def test_spending_cap_step_never_points_at_the_billing_page(
     step = next_step_for_error(
         _error("SPENDING_CAP_REACHED", top_up_url=TOP_UP_URL), path="/v1/sessions/phone"
     )
+    if profile == "chatgpt":
+        _assert_plan_only(step, names_the_plan=False)
+        assert "monthly spending cap" in step
+        assert "billing.spending_cap.update" not in step
+        return
     assert "Adding credit does not clear it." in step
     assert "billing.spending_cap.update" in step
     assert http_client.BILLING_URL not in step
@@ -339,7 +357,46 @@ async def test_chatgpt_phone_refusal_has_no_payment_link(
     text = str(raised.value)
     assert TOP_UP_URL not in text
     assert http_client.BILLING_URL not in text
-    assert "Speko console" in text
+    # Platform's own message and hint ("Top up once to call China.", "Free
+    # credit covers ...") are dropped; the code stays.
+    assert "Speko API returned 402 DESTINATION_REQUIRES_CARD" in text
+    assert "The call was not placed and nothing was charged." in text
+    assert "Retry arguments" not in text
+    _assert_plan_only(text)
+
+
+@pytest.mark.parametrize("code", PAYMENT_CODES)
+def test_chatgpt_renders_every_payment_code_without_price_or_payment(
+    monkeypatch: pytest.MonkeyPatch, code: str
+) -> None:
+    _use(monkeypatch, "chatgpt", "oauth")
+    exc = http_client.SpekoApiError(
+        402,
+        "Top up from $5 at https://platform.speko.ai/settings/billing to unlock this.",
+        trace_id="req_402",
+        code=code,
+        balance_usd=-0.12,
+        top_up_url=TOP_UP_URL,
+    )
+    step = payment.payment_step(exc)
+    rendered = http_client.tool_error_message(exc, next_step=step)
+    for text in (step, rendered):
+        _assert_plan_only(text)
+    assert "nothing was charged" in step.lower()
+    if code == payment.PROVIDER_REQUIRES_TOP_UP_CODE:
+        assert "without the ElevenLabs provider pin, voice and model" in step
+    if code != payment.INSUFFICIENT_CREDITS_CODE:
+        assert f"402 {code}" in rendered
+
+
+def test_chatgpt_out_of_credit_message_names_no_balance(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use(monkeypatch, "chatgpt", "oauth")
+    message = http_client.credit_exhausted_message(
+        _error("INSUFFICIENT_CREDITS", balance_usd=-0.12, top_up_url=TOP_UP_URL)
+    )
+    _assert_plan_only(message)
+    assert "402 INSUFFICIENT_CREDITS" in message
+    assert "trace_id=req_402" in message
 
 
 async def test_manifest_tool_payment_refusal_reads_the_same(
@@ -378,6 +435,7 @@ async def test_phone_call_tool_names_the_free_call(
     text = out.content[0].text
     assert "one free call abroad and it ends after 2 minutes" in text
     assert "sess_1" in text
+    assert ("top-up" in text) is (profile != "chatgpt")
     _assert_no_suggested_amount(text)
 
 
