@@ -11277,7 +11277,7 @@
                 "$ref": "#/$defs/__schema14"
               },
               "answerLength": {
-                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `medium` waits through a pause of about a second, e.g. addresses and phone numbers (min 800 / max 1600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
                 "$ref": "#/$defs/__schema15"
               },
               "position": {
@@ -11346,6 +11346,7 @@
             "type": "string",
             "enum": [
               "open",
+              "medium",
               "short"
             ]
           },
@@ -11754,7 +11755,7 @@
                 "$ref": "#/$defs/__schema14"
               },
               "answerLength": {
-                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `medium` waits through a pause of about a second, e.g. addresses and phone numbers (min 800 / max 1600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
                 "$ref": "#/$defs/__schema15"
               },
               "position": {
@@ -11823,6 +11824,7 @@
             "type": "string",
             "enum": [
               "open",
+              "medium",
               "short"
             ]
           },
@@ -12285,7 +12287,7 @@
                 "$ref": "#/$defs/__schema14"
               },
               "answerLength": {
-                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `medium` waits through a pause of about a second, e.g. addresses and phone numbers (min 800 / max 1600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
                 "$ref": "#/$defs/__schema15"
               },
               "position": {
@@ -12354,6 +12356,7 @@
             "type": "string",
             "enum": [
               "open",
+              "medium",
               "short"
             ]
           },
@@ -12932,7 +12935,7 @@
                 "$ref": "#/$defs/__schema14"
               },
               "answerLength": {
-                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
+                "description": "`message`: how long an answer the step expects. `open` keeps AssemblyAI waiting through pauses (turn silence min 1300 / max 3600 ms); `medium` waits through a pause of about a second, e.g. addresses and phone numbers (min 800 / max 1600 ms); `short` keeps the agent STT settings so yes/no replies stay fast. Unset: a free-text slot -> open, choice-only slots -> short.",
                 "$ref": "#/$defs/__schema15"
               },
               "position": {
@@ -13001,6 +13004,7 @@
             "type": "string",
             "enum": [
               "open",
+              "medium",
               "short"
             ]
           },
