@@ -12712,6 +12712,17 @@
                     "type": "null"
                   }
                 ]
+              },
+              "safety": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema18"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What the safety pass wrote into a freshly seeded graph (explicit answerLength, maxReasks, exceptNodeIds, name-slot rules) and what it flagged for you to decide. Null when the graph already existed."
               }
             },
             "required": [
@@ -12721,7 +12732,8 @@
               "graph",
               "derivedVia",
               "deriveReason",
-              "determinism"
+              "determinism",
+              "safety"
             ],
             "additionalProperties": false
           },
@@ -13084,6 +13096,24 @@
               ],
               "additionalProperties": {}
             }
+          },
+          "__schema18": {
+            "type": "object",
+            "properties": {
+              "changes": {
+                "type": "array",
+                "items": {}
+              },
+              "warnings": {
+                "type": "array",
+                "items": {}
+              }
+            },
+            "required": [
+              "changes",
+              "warnings"
+            ],
+            "additionalProperties": false
           }
         }
       },
