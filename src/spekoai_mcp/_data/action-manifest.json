@@ -12456,7 +12456,7 @@
     {
       "id": "agents.graph.seed",
       "version": 1,
-      "description": "Derive a first execution graph for an agent version from its system prompt (falling back to the version derived flow). Idempotent: an existing graph is returned unchanged with status \"exists\". `force` re-derives ONLY over a previously seeded graph — an authored or healed graph is never clobbered. Use this to bootstrap, then agents.graph.replace to edit. `warnings` carries GRAPH_STALL_RISK when a fresh seed can hang, and GRAPH_LINT for validator findings on the graph returned, fresh or existing.",
+      "description": "Derive a first execution graph for an agent version from its system prompt (falling back to the version derived flow). A live version is never seeded in place: the graph is written onto the agent draft, and the returned version names that draft, so calls keep running the live config until the draft is deployed. Idempotent: an existing graph is returned unchanged with status \"exists\". `force` re-derives ONLY over a previously seeded graph — an authored or healed graph is never clobbered. Use this to bootstrap, then agents.graph.replace to edit. `warnings` carries GRAPH_STALL_RISK when a fresh seed can hang, and GRAPH_LINT for validator findings on the graph returned, fresh or existing.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
