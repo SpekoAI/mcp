@@ -127,7 +127,9 @@ def _profile_descriptions(profile: str | None) -> dict[str, str]:
             "Search every vendor's TTS voices that Speko can route, including ElevenLabs "
             "on a Speko-managed key. `name` matches part of a voice's name or id, ignoring "
             f"case. Each result carries `use_with` ({{provider, model, voice}}): {use_with}. "
-            "Results are paginated; follow `next_cursor`."
+            "Results are paginated; follow `next_cursor`. A search by `name`, `accent` or "
+            "`language` can also return `library`: ElevenLabs Voice Library voices Speko "
+            "has not measured, each with its own `use_with`, usable by voice id."
         ),
         "list_models": (
             "List the STT/LLM/TTS/S2S provider and model catalog. Each entry's `id` "
