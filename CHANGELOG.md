@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.65
 
 - `calls.recording.get` and `sessions.recording.get`: a recording past Speko's 30-day retention now answers 404 with status `expired`, and the error tells the model the audio was deleted and not to retry. It used to fall through to the wording that suggests checking again.
 - `voice_clones.create`: a Google Drive or Dropbox share link is changed to a direct download link before the clip is fetched, as `audio.transcribe` already does. A Drive file that is not shared, or that returns a sign-in page, gets the same sharing guidance as `audio.transcribe`.
