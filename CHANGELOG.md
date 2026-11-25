@@ -3,6 +3,8 @@
 ## Unreleased
 
 - `calls.recording.get` and `sessions.recording.get`: a recording past Speko's 30-day retention now answers 404 with status `expired`, and the error tells the model the audio was deleted and not to retry. It used to fall through to the wording that suggests checking again.
+- `voice_clones.create`: a Google Drive or Dropbox share link is changed to a direct download link before the clip is fetched, as `audio.transcribe` already does. A Drive file that is not shared, or that returns a sign-in page, gets the same sharing guidance as `audio.transcribe`.
+- `voice_clones.create` and `voice_clones.provision`: the descriptions state the clip formats MiniMax takes (mp3, m4a, wav), the ElevenLabs 11 MB clip limit, and `VOICE_CLONE_LIMIT_REACHED`. A limit refusal gives the limit and the count used, and names `voice_clones.list` and `voice_clones.delete`.
 
 ## 0.2.64
 

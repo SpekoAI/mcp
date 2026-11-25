@@ -7,6 +7,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_context
@@ -16,11 +17,13 @@ from pydantic import Field
 
 from spekoai_mcp import http_client, payment
 from spekoai_mcp.action_manifest import action_entries
+from spekoai_mcp.action_tools import DRIVE_MESSAGE, _is_google_host, _normalize_audio_url
 from spekoai_mcp.credit_exhaustion import BALANCE_ACTION_ID, balance_result_text
 from spekoai_mcp.profiles import current_profile, profile_serves_tool
 from spekoai_mcp.tool_text import payload_text
 
 DESCRIBE_ACTION_ID = "capabilities.describe"
+VOICE_CLONE_CREATE_ACTION_ID = "voice_clones.create"
 
 
 class ManifestActionTool(Tool):
@@ -32,6 +35,8 @@ class ManifestActionTool(Tool):
             described = await _describe_mcp_tool(arguments.get("actionId"))
             if described is not None:
                 return described
+        if self.action_id == VOICE_CLONE_CREATE_ACTION_ID:
+            arguments = _with_download_link(arguments)
         idempotency_key = None
         if self.idempotency == "required":
             idempotency_key = _idempotency_key(self.action_id, arguments)
@@ -42,6 +47,10 @@ class ManifestActionTool(Tool):
                 idempotency_key=idempotency_key,
             )
         except http_client.SpekoApiError as exc:
+            if self.action_id == VOICE_CLONE_CREATE_ACTION_ID and _is_drive_access_refusal(
+                exc, arguments
+            ):
+                raise ToolError(DRIVE_MESSAGE) from exc
             # A payment refusal reads the same here as on a handwritten tool.
             # Every other error keeps escaping as before.
             if not payment.is_payment_refusal(exc):
@@ -56,6 +65,43 @@ class ManifestActionTool(Tool):
             content=[TextContent(type="text", text=text)],
             structured_content=payload,
         )
+
+
+def _with_download_link(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite a Drive or Dropbox share link in `audio_url` to its download link.
+
+    The same rewrite `audio.transcribe` applies. Without it the share link
+    returned a web page, and the clone failed with VOICE_CLIP_UNSUPPORTED_TYPE.
+    """
+    audio_url = arguments.get("audio_url")
+    if not isinstance(audio_url, str):
+        return arguments
+    return {**arguments, "audio_url": _normalize_audio_url(audio_url)}
+
+
+def _is_drive_access_refusal(exc: http_client.SpekoApiError, arguments: dict[str, Any]) -> bool:
+    """Platform could not read a Google Drive link as audio.
+
+    Google answers a file that is not shared with a sign-in page or an access
+    refusal (401 or 403). Only the file's owner can fix that, so the caller
+    gets the same sharing guidance as `audio.transcribe`. A 404, a 429 or any
+    other status keeps Platform's own message.
+    """
+    message = exc.message or ""
+    page = exc.code == "VOICE_CLIP_UNSUPPORTED_TYPE" and "web page" in message
+    refused = exc.code == "VOICE_CLIP_FETCH_FAILED" and (
+        "answered HTTP 401" in message or "answered HTTP 403" in message
+    )
+    if not (page or refused):
+        return False
+    audio_url = arguments.get("audio_url")
+    if not isinstance(audio_url, str):
+        return False
+    try:
+        host = httpx.URL(audio_url).host
+    except (httpx.InvalidURL, ValueError, TypeError):
+        return False
+    return _is_google_host(host)
 
 
 def _idempotency_key(action_id: str, arguments: dict[str, Any]) -> str:
