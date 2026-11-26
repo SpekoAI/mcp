@@ -23,6 +23,7 @@ PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED_CODE = "PHONE_NUMBER_PROVISIONING_CRE
 PHONE_NUMBER_CARD_REQUIRED_CODE = "PHONE_NUMBER_CARD_REQUIRED"
 VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE = "VERIFIED_CALLER_ID_PAYMENT_REQUIRED"
 PROVIDER_REQUIRES_TOP_UP_CODE = "PROVIDER_REQUIRES_TOP_UP"
+PHONE_NUMBER_PAYMENT_REQUIRED_CODE = "PHONE_NUMBER_PAYMENT_REQUIRED"
 
 # Refusals a top-up clears. A spending cap is not one: adding credit does not
 # lift it, so it keeps its own step in `action_tools`.
@@ -34,6 +35,7 @@ PAYMENT_CODES = frozenset(
         PHONE_NUMBER_CARD_REQUIRED_CODE,
         VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE,
         PROVIDER_REQUIRES_TOP_UP_CODE,
+        PHONE_NUMBER_PAYMENT_REQUIRED_CODE,
     }
 )
 
@@ -74,6 +76,10 @@ _CAUSES = {
         "Calling from the workspace's own verified number needs one paid top-up of any "
         "amount first. Free credit does not count."
     ),
+    PHONE_NUMBER_PAYMENT_REQUIRED_CODE: (
+        "Buying a phone number needs one paid top-up of any amount, from $5, until the "
+        "workspace's business verification is approved. Free credit does not count."
+    ),
     INSUFFICIENT_CREDITS_CODE: "The workspace is out of credit.",
     PROVIDER_REQUIRES_TOP_UP_CODE: (
         "ElevenLabs runs on Speko's key after the workspace's first top-up of any amount, "
@@ -100,6 +106,10 @@ _PLAN_CAUSES = {
     VERIFIED_CALLER_ID_PAYMENT_REQUIRED_CODE: (
         "Calling from the workspace's own verified number is not available on its current "
         "balance or plan. Nothing was charged."
+    ),
+    PHONE_NUMBER_PAYMENT_REQUIRED_CODE: (
+        "A new dedicated phone number is not available on the workspace's current balance or "
+        "plan. Nothing was charged."
     ),
     INSUFFICIENT_CREDITS_CODE: (
         "This request is not available on the workspace's current balance or plan. "
