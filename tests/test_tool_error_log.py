@@ -9,6 +9,7 @@ and what it must never carry.
 from __future__ import annotations
 
 import logging
+import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -18,7 +19,13 @@ from fastmcp.exceptions import ToolError
 
 import spekoai_mcp.http_client as http_client
 from spekoai_mcp.server import create_server
-from spekoai_mcp.tool_error_log import MAX_MESSAGE_CHARS, safe_message
+from spekoai_mcp.tool_error_log import (
+    FASTMCP_SERVER_LOGGER,
+    MAX_MESSAGE_CHARS,
+    ExpectedToolErrorFilter,
+    is_expected_tool_error,
+    safe_message,
+)
 
 LOGGER = "spekoai_mcp.tool_error_log"
 
@@ -118,3 +125,115 @@ def test_message_masks_query_strings_and_numbers_and_truncates() -> None:
     assert "\n" not in text
     assert len(text) == MAX_MESSAGE_CHARS
     assert text.endswith("...")
+
+
+# --- FastMCP's own "Error calling tool" record -------------------------------
+
+
+class _Capture(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(level=logging.DEBUG)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@pytest.fixture
+def fastmcp_records() -> Any:
+    # FastMCP's logger does not propagate to the root logger, so caplog
+    # cannot see it.
+    capture = _Capture()
+    fastmcp_logger = logging.getLogger(FASTMCP_SERVER_LOGGER)
+    fastmcp_logger.addHandler(capture)
+    yield capture.records
+    fastmcp_logger.removeHandler(capture)
+
+
+def _tool_call_records(records: list[logging.LogRecord]) -> list[logging.LogRecord]:
+    return [r for r in records if r.getMessage().startswith("Error calling tool ")]
+
+
+@pytest.mark.parametrize(("tool", "arguments"), TOOL_SURFACES)
+@pytest.mark.parametrize("status", [400, 402, 403, 404, 409, 429])
+async def test_expected_api_refusal_is_a_warning_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    fastmcp_records: list[logging.LogRecord],
+    tool: str,
+    arguments: dict[str, Any],
+    status: int,
+) -> None:
+    _api(monkeypatch, status, {"error": "Refused.", "code": "SOME_GATE"})
+    caplog.set_level(logging.WARNING, logger=LOGGER)
+    with pytest.raises(ToolError):
+        await create_server().call_tool(tool, arguments)
+
+    records = _tool_call_records(fastmcp_records)
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].levelname == "WARNING"
+    assert records[0].exc_info is None
+    # The reason line stays.
+    assert _lines(caplog)[0].startswith(f"tool_error tool={tool} status={status} code=SOME_GATE")
+
+
+@pytest.mark.parametrize(("tool", "arguments"), TOOL_SURFACES)
+@pytest.mark.parametrize("status", [500, 502, 503])
+async def test_server_error_stays_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    fastmcp_records: list[logging.LogRecord],
+    tool: str,
+    arguments: dict[str, Any],
+    status: int,
+) -> None:
+    _api(monkeypatch, status, {"error": "Upstream broke.", "code": "INTERNAL"})
+    with pytest.raises(ToolError):
+        await create_server().call_tool(tool, arguments)
+
+    records = _tool_call_records(fastmcp_records)
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+
+
+async def test_manifest_server_error_keeps_its_traceback(
+    monkeypatch: pytest.MonkeyPatch, fastmcp_records: list[logging.LogRecord]
+) -> None:
+    # A manifest tool lets SpekoApiError escape; FastMCP logs it with exc_info.
+    _api(monkeypatch, 503, {"error": "Upstream broke."})
+    tool, arguments = TOOL_SURFACES[1]
+    with pytest.raises(ToolError):
+        await create_server().call_tool(tool, arguments)
+    (record,) = _tool_call_records(fastmcp_records)
+    assert record.exc_info is not None
+
+
+def test_unexpected_exception_stays_an_error_with_traceback() -> None:
+    record = logging.LogRecord(
+        FASTMCP_SERVER_LOGGER, logging.ERROR, __file__, 1, "Error calling tool 'x'", (), None
+    )
+    try:
+        raise KeyError("boom")
+    except KeyError:
+        record.exc_info = sys.exc_info()
+        assert ExpectedToolErrorFilter().filter(record)
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
+
+
+def test_auth_error_is_expected() -> None:
+    wrapped = ToolError("Error calling tool 'x'")
+    wrapped.__cause__ = http_client.SpekoAuthError("no auth")
+    assert is_expected_tool_error(wrapped)
+    assert not is_expected_tool_error(ToolError("Speko returned no audio link."))
+
+
+def test_filter_ignores_other_records() -> None:
+    record = logging.LogRecord(
+        FASTMCP_SERVER_LOGGER, logging.ERROR, __file__, 1, "Error reading resource 'x'", (), None
+    )
+    try:
+        raise http_client.SpekoApiError(404, "missing")
+    except http_client.SpekoApiError:
+        assert ExpectedToolErrorFilter().filter(record)
+    assert record.levelno == logging.ERROR

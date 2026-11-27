@@ -1027,6 +1027,41 @@ async def test_other_cloud_storage_refusals_keep_the_sign_in_step(
     )
 
 
+GCS_SIGNATURE_MISMATCH = (
+    b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>SignatureDoesNotMatch</Code>"
+    b"<Message>Access denied.</Message><Details>The request signature we calculated "
+    b"does not match the signature you provided.</Details></Error>"
+)
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "reason"),
+    [
+        (403, GCS_ACCESS_DENIED, "http_403 storage_code=AccessDenied"),
+        (403, GCS_SIGNATURE_MISMATCH, "http_403 storage_code=SignatureDoesNotMatch"),
+        (404, b"<Error><Code>NoSuchKey</Code></Error>", "http_404 storage_code=NoSuchKey"),
+        (403, b"Forbidden", "http_403"),
+        (400, GCS_EXPIRED_V4, "expired_signed_link storage_code=ExpiredToken"),
+        (403, GCS_EXPIRED_V2, "expired_signed_link storage_code=AccessDenied"),
+    ],
+)
+async def test_cloud_storage_refusal_logs_its_error_code_and_host_only(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    status: int,
+    body: bytes,
+    reason: str,
+) -> None:
+    """41 failures in 48 h said only "HTTP 403 from storage.googleapis.com"."""
+    with caplog.at_level(logging.WARNING, logger=action_tools.__name__):
+        await _fetch_gcs_error(monkeypatch, status, body)
+    lines = [record.getMessage() for record in caplog.records]
+    assert lines == [f"audio.transcribe rejected storage.googleapis.com: {reason}"]
+    # Never the signed URL, its path or its query string.
+    assert "X-Goog-Signature" not in lines[0]
+    assert "speko-media" not in lines[0]
+
+
 # --- SSE semantics ---------------------------------------------------------
 
 

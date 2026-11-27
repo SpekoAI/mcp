@@ -212,36 +212,55 @@ DESTRUCTIVE_HINT_ACTION_IDS: frozenset[str] = frozenset(
 )
 
 
-def register_generated_action_tools(mcp: FastMCP) -> None:
+def manifest_action_tools() -> dict[str, ManifestActionTool]:
+    """One tool per manifest action, keyed by id, in manifest order."""
+    tools: dict[str, ManifestActionTool] = {}
     for entry in action_entries():
         effect = entry["effect"]
         action_id = entry["id"]
         title = _title(action_id)
-        mcp.add_tool(
-            ManifestActionTool(
-                name=action_id,
+        tools[action_id] = ManifestActionTool(
+            name=action_id,
+            title=title,
+            description=entry["description"],
+            parameters=entry["inputSchema"],
+            output_schema=_open_output_schema(entry["outputSchema"]),
+            annotations=ToolAnnotations(
                 title=title,
-                description=entry["description"],
-                parameters=entry["inputSchema"],
-                output_schema=_open_output_schema(entry["outputSchema"]),
-                annotations=ToolAnnotations(
-                    title=title,
-                    read_only_hint=effect == "read",
-                    destructive_hint=(
-                        effect == "destructive" or action_id in DESTRUCTIVE_HINT_ACTION_IDS
-                    ),
-                    idempotent_hint=entry["idempotency"] != "none" or effect == "read",
-                    open_world_hint=True,
+                read_only_hint=effect == "read",
+                destructive_hint=(
+                    effect == "destructive" or action_id in DESTRUCTIVE_HINT_ACTION_IDS
                 ),
-                meta={
-                    "speko": {
-                        "actionVersion": entry["version"],
-                        "effect": effect,
-                        "requiredScopes": entry["requiredScopes"],
-                        "profiles": entry["profiles"],
-                    }
-                },
-                action_id=action_id,
-                idempotency=entry["idempotency"],
-            )
+                idempotent_hint=entry["idempotency"] != "none" or effect == "read",
+                open_world_hint=True,
+            ),
+            meta={
+                "speko": {
+                    "actionVersion": entry["version"],
+                    "effect": effect,
+                    "requiredScopes": entry["requiredScopes"],
+                    "profiles": entry["profiles"],
+                }
+            },
+            action_id=action_id,
+            idempotency=entry["idempotency"],
         )
+    return tools
+
+
+def register_generated_action_tools(
+    mcp: FastMCP,
+    tools: dict[str, ManifestActionTool] | None = None,
+    *,
+    skip: frozenset[str] = frozenset(),
+) -> None:
+    """Register the manifest tools, except the ids in ``skip``.
+
+    ``skip`` holds the ids `register_action_tools` already registered from
+    the same ``tools``.
+    """
+    if tools is None:
+        tools = manifest_action_tools()
+    for action_id, tool in tools.items():
+        if action_id not in skip:
+            mcp.add_tool(tool)

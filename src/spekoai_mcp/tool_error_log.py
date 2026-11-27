@@ -12,12 +12,19 @@ trace id (Platform's request id, which joins this line to the server's own
 ``[warn] [<request_id>]`` line) and the message, truncated. It never logs tool
 arguments, request bodies or tokens; URL query strings (signed recording links)
 and E.164 numbers inside the message are masked first.
+
+`ExpectedToolErrorFilter` sets the level of FastMCP's own "Error calling tool"
+record. A Platform refusal with a status below 500 (or a call with no MCP
+auth) is an expected outcome, so it becomes one WARNING line with no
+traceback. A 5xx and an unexpected exception stay at ERROR, with the
+traceback when FastMCP attached one.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import sys
 
 from fastmcp.exceptions import ToolError, ValidationError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
@@ -35,6 +42,59 @@ _URL_QUERY = re.compile(r"(https?://[^\s?#]+)[?#][^\s]*", re.IGNORECASE)
 # A dialed number next to a workspace id is personal data. Keep the last four
 # digits so a support thread can still be matched to a line.
 _E164 = re.compile(r"\+\d{7,15}")
+
+
+# The logger FastMCP's `call_tool` writes "Error calling tool ..." to
+# (`fastmcp.utilities.logging.get_logger("fastmcp.server.server")`).
+FASTMCP_SERVER_LOGGER = "fastmcp.server.server"
+_TOOL_CALL_FAILURE_PREFIX = "Error calling tool "
+
+
+class ExpectedToolErrorFilter(logging.Filter):
+    """Log an expected tool failure at WARNING, with no traceback.
+
+    A filter, not a middleware: FastMCP writes this record inside its core
+    `call_tool`, under every middleware, so a middleware only sees the
+    exception after the record is out. A filter on FastMCP's logger is the
+    standard-library hook that runs before any handler. It changes no FastMCP
+    code. For a `ToolError`, FastMCP logs with `exc_info=False` inside the
+    `except` block, so the filter reads the exception from `sys.exc_info()`.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno < logging.ERROR:
+            return True
+        if not str(record.msg).startswith(_TOOL_CALL_FAILURE_PREFIX):
+            return True
+        exc = record.exc_info[1] if record.exc_info else sys.exc_info()[1]
+        if exc is None or not is_expected_tool_error(exc):
+            return True
+        record.levelno = logging.WARNING
+        record.levelname = logging.getLevelName(logging.WARNING)
+        record.exc_info = None
+        record.exc_text = None
+        return True
+
+
+_EXPECTED_FILTER = ExpectedToolErrorFilter()
+
+
+def install_expected_tool_error_filter() -> None:
+    """Attach the filter to FastMCP's server logger once per process."""
+    fastmcp_logger = logging.getLogger(FASTMCP_SERVER_LOGGER)
+    if not any(isinstance(f, ExpectedToolErrorFilter) for f in fastmcp_logger.filters):
+        fastmcp_logger.addFilter(_EXPECTED_FILTER)
+
+
+def is_expected_tool_error(exc: BaseException) -> bool:
+    """True when ``exc`` is a Platform 4xx or a call without MCP auth.
+
+    A 5xx, and any failure with no Platform error behind it, is not expected.
+    """
+    api_error = _api_error(exc)
+    if isinstance(api_error, SpekoAuthError):
+        return True
+    return isinstance(api_error, SpekoApiError) and api_error.status_code < 500
 
 
 class ToolErrorLogMiddleware(Middleware):

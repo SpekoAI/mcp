@@ -35,7 +35,10 @@ from spekoai_mcp.auth import DEFAULT_MCP_PATH, build_auth
 from spekoai_mcp.builder_tools import register_builder_tools
 from spekoai_mcp.credit_exhaustion import CreditExhaustedMiddleware
 from spekoai_mcp.docs_tools import register_docs_tools
-from spekoai_mcp.generated_action_tools import register_generated_action_tools
+from spekoai_mcp.generated_action_tools import (
+    manifest_action_tools,
+    register_generated_action_tools,
+)
 from spekoai_mcp.http_client import (
     ANTHROPIC_CLIENT_MAX_LENGTH,
     bounded_printable,
@@ -60,7 +63,10 @@ from spekoai_mcp.setup_tools import (
     register_setup_tools,
 )
 from spekoai_mcp.support_handoff import SupportHandoffMiddleware
-from spekoai_mcp.tool_error_log import ToolErrorLogMiddleware
+from spekoai_mcp.tool_error_log import (
+    ToolErrorLogMiddleware,
+    install_expected_tool_error_filter,
+)
 
 MCP_PATH = DEFAULT_MCP_PATH
 PUBLIC_MCP_PATH = "/.well-known/mcp"
@@ -390,8 +396,11 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
         auth=auth,
     )
     _set_server_identity(mcp, title=SERVER_TITLE, description=SERVER_DESCRIPTION)
-    register_action_tools(mcp)
-    register_generated_action_tools(mcp)
+    # A manifest action that also has a handwritten relay is registered once,
+    # at the handwritten tool's list position (see `register_action_tools`).
+    manifest_tools = manifest_action_tools()
+    placed = register_action_tools(mcp, manifest_tools=manifest_tools)
+    register_generated_action_tools(mcp, manifest_tools, skip=placed)
     register_docs_tools(mcp)
     register_resources(mcp)
     register_apps(mcp)
@@ -405,6 +414,7 @@ def create_server(auth: AuthProvider | None = None) -> FastMCP:
     # Innermost, so it logs the tool's own failure before the credit/support
     # rewrites above lengthen the message.
     mcp.add_middleware(ToolErrorLogMiddleware())
+    install_expected_tool_error_filter()
     return mcp
 
 

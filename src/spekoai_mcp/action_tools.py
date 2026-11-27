@@ -18,6 +18,8 @@ import re
 import socket
 import struct
 import typing
+from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import wraps
 from typing import Annotated, Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse
@@ -26,7 +28,7 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.apps import AppConfig
 from fastmcp.exceptions import ToolError
-from fastmcp.tools import ToolResult
+from fastmcp.tools import Tool, ToolResult
 from mcp.types import TextContent, ToolAnnotations
 from pydantic import Field
 
@@ -2096,10 +2098,15 @@ async def _fetch_audio(url: str) -> tuple[bytes, str]:
                         current = str(httpx.URL(current).join(location))
                         continue
                     if response.status_code >= 400:
-                        if await _is_expired_signed_link(response, final_host):
-                            _warn_audio_rejection(final_host, "expired_signed_link")
+                        storage = await _read_storage_error(response, final_host)
+                        # Cloud Storage's XML <Code> (AccessDenied, ExpiredToken,
+                        # SignatureDoesNotMatch) tells the failure causes apart.
+                        # Log it and the host, never the signed URL.
+                        code = f" storage_code={storage.code}" if storage and storage.code else ""
+                        if storage is not None and storage.expired:
+                            _warn_audio_rejection(final_host, f"expired_signed_link{code}")
                             raise ToolError(_expired_link_message())
-                        _warn_audio_rejection(final_host, f"http_{response.status_code}")
+                        _warn_audio_rejection(final_host, f"http_{response.status_code}{code}")
                         raise ToolError(
                             DRIVE_MESSAGE
                             if _is_google_host(final_host)
@@ -2157,22 +2164,40 @@ _GCS_ERROR_BODY_MAX_BYTES = 4096
 _GCS_ERROR_CODE = re.compile(rb"<Code>\s*([A-Za-z]+)\s*</Code>")
 
 
-async def _is_expired_signed_link(response: Any, host: str | None) -> bool:
-    """Whether a Cloud Storage 400/403 says the signed link has expired."""
-    if response.status_code not in (400, 403) or not host:
-        return False
+_GCS_ERROR_CODE_MAX_CHARS = 64
+
+
+@dataclass(frozen=True)
+class _StorageError:
+    """What a Cloud Storage error answer says: its XML <Code> and expiry."""
+
+    code: str | None
+    expired: bool
+
+
+async def _read_storage_error(response: Any, host: str | None) -> _StorageError | None:
+    """Read the error of a Cloud Storage 4xx/5xx answer; None for other hosts.
+
+    Only the first 4 KB of the body is read. A 400/403 is an expired signed
+    link when its code is ExpiredToken (V4 signing) or its details say the
+    request has expired (V2 signing, code AccessDenied).
+    """
+    if not host:
+        return None
     if host not in _GCS_HOSTS and not host.endswith(tuple(f".{h}" for h in _GCS_HOSTS)):
-        return False
+        return None
     body = b""
     async for chunk in response.aiter_bytes():
         body += chunk
         if len(body) >= _GCS_ERROR_BODY_MAX_BYTES:
             break
     body = body[:_GCS_ERROR_BODY_MAX_BYTES]
-    code = _GCS_ERROR_CODE.search(body)
-    if code is not None and code.group(1) == b"ExpiredToken":
-        return True
-    return b"request has expired" in body.lower()
+    match = _GCS_ERROR_CODE.search(body)
+    code = match.group(1).decode("ascii")[:_GCS_ERROR_CODE_MAX_CHARS] if match else None
+    expired = response.status_code in (400, 403) and (
+        code == "ExpiredToken" or b"request has expired" in body.lower()
+    )
+    return _StorageError(code=code, expired=expired)
 
 
 def _expired_link_message() -> str:
@@ -2273,8 +2298,21 @@ def _parse_sse(stream: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def register_action_tools(mcp: FastMCP) -> None:
+def register_action_tools(
+    mcp: FastMCP, *, manifest_tools: Mapping[str, Tool] | None = None
+) -> frozenset[str]:
+    """Register the handwritten relays.
+
+    Where an id is also in ``manifest_tools``, register the manifest tool in
+    its place and return that id, so `register_generated_action_tools` can skip
+    it. FastMCP's default `on_duplicate="warn"` used to replace the handwritten
+    copy, which kept its list position: clients got the manifest tool at the
+    handwritten slot, and every start logged `Component already exists` (13
+    ids in prod, 2026-11-27). Placing it here serves the same tools in the same
+    order with no warning.
+    """
     texts = profile_tool_texts(current_profile())
+    placed: set[str] = set()
     for tool in [
         get_organization,
         get_credit_balance,
@@ -2342,6 +2380,10 @@ def register_action_tools(mcp: FastMCP) -> None:
     ]:
         name = tool.__name__
         public_name = ACTION_TOOL_NAME_BY_FUNCTION[name]
+        if manifest_tools is not None and public_name in manifest_tools:
+            mcp.add_tool(manifest_tools[public_name])
+            placed.add(public_name)
+            continue
         title = tool_title(name)
         description, param_docs = texts.get(name, (None, {}))
         attributed_tool = _with_action_attribution(tool, public_name, param_docs=param_docs)
@@ -2361,6 +2403,7 @@ def register_action_tools(mcp: FastMCP) -> None:
                 open_world_hint=True,
             ),
         )
+    return frozenset(placed)
 
 
 def _with_action_attribution(
