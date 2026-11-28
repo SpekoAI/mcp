@@ -14,6 +14,7 @@ import copy
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import struct
@@ -41,6 +42,7 @@ from spekoai_mcp.audio_block import (
     with_audio_block,
     with_stored_audio_block,
 )
+from spekoai_mcp.phone_prompt_advice import advise
 from spekoai_mcp.profiles import (
     CHATGPT_PROFILE,
     DIRECTORY_PROFILES,
@@ -1094,7 +1096,7 @@ def update_agent_body_doc(profile: str | None) -> str:
 
 
 CREATE_PHONE_SESSION_BODY_DOC = (
-    "JSON body for POST /v1/sessions/phone. Required: to (E.164 string such as "
+    "JSON body for POST /v1/sessions/phone. Required: to (E.164 string, e.g. "
     "'+12015551234') plus either agentId (string) or intent ({language: BCP-47 string, "
     "optimizeFor?: 'balanced'|'accuracy'|'latency'|'cost'}). Optional: from (E.164 "
     "string; defaults to an owned phone number), channel ('phone'|'whatsapp'; 'whatsapp' "
@@ -1102,7 +1104,8 @@ CREATE_PHONE_SESSION_BODY_DOC = (
     "have granted call permission, else WHATSAPP_CALL_PERMISSION_REQUIRED), runMode "
     "('cascade'|'s2s'; 's2s' hosts the call on the speech-to-speech model GPT-Live "
     "instead of an STT/LLM/TTS cascade and wins over the agent's saved run mode), voice "
-    "(string), systemPrompt (string), firstMessage (string), llm ({temperature?: 0-2, "
+    "(string), systemPrompt (string), firstMessage (string), timezone (IANA), llm "
+    "({temperature?: 0-2, "
     "maxTokens?: int}), ttsOptions ({sampleRate?: int, speed?: number, workload?: "
     "'conversation'|'transcription'|'narration', providerOptions?: {provider: {param: "
     "value}}, <=2KB serialized}), sttOptions ({keywords?: string[] <=200 entries, "
@@ -1113,7 +1116,7 @@ CREATE_PHONE_SESSION_BODY_DOC = (
     "<=60}, dtmf?: keys on answer ('ww1w8')}), constraints ({allowedProviders?: "
     "{stt?|llm?|tts?: string[]}}), metadata (object), maxDurationSeconds (int, minimum "
     "30; maximum 3600 for s2s or 14400 for cascade; the limit cuts the call "
-    "mid-sentence, so a call that waits in a phone queue for a person needs 1800-3600), "
+    "mid-sentence, so a call held in a phone queue needs 1800-3600), "
     "ringTimeoutSeconds (int 20-45, default 45, rings before no-answer), idleRePrompts "
     "(agent shape minus enabled), handoff ({to: E.164, the user's own phone; name?: what "
     "to call them}; no agentId): adds the user to the call when asked for. Per-call "
@@ -1153,6 +1156,8 @@ def phone_session_doc(profile: str | None) -> str:
     return (
         "Create an outbound phone session, dialing `body.to` from the workspace's own "
         f"number. {caller_id}\n\n"
+        "Calls: firstMessage = AI disclosure + first question; clear answers are final; "
+        "checks stay unspoken.\n\n"
         "Before calling a business about the user's own account, card or booking (bank, "
         "card issuer, airline, hotel, insurer, utility, government office, clinic), get the "
         "number to bring the user in on if the other side asks for the account holder: "
@@ -1163,17 +1168,17 @@ def phone_session_doc(profile: str | None) -> str:
         f"(a shared caller ID stops at 10).{hang_up}\n\n"
         f"{pricing}\n\n"
         "A rejected call returns a code: AGENT_NOT_FOUND, PHONE_NUMBER_KYB_ACCESS_SUSPENDED "
-        f"(compliance review pending, retrying will not help{kyb}), "
+        f"(compliance review pending, retry will not help{kyb}), "
         "PHONE_NUMBER_PROVISIONING_CREDITS_REQUIRED / _PENDING / _FAILED, "
         "PHONE_NUMBER_CARD_REQUIRED, DESTINATION_REQUIRES_CARD, INSUFFICIENT_CREDITS. A 403 "
-        "PHONE_NUMBER_SCOPE_REQUIRED needs a full reconnect (a token refresh cannot add the "
-        "permission); PHONE_NUMBER_CONSENT_REQUIRED needs the workspace to accept the "
+        "PHONE_NUMBER_SCOPE_REQUIRED needs a full reconnect (a token refresh cannot add "
+        "it); PHONE_NUMBER_CONSENT_REQUIRED needs the workspace to accept the "
         "phone-use consent screen, no reconnect. A 2xx does not mean the call was answered: "
-        "no-answer, voicemail and carrier rejection settle normally and appear afterward in "
+        "no-answer, voicemail and carrier rejection show later in "
         "calls.get or sessions.transcript.get.\n\n"
-        "Omit body.voice unless it came from this agent's own configuration: an unknown "
-        "voice id is not checked before dialing and can produce a dead-air leg. A Paxa "
-        "voice speaks only on the models its GET /v1/voices entry lists in `models`."
+        "Omit body.voice unless it came from this agent's configuration: an unknown "
+        "voice id is not checked before dialing and can produce dead air. A Paxa "
+        "voice works only on the models its GET /v1/voices entry lists."
     )
 
 
@@ -3443,10 +3448,20 @@ async def create_phone_session(
                 raise ToolError(f"{exc} {retry_step}") from cause
         raise
     payload = created.structured_content
-    if isinstance(payload, dict) and payload.get("freeCall"):
-        note = FREE_CALL_NOTE_NO_PRICING if payment.hides_pricing() else FREE_CALL_NOTE
-        # First, so a text-only host's truncated render still shows it.
-        created = result({"note": note, **payload}, text="Created phone session.")
+    if isinstance(payload, dict) and not created.is_error:
+        additions: dict[str, Any] = {}
+        if payload.get("freeCall"):
+            # First, so a text-only host's truncated render still shows it.
+            additions["note"] = (
+                FREE_CALL_NOTE_NO_PRICING if payment.hides_pricing() else FREE_CALL_NOTE
+            )
+        advice_setting = os.getenv("SPEKO_MCP_PROMPT_ADVICE", "1").strip().lower()
+        if advice_setting not in {"0", "false", "off", "no"}:
+            advice = advise(requested)
+            if advice:
+                additions["promptAdvice"] = advice
+        if additions:
+            created = result({**additions, **payload}, text="Created phone session.")
     return with_voicemail_notice(created, body)
 
 
