@@ -24,18 +24,15 @@ def _docs_dir() -> Path:
 
 
 def _needs_regen() -> bool:
+    parents = _project_root().parents
+    monorepo_root = parents[1] if len(parents) > 1 else None
+    packages_dir = monorepo_root / "packages" if monorepo_root else None
+    if not packages_dir or not packages_dir.is_dir():
+        return False
     manifest = _docs_dir() / "manifest.json"
     if not manifest.exists():
         return True
     manifest_mtime = manifest.stat().st_mtime
-    # Only walk directories that actually contain bundled local sources.
-    # Internal agent instruction files and roadmaps are deliberately
-    # excluded from the bundle (see `scripts/sync_docs.py` policy comment),
-    # so we intentionally skip them here too.
-    monorepo_root = _project_root().parents[1]
-    packages_dir = monorepo_root / "packages"
-    if not packages_dir.is_dir():
-        return False
     bundled_filenames = {"README.md", "index.ts"}
     for path in packages_dir.rglob("*"):
         if (
